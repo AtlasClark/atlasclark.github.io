@@ -8,7 +8,7 @@
 */
 (function () {
   "use strict";
-  const REV = "rev 1.2.0";
+  const REV = "rev 1.3.0";
   const P = window.PCBV;
   const $ = s => document.querySelector(s);
   const $$ = s => Array.from(document.querySelectorAll(s));
@@ -119,7 +119,9 @@
   async function setImage(side, f) {
     try {
       const bmp = await createImageBitmap(f);
-      S.imgs[side] = { bmp: cutout(bmp), w: bmp.width, h: bmp.height };
+      const w = bmp.width, h = bmp.height, img = cutout(bmp);
+      if (img !== bmp) bmp.close();               // the cut-out canvas replaces the decoded bitmap
+      S.imgs[side] = { bmp: img, w, h };
       S.files[side] = f; S.align[side] = null;
     } catch { toast("Could not read image “" + f.name + "”.", true); }
   }
@@ -151,6 +153,7 @@
     $("#drop").hidden = has;
     $("#hud").hidden = $("#zoomHud").hidden = !has;
     $("#q").disabled = !has;
+    $("#closeBtn").hidden = !has;
     $("#projName").textContent = has ? S.board.stepName : "";
     // Title stays generic: Chrome history (and Sync) records it.
     if (has && newBoard) { resize(); fit(false); }
@@ -863,7 +866,7 @@
     const cu = b.layers.filter(l => l.kind === "copper").length;
     const meta = S.bom ? S.bom.meta.filter(m => m.v) : [];
     return `
-      <h3 class="sub" style="margin-top:0"><span>Files</span></h3>
+      <h3 class="sub" style="margin-top:0"><span>Files</span><button type="button" class="linkish" data-close>Close project</button></h3>
       <div class="files">
         ${file("IPC-2581", f.ipc, `rev ${esc(f.ipcRev)} · ${kb(f.ipc)} · ${esc(b.units.toLowerCase())}${f.ipcAlt.length ? " · also found: " + f.ipcAlt.map(esc).join(", ") : ""}`)}
         ${file("BOM", f.bom, S.bom ? `${S.bom.lines.length} lines · sheet “${esc(S.bom.sheet)}”` : esc(S.bomErr))}
@@ -1199,6 +1202,28 @@
 
   new ResizeObserver(() => resize()).observe(stage);
   if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { readColors(); redraw(); });
+
+  // ---------- close project: drop all project data from memory ----------
+  function closeProject() {
+    for (const sd of ["TOP", "BOTTOM"]) {
+      const im = S.imgs[sd]; if (!im) continue;
+      if (im.bmp.close) im.bmp.close(); else { im.bmp.width = im.bmp.height = 0; }
+    }
+    Object.assign(S, {
+      board: null, bom: null, bomErr: "", boardKey: "", bomKey: "",
+      files: { ipc: null, ipcRev: "", ipcAlt: [], bom: null, TOP: null, BOTTOM: null },
+      imgs: { TOP: null, BOTTOM: null }, align: { TOP: null, BOTTOM: null },
+      side: "TOP", mode: "cad", sel: null, hist: [], hover: null, query: "", matches: null, netMatches: null, aligning: null
+    });
+    G = null;
+    $("#q").value = ""; $("#alignBar").hidden = true; $("#layersPop").hidden = true; tip.hidden = true;
+    cv.classList.remove("aligning", "hot"); showCursor();
+    const dlg = $("#mapDlg"); if (dlg.open) dlg.close();
+    $("#cursor").textContent = "—";
+    setTab("inspect"); afterLoad(false);
+  }
+  $("#closeBtn").addEventListener("click", closeProject);
+  document.addEventListener("click", e => { if (e.target.closest("[data-close]")) closeProject(); });
 
   // ---------- saved settings: hashing, cleanup, clear ----------
   async function hashKey(s) {
