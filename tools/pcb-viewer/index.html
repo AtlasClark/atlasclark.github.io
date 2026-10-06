@@ -27,19 +27,23 @@
     </a>
     <span class="crumb mono">/ PCB Viewer</span>
     <span class="project" id="projName"></span>
+    <button class="close-proj" id="closeBtn" type="button" title="Close this project and clear it from memory" hidden>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg>
+      <span>Close</span>
+    </button>
     <label class="search">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
       <input id="q" type="search" placeholder="Find part, PN, or net" autocomplete="off" spellcheck="false" aria-label="Find part, part number, or net" disabled>
       <kbd>/</kbd>
     </label>
     <div class="top-actions">
-      <button class="btn" id="openFolderBtn" type="button" title="Open a project folder">
+      <button class="btn" id="openFolderBtn" type="button" title="Open a project folder (replaces the open project)">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M3 6.5A1.5 1.5 0 0 1 4.5 5h4l2 2h9A1.5 1.5 0 0 1 21 8.5v9a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 17.5z"/></svg>
-        <span>Open folder</span>
+        <span class="lbl">Open project</span>
       </button>
       <button class="btn ghost" id="openFilesBtn" type="button" title="Open individual files">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M14 3H6.5A1.5 1.5 0 0 0 5 4.5v15A1.5 1.5 0 0 0 6.5 21h11a1.5 1.5 0 0 0 1.5-1.5V8z"/><path d="M14 3v5h5"/></svg>
-        <span>Files</span>
+        <span class="lbl">Files</span>
       </button>
       <button class="icon-btn" id="themeBtn" type="button" aria-label="Toggle color theme" title="Toggle theme">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="4.5"/><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M5.3 18.7l1.4-1.4M17.3 6.7l1.4-1.4"/></svg>
