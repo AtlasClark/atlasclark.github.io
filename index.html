@@ -1,0 +1,430 @@
+<!doctype html>
+<!--
+  atlasclark.github.io — Atlas Devices tools hub
+  Scope: single-file static landing page for GitHub Pages that lists and links
+  static internal tools. Each tool lives in /tools/<slug>/index.html and gets one
+  entry in the TOOLS registry (script block below). The page builds the tool grid,
+  search, and category filters from that registry. No build step, no dependencies
+  except Google Fonts. Light/dark themes follow the system, with a manual toggle.
+  Bump REV on each change.
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Atlas Devices Tools</title>
+  <meta name="description" content="Static web tools for Atlas Devices. Runs in the browser, nothing to install.">
+  <meta name="theme-color" content="#F3F3EE" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0B0C0A" media="(prefers-color-scheme: dark)">
+  <link rel="icon" type="image/png" href="assets/brand/favicon-64.png">
+  <link rel="apple-touch-icon" href="assets/brand/apple-touch-icon.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+  <style>
+    :root {
+      --bg: #F3F3EE;
+      --bg-raised: #FBFBF8;
+      --ink: #10110E;
+      --ink-2: #3A3B35;
+      --muted: #74756C;
+      --line: #DCDCD3;
+      --lime: #D0DD2B;          /* brand lime, sampled from badge */
+      --accent-text: #5F6A00;   /* lime is too light for text on cream */
+      --on-lime: #10110E;
+      --mark: #10110E;
+      --dot: 16, 17, 14;
+      --dot-hot: 140, 152, 0;
+      --sans: "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+      --mono: "Geist Mono", ui-monospace, "SFMono-Regular", Consolas, monospace;
+      --gutter: clamp(16px, 4vw, 48px);
+      --max: 1200px;
+      color-scheme: light;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root:not([data-theme="light"]) {
+        --bg: #0B0C0A; --bg-raised: #131411; --ink: #ECEDE6; --ink-2: #B9BAB1; --muted: #7D7E75;
+        --line: #24251F; --accent-text: #D0DD2B; --mark: #ECEDE6;
+        --dot: 236, 237, 230; --dot-hot: 208, 221, 43; color-scheme: dark;
+      }
+    }
+    :root[data-theme="dark"] {
+      --bg: #0B0C0A; --bg-raised: #131411; --ink: #ECEDE6; --ink-2: #B9BAB1; --muted: #7D7E75;
+      --line: #24251F; --accent-text: #D0DD2B; --mark: #ECEDE6;
+      --dot: 236, 237, 230; --dot-hot: 208, 221, 43; color-scheme: dark;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; }
+    html { scroll-behavior: smooth; -webkit-text-size-adjust: 100%; }
+    @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+    body {
+      margin: 0; background: var(--bg); color: var(--ink);
+      font-family: var(--sans); font-size: 17px; line-height: 1.55;
+      -webkit-font-smoothing: antialiased; overflow-x: hidden;
+    }
+    a { color: inherit; text-decoration: none; }
+    ::selection { background: var(--lime); color: var(--on-lime); }
+    :focus-visible { outline: 2px solid var(--accent-text); outline-offset: 3px; border-radius: 4px; }
+
+    .wrap { max-width: var(--max); margin: 0 auto; padding: 0 var(--gutter); }
+    .mono { font-family: var(--mono); font-size: 12px; letter-spacing: .05em; text-transform: uppercase; }
+    .muted { color: var(--muted); }
+
+    /* Brand images are used as masks so they take the theme ink color. */
+    .wordmark, .mark {
+      background: var(--mark);
+      -webkit-mask: var(--src) center / contain no-repeat; mask: var(--src) center / contain no-repeat;
+    }
+    .wordmark { --src: url("assets/brand/wordmark.png"); display: block; width: 148px; aspect-ratio: 1745 / 294; }
+    .mark { --src: url("assets/brand/mark.png"); aspect-ratio: 2104 / 2400; }
+
+    /* ---------- Top bar ---------- */
+    .topbar {
+      position: sticky; top: 0; z-index: 20;
+      background: color-mix(in srgb, var(--bg) 84%, transparent);
+      backdrop-filter: saturate(1.4) blur(10px); -webkit-backdrop-filter: saturate(1.4) blur(10px);
+      border-bottom: 1px solid var(--line);
+    }
+    .topbar .wrap { display: flex; align-items: center; justify-content: space-between; height: 60px; gap: 16px; }
+    .brand { display: flex; align-items: center; gap: 14px; }
+    .brand .div { width: 1px; height: 18px; background: var(--line); }
+    .nav { display: flex; align-items: center; gap: 4px; }
+    .nav a { color: var(--ink-2); padding: 8px 10px; border-radius: 6px; transition: color .15s, background-color .15s; }
+    .nav a:hover { color: var(--ink); background: var(--bg-raised); }
+    .nav a .n { color: var(--muted); margin-right: 4px; }
+    .icon-btn {
+      display: grid; place-items: center; width: 36px; height: 36px; margin-left: 6px;
+      border: 1px solid var(--line); border-radius: 8px; background: transparent; color: var(--ink); cursor: pointer;
+    }
+    .icon-btn:hover { border-color: var(--ink-2); }
+    .icon-btn svg { width: 16px; height: 16px; }
+    @media (max-width: 640px) { .nav a, .brand .div, .brand .mono { display: none; } }
+
+    /* ---------- Hero ---------- */
+    .hero { position: relative; border-bottom: 1px solid var(--line); overflow: hidden; }
+    #field { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+    .hero::after {
+      content: ""; position: absolute; inset: 0; pointer-events: none;
+      background: linear-gradient(90deg, var(--bg) 0%, color-mix(in srgb, var(--bg) 70%, transparent) 42%, transparent 70%);
+    }
+    .hero .wrap {
+      position: relative; z-index: 1; display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 48px;
+      padding-top: clamp(64px, 12vh, 140px); padding-bottom: clamp(56px, 10vh, 120px);
+    }
+    .hero .mark { width: clamp(220px, 26vw, 340px); opacity: .92; }
+    @media (max-width: 900px) { .hero .wrap { grid-template-columns: 1fr; } .hero .mark { display: none; } }
+
+    .eyebrow { display: flex; align-items: center; gap: 12px; margin-bottom: 28px; color: var(--ink); font-size: 13px; letter-spacing: .14em; }
+    .eyebrow i { width: 5px; height: 5px; background: var(--lime); border-radius: 1px; transform: rotate(45deg); }
+    .eyebrow .pulse { width: 8px; height: 8px; border-radius: 50%; background: var(--lime); animation: pulse 2.4s ease-out infinite; }
+    @keyframes pulse { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--lime) 70%, transparent); } 70%,100% { box-shadow: 0 0 0 10px transparent; } }
+
+    h1 { font-size: clamp(40px, 6.6vw, 86px); line-height: 1; letter-spacing: -.045em; font-weight: 500; margin: 0; max-width: 13ch; }
+    h1 em {
+      font-style: normal; padding: 0 .08em; margin: 0 -.04em;
+      background: linear-gradient(transparent 58%, var(--lime) 58%, var(--lime) 92%, transparent 92%);
+    }
+    :root[data-theme="dark"] h1 em { background: none; color: var(--lime); }
+    @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) h1 em { background: none; color: var(--lime); } }
+
+    .lede { max-width: 48ch; margin: 28px 0 0; font-size: clamp(17px, 1.6vw, 20px); color: var(--ink-2); }
+    .cta { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 36px; }
+    .btn {
+      display: inline-flex; align-items: center; gap: 10px; height: 46px; padding: 0 18px;
+      border-radius: 10px; font: 500 15px var(--sans); border: 1px solid var(--line); color: var(--ink);
+      background: var(--bg-raised); cursor: pointer; transition: transform .15s, border-color .15s, background-color .15s, color .15s;
+    }
+    .btn:hover { border-color: var(--ink-2); transform: translateY(-1px); }
+    .btn.primary { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+    .btn.primary:hover { background: var(--lime); border-color: var(--lime); color: var(--on-lime); }
+    .btn svg { width: 16px; height: 16px; }
+
+    .readout { display: flex; flex-wrap: wrap; gap: 12px 40px; margin-top: 56px; padding-top: 20px; border-top: 1px dashed var(--line); max-width: 620px; }
+    .readout div { display: flex; flex-direction: column; gap: 4px; }
+    .readout b { font: 500 15px var(--sans); letter-spacing: 0; text-transform: none; color: var(--ink); }
+
+    /* ---------- Sections ---------- */
+    section.block { border-bottom: 1px solid var(--line); }
+    section.block > .wrap { padding-top: clamp(56px, 8vw, 104px); padding-bottom: clamp(56px, 8vw, 104px); }
+    .sec-head { display: grid; grid-template-columns: 200px 1fr; gap: 24px; align-items: baseline; margin-bottom: 36px; }
+    .sec-head h2 { margin: 0; font-size: clamp(28px, 3.6vw, 44px); font-weight: 500; letter-spacing: -.03em; line-height: 1.05; }
+    @media (max-width: 760px) { .sec-head { grid-template-columns: 1fr; gap: 10px; margin-bottom: 28px; } }
+
+    /* Toolbar: search + filters */
+    .toolbar { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between; margin-bottom: 20px; }
+    .search { position: relative; flex: 1 1 320px; max-width: 460px; }
+    .search svg { position: absolute; left: 14px; top: 50%; width: 16px; height: 16px; transform: translateY(-50%); color: var(--muted); }
+    .search input {
+      width: 100%; height: 46px; padding: 0 44px 0 40px; border-radius: 10px; border: 1px solid var(--line);
+      background: var(--bg-raised); color: var(--ink); font: 400 15px var(--sans);
+    }
+    .search input::placeholder { color: var(--muted); }
+    .search input:focus { outline: none; border-color: var(--ink-2); }
+    .search kbd {
+      position: absolute; right: 10px; top: 50%; transform: translateY(-50%);
+      font: 500 11px var(--mono); padding: 3px 7px; border: 1px solid var(--line); border-radius: 5px; color: var(--muted);
+    }
+    .filters { display: flex; flex-wrap: wrap; gap: 6px; }
+    .chip {
+      height: 32px; padding: 0 12px; border-radius: 999px; border: 1px solid var(--line); background: transparent;
+      color: var(--ink-2); font: 500 12px var(--mono); letter-spacing: .04em; text-transform: uppercase; cursor: pointer;
+    }
+    .chip:hover { border-color: var(--ink-2); color: var(--ink); }
+    .chip[aria-pressed="true"] { background: var(--ink); border-color: var(--ink); color: var(--bg); }
+
+    /* Tool grid */
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(270px, 1fr)); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
+    .card {
+      position: relative; display: flex; flex-direction: column; gap: 10px; min-height: 220px; padding: 22px;
+      background: var(--bg-raised); transition: background-color .2s;
+    }
+    a.card:hover { background: var(--bg); }
+    .card .top { display: flex; justify-content: space-between; align-items: center; }
+    .status { display: inline-flex; align-items: center; gap: 7px; }
+    .status::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--muted); }
+    .status.live::before { background: var(--lime); box-shadow: 0 0 0 3px color-mix(in srgb, var(--lime) 30%, transparent); }
+    .status.beta::before { background: transparent; border: 1.5px solid var(--accent-text); }
+    .card h3 { margin: 18px 0 0; font-size: 20px; font-weight: 500; letter-spacing: -.015em; }
+    .card p { margin: 0; color: var(--ink-2); font-size: 15px; flex: 1; }
+    .card .foot { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: 8px; }
+    .tags { display: flex; gap: 6px; flex-wrap: wrap; }
+    .tag { font: 400 11px var(--mono); letter-spacing: .03em; padding: 3px 8px; border: 1px solid var(--line); border-radius: 999px; color: var(--muted); }
+    .open { display: inline-flex; align-items: center; gap: 6px; color: var(--ink); white-space: nowrap; }
+    .open svg { width: 16px; height: 16px; transition: transform .2s; }
+    a.card:hover .open svg { transform: translate(3px, -3px); color: var(--accent-text); }
+    a.card::after { content: ""; position: absolute; left: 0; top: 0; height: 2px; width: 0; background: var(--lime); transition: width .3s ease; }
+    a.card:hover::after { width: 100%; }
+    .card.planned { opacity: .55; }
+    .card.planned .open { color: var(--muted); }
+    .empty { padding: 48px 22px; text-align: center; background: var(--bg-raised); grid-column: 1 / -1; color: var(--muted); }
+    .count { margin-top: 14px; }
+
+    /* Add-a-tool steps */
+    .steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; counter-reset: s; }
+    .steps li { list-style: none; border-top: 1px solid var(--ink); padding-top: 18px; }
+    .steps li::before { counter-increment: s; content: "0" counter(s); display: block; font: 500 12px var(--mono); color: var(--accent-text); margin-bottom: 14px; }
+    .steps h3 { margin: 0 0 6px; font-size: 18px; font-weight: 500; }
+    .steps p { margin: 0; color: var(--ink-2); font-size: 15px; }
+    .steps ol { margin: 0; padding: 0; }
+    code { font: 13px var(--mono); padding: 2px 6px; border-radius: 5px; background: var(--bg-raised); border: 1px solid var(--line); }
+    @media (max-width: 860px) { .steps { grid-template-columns: 1fr; } }
+
+    /* ---------- Footer bar ---------- */
+    footer { padding: 18px 0; }
+    footer .wrap { display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+    footer .rev { color: var(--accent-text); }
+
+    .rv { opacity: 0; transform: translateY(14px); transition: opacity .7s ease, transform .7s ease; }
+    .rv.in { opacity: 1; transform: none; }
+    @media (prefers-reduced-motion: reduce) { .rv { opacity: 1; transform: none; transition: none; } .eyebrow .pulse { animation: none; } }
+  </style>
+</head>
+<body>
+
+  <header class="topbar">
+    <div class="wrap">
+      <a class="brand" href="#top" aria-label="Atlas Devices Tools, home">
+        <span class="wordmark" role="img" aria-label="Atlas Devices"></span>
+        <span class="div"></span>
+        <span class="mono muted">Tools</span>
+      </a>
+      <nav class="nav mono" aria-label="Primary">
+        <a href="#tools"><span class="n">01</span>Tools</a>
+        <a href="#add"><span class="n">02</span>Add a tool</a>
+        <button class="icon-btn" id="themeBtn" type="button" aria-label="Toggle color theme">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="4.5"/><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M5.3 18.7l1.4-1.4M17.3 6.7l1.4-1.4"/></svg>
+        </button>
+      </nav>
+    </div>
+  </header>
+
+  <main id="top">
+    <!-- ========== HERO ========== -->
+    <section class="hero">
+      <canvas id="field" aria-hidden="true"></canvas>
+      <div class="wrap">
+        <div>
+          <div class="eyebrow mono"><span class="pulse"></span>Higher<i></i>Faster<i></i>Safer</div>
+          <h1>Small tools that get the work done <em>faster</em>.</h1>
+          <p class="lede">A shelf of static web tools for Atlas Devices. Each one runs in your browser — nothing to install, nothing to sign in to.</p>
+          <div class="cta">
+            <a class="btn primary" href="#tools">Browse tools
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12l7 7 7-7"/></svg>
+            </a>
+            <a class="btn" href="https://github.com/AtlasClark/atlasclark.github.io" target="_blank" rel="noopener">
+              <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 .5a11.5 11.5 0 0 0-3.64 22.41c.58.1.79-.25.79-.56v-2c-3.2.7-3.88-1.37-3.88-1.37-.52-1.33-1.28-1.69-1.28-1.69-1.05-.71.08-.7.08-.7 1.16.08 1.77 1.19 1.77 1.19 1.03 1.77 2.7 1.26 3.36.96.1-.75.4-1.26.73-1.55-2.55-.29-5.24-1.28-5.24-5.69 0-1.26.45-2.29 1.19-3.1-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.17 1.18a11 11 0 0 1 5.77 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.59.23 2.76.11 3.05.74.81 1.19 1.84 1.19 3.1 0 4.42-2.69 5.39-5.26 5.68.41.36.78 1.06.78 2.14v3.17c0 .31.21.67.8.56A11.5 11.5 0 0 0 12 .5Z"/></svg>
+              Source
+            </a>
+          </div>
+          <div class="readout mono muted">
+            <div>Tools live<b id="statLive">—</b></div>
+            <div>In progress<b id="statWip">—</b></div>
+            <div>Runs in<b>Your browser</b></div>
+            <div>Last update<b id="statUpdated">—</b></div>
+          </div>
+        </div>
+        <span class="mark" role="img" aria-label="Atlas Devices globe mark"></span>
+      </div>
+    </section>
+
+    <!-- ========== 01 TOOLS (generated from TOOLS registry) ========== -->
+    <section class="block" id="tools">
+      <div class="wrap">
+        <div class="sec-head rv"><span class="mono muted">01 / Tools</span><h2>The toolbox.</h2></div>
+        <div class="toolbar rv">
+          <label class="search">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+            <input id="q" type="search" placeholder="Search tools" autocomplete="off" aria-label="Search tools">
+            <kbd>/</kbd>
+          </label>
+          <div class="filters" id="filters" role="group" aria-label="Filter by category"></div>
+        </div>
+        <div class="grid rv" id="grid"></div>
+        <div class="count mono muted" id="count"></div>
+      </div>
+    </section>
+
+    <!-- ========== 02 ADD A TOOL ========== -->
+    <section class="block" id="add">
+      <div class="wrap">
+        <div class="sec-head rv"><span class="mono muted">02 / Add a tool</span><h2>Ship one in three steps.</h2></div>
+        <ol class="steps rv">
+          <li><h3>Build it static</h3><p>One folder, plain HTML/CSS/JS. Put it at <code>tools/&lt;slug&gt;/index.html</code>.</p></li>
+          <li><h3>Register it</h3><p>Add one entry to the <code>TOOLS</code> list in <code>index.html</code>: name, summary, category, status.</p></li>
+          <li><h3>Push to main</h3><p>GitHub Pages publishes it. The card appears here in about a minute.</p></li>
+        </ol>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="wrap mono muted">
+      <span>© <span id="yr">2026</span> Atlas Devices · Higher Faster Safer</span>
+      <span>Static · Hand-built · <span class="rev" id="rev"></span></span>
+    </div>
+  </footer>
+
+  <script>
+    const REV = "rev 1.1.0";
+
+    // ---------- TOOL REGISTRY ----------
+    // status: "live" (linked) | "beta" (linked, flagged) | "planned" (not linked)
+    // Entries below are placeholders — replace with real tools.
+    const TOOLS = [
+      { slug: "unit-converter",  name: "Unit Converter",       summary: "Length, force, mass, and pressure conversions with engineering precision.", category: "Engineering", tags: ["Calc"],          status: "planned" },
+      { slug: "load-calc",       name: "Load & Margin Calc",   summary: "Quick working-load and safety-factor checks for rigging setups.",           category: "Engineering", tags: ["Calc", "Safety"], status: "planned" },
+      { slug: "log-viewer",      name: "Serial Log Viewer",    summary: "Drop in a device log; filter, search, and plot it in the browser.",         category: "Test",        tags: ["Data", "Debug"],  status: "planned" },
+      { slug: "label-maker",     name: "Label Generator",      summary: "Build and print part, serial, and asset labels from a template.",           category: "Operations",  tags: ["Print"],          status: "planned" },
+    ];
+
+    // ---------- Render ----------
+    const $ = s => document.querySelector(s);
+    const esc = s => String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+    const ARROW = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17 17 7M8 7h9v9"/></svg>';
+    const STATUS = { live: "Live", beta: "Beta", planned: "Planned" };
+    const order = { live: 0, beta: 1, planned: 2 };
+    const tools = [...TOOLS].sort((a, b) => order[a.status] - order[b.status] || a.name.localeCompare(b.name));
+    const cats = ["All", ...new Set(tools.map(t => t.category))];
+    let cat = "All";
+
+    $("#filters").innerHTML = cats.map(c => `<button class="chip" type="button" aria-pressed="${c === cat}" data-cat="${esc(c)}">${esc(c)}</button>`).join("");
+    $("#filters").addEventListener("click", e => {
+      const b = e.target.closest(".chip"); if (!b) return;
+      cat = b.dataset.cat;
+      document.querySelectorAll(".chip").forEach(x => x.setAttribute("aria-pressed", x === b));
+      render();
+    });
+
+    function card(t) {
+      const linked = t.status !== "planned";
+      const tag = linked ? "a" : "div";
+      const href = linked ? ` href="tools/${esc(t.slug)}/"` : "";
+      return `<${tag} class="card ${t.status}"${href}>
+        <div class="top"><span class="status ${t.status} mono muted">${STATUS[t.status]}</span><span class="mono muted">${esc(t.category)}</span></div>
+        <h3>${esc(t.name)}</h3>
+        <p>${esc(t.summary)}</p>
+        <div class="foot"><span class="tags">${(t.tags || []).map(g => `<span class="tag">${esc(g)}</span>`).join("")}</span>
+        <span class="open mono">${linked ? "Open " + ARROW : "Soon"}</span></div>
+      </${tag}>`;
+    }
+
+    function render() {
+      const q = $("#q").value.trim().toLowerCase();
+      const list = tools.filter(t =>
+        (cat === "All" || t.category === cat) &&
+        (!q || [t.name, t.summary, t.category, ...(t.tags || [])].join(" ").toLowerCase().includes(q)));
+      $("#grid").innerHTML = list.length ? list.map(card).join("") : `<div class="empty">No tools match “${esc(q)}”.</div>`;
+      $("#count").textContent = `${String(list.length).padStart(2, "0")} / ${String(tools.length).padStart(2, "0")} tools`;
+    }
+    $("#q").addEventListener("input", render);
+    addEventListener("keydown", e => {
+      if (e.key === "/" && document.activeElement !== $("#q")) { e.preventDefault(); $("#q").focus(); }
+      if (e.key === "Escape" && document.activeElement === $("#q")) { $("#q").value = ""; render(); $("#q").blur(); }
+    });
+    render();
+
+    $("#statLive").textContent = tools.filter(t => t.status === "live").length;
+    $("#statWip").textContent = tools.filter(t => t.status !== "live").length;
+    $("#rev").textContent = REV;
+    $("#yr").textContent = new Date().getFullYear();
+
+    // Last update = latest commit date on this repo (public GitHub API; fails quietly).
+    fetch("https://api.github.com/repos/AtlasClark/atlasclark.github.io/commits?per_page=1")
+      .then(r => r.ok ? r.json() : Promise.reject())
+      .then(([c]) => { $("#statUpdated").textContent = new Date(c.commit.committer.date).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" }); })
+      .catch(() => {});
+
+    // ---------- Theme toggle ----------
+    const root = document.documentElement;
+    const store = {
+      get() { try { return localStorage.getItem("theme"); } catch { return null; } },
+      set(v) { try { localStorage.setItem("theme", v); } catch {} }
+    };
+    const saved = store.get();
+    if (saved) root.dataset.theme = saved;
+    const isDark = () => root.dataset.theme ? root.dataset.theme === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
+    $("#themeBtn").addEventListener("click", () => { const n = isDark() ? "light" : "dark"; root.dataset.theme = n; store.set(n); });
+
+    // ---------- Scroll reveal ----------
+    const io = new IntersectionObserver(es => es.forEach(e => {
+      if (e.isIntersecting) { e.target.classList.add("in"); io.unobserve(e.target); }
+    }), { rootMargin: "0px 0px -8% 0px" });
+    document.querySelectorAll(".rv").forEach(el => io.observe(el));
+
+    // ---------- Hero dot field: slow wave + cursor hot spot ----------
+    (() => {
+      const cv = $("#field"), ctx = cv.getContext("2d");
+      const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+      const GAP = 22;
+      let w = 0, h = 0, mx = -1e4, my = -1e4, t = 0, raf = 0, visible = true;
+      const css = n => getComputedStyle(root).getPropertyValue(n).trim();
+      function size() {
+        const r = cv.getBoundingClientRect(), dpr = Math.min(devicePixelRatio || 1, 2);
+        w = r.width; h = r.height; cv.width = w * dpr; cv.height = h * dpr;
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      }
+      function draw() {
+        const dot = css("--dot"), hot = css("--dot-hot");
+        ctx.clearRect(0, 0, w, h);
+        for (let y = GAP / 2; y < h; y += GAP) for (let x = GAP / 2; x < w; x += GAP) {
+          const wave = Math.sin(x * 0.012 + t) * Math.cos(y * 0.016 - t * 0.7);
+          const heat = Math.max(0, 1 - Math.hypot(x - mx, y - my) / 160);
+          const base = 0.10 + 0.10 * (wave + 1) / 2;
+          ctx.fillStyle = heat > 0.02 ? `rgba(${hot},${Math.min(1, base + heat * 0.9)})` : `rgba(${dot},${base})`;
+          ctx.beginPath(); ctx.arc(x, y, 1 + heat * 1.6 + (wave > 0.82 ? 0.5 : 0), 0, 6.2832); ctx.fill();
+        }
+      }
+      function loop() { t += 0.008; draw(); raf = visible ? requestAnimationFrame(loop) : 0; }
+      size(); draw();
+      addEventListener("resize", () => { size(); draw(); });
+      new MutationObserver(draw).observe(root, { attributes: true, attributeFilter: ["data-theme"] });
+      if (reduce) return;
+      const hero = cv.parentElement;
+      hero.addEventListener("pointermove", e => { const r = cv.getBoundingClientRect(); mx = e.clientX - r.left; my = e.clientY - r.top; });
+      hero.addEventListener("pointerleave", () => { mx = my = -1e4; });
+      new IntersectionObserver(([e]) => { visible = e.isIntersecting; if (visible && !raf) loop(); }).observe(hero);
+    })();
+  </script>
+</body>
+</html>
