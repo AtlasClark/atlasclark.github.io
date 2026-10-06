@@ -122,6 +122,10 @@
   }
   const clean = v => (v == null || /^<parameter .* not found>$/i.test(String(v).trim())) ? "" : String(v).trim();
 
+  // Atlas PNs are zero-padded (e.g. 01716); Excel stores them as numbers and drops the zeros.
+  const ATLAS_PN_DIGITS = 5;
+  const normPN = v => /^\d+$/.test(v) && v.length < ATLAS_PN_DIGITS ? v.padStart(ATLAS_PN_DIGITS, "0") : v;
+
   function interpret(sheets) {
     let pick = null;
     for (const sh of sheets) {
@@ -151,19 +155,24 @@
       }
     }
 
+    return build({ sheet: sh.name, headers, meta, data: sh.rows.slice(hi + 1), auto: { ...cols } }, cols);
+  }
+
+  // (Re)builds BOM lines from a column map. Also used when the operator picks columns by hand.
+  function build(bom, cols) {
     const lines = [], byRef = new Map();
-    for (let i = hi + 1; i < sh.rows.length; i++) {
-      const r = sh.rows[i] || [];
+    for (const row of bom.data) {
+      const r = row || [];
       const refs = expandRefs(r[cols.ref] || "");
       if (!refs.length) continue;
       const get = c => c >= 0 ? clean(r[c]) : "";
       const fields = {};
-      headers.forEach((h, j) => { if (h && j !== cols.ref) { const v = clean(r[j]); if (v && !/^=/.test(v)) fields[h] = v; } });
-      const line = { idx: lines.length, refs, atlas: get(cols.atlas), mpn: get(cols.mpn), mfr: get(cols.mfr), desc: get(cols.desc), name: get(cols.name), qty: get(cols.qty), mount: get(cols.mount), fields };
+      bom.headers.forEach((h, j) => { if (h && j !== cols.ref) { const v = clean(r[j]); if (v && !/^=/.test(v)) fields[h] = j === cols.atlas ? normPN(v) : v; } });
+      const line = { idx: lines.length, refs, atlas: normPN(get(cols.atlas)), mpn: get(cols.mpn), mfr: get(cols.mfr), desc: get(cols.desc), name: get(cols.name), qty: get(cols.qty), mount: get(cols.mount), fields };
       lines.push(line);
       for (const ref of refs) byRef.set(ref, line);
     }
-    return { sheet: sh.name, headers, cols, meta, lines, byRef };
+    return Object.assign(bom, { cols: { ...cols }, lines, byRef, needsMap: cols.atlas < 0 || (cols.desc < 0 && cols.name < 0) });
   }
 
   async function readBOM(file) {
@@ -176,5 +185,5 @@
   }
 
   window.PCBV = window.PCBV || {};
-  Object.assign(window.PCBV, { readBOM, expandRefs });
+  Object.assign(window.PCBV, { readBOM, expandRefs, bomBuild: build, normPN });
 })();

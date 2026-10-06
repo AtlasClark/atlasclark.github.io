@@ -8,7 +8,7 @@
 */
 (function () {
   "use strict";
-  const REV = "rev 1.0.0";
+  const REV = "rev 1.1.0";
   const P = window.PCBV;
   const $ = s => document.querySelector(s);
   const $$ = s => Array.from(document.querySelectorAll(s));
@@ -60,6 +60,7 @@
     if (!ipcs.length && !boms.length && !imgs.length) { toast("No usable files. Expected IPC-2581 (.cvg), BOM (.xlsx/.csv), and board images.", true); return; }
     busy("Reading files…");
     const notes = [];
+    let askMap = false;
     try {
       // ---- IPC-2581: newest revision wins ----
       if (ipcs.length) {
@@ -87,7 +88,7 @@
       // ---- BOM ----
       if (boms.length) {
         const f = boms.find(b => /bom/i.test(b.name)) || boms[0];
-        try { S.bom = await P.readBOM(f); S.files.bom = f; S.bomErr = ""; }
+        try { S.bom = await P.readBOM(f); S.files.bom = f; S.bomErr = ""; applySavedCols(); askMap = S.bom.needsMap; }
         catch (e) { S.bom = null; S.files.bom = f; S.bomErr = e.message; notes.push("BOM: " + e.message); }
       }
       // ---- images ----
@@ -107,6 +108,7 @@
     if (!S.board && (S.bom || S.imgs.TOP || S.imgs.BOTTOM)) notes.push("Now open the IPC-2581 (.cvg) file for this board.");
     notes.forEach(n => toast(n, /BOM:/.test(n)));
     afterLoad(!!ipcs.length);
+    if (askMap) openColMap(missingCols());
   }
 
   async function setImage(side, f) {
@@ -619,15 +621,21 @@
 
   function partInfo(ref) {
     const line = S.bom && S.bom.byRef.get(ref), cad = S.board.cadBom.get(ref);
-    const atlasBom = line ? line.atlas : "", atlasCad = cad ? cad.libPN : "";
-    return {
-      line, cad,
-      atlas: atlasBom || atlasCad, atlasSrc: atlasBom ? "bom" : atlasCad ? "cad" : "",
+    const atlasBom = line ? line.atlas : "", atlasCad = cad ? P.normPN(cad.libPN) : "";
+    return lineInfo(line, {
+      cad, atlas: atlasBom || atlasCad, atlasSrc: atlasBom ? "bom" : atlasCad ? "cad" : "",
       pnMismatch: !!(atlasBom && atlasCad && pnKey(atlasBom) !== pnKey(atlasCad)), atlasCad,
-      mpn: line ? line.mpn : "", mfr: line ? line.mfr : "", name: line ? line.name : "",
-      desc: (line && line.desc) || (cad && (cad.libDesc || cad.desc)) || "",
-      mount: line ? line.mount : ""
-    };
+      cadDesc: cad ? cad.libDesc || cad.desc : ""
+    });
+  }
+  // BOM Description first, then BOM Name; CAD library text only when the BOM has neither.
+  // "value" shows Name under the description when the BOM has both.
+  function lineInfo(line, o = {}) {
+    const bomDesc = line ? line.desc || line.name : "";
+    return Object.assign({
+      line, atlas: line ? line.atlas : "", mpn: line ? line.mpn : "", mfr: line ? line.mfr : "", mount: line ? line.mount : "",
+      value: line && line.desc && line.name ? line.name : ""
+    }, o, { desc: bomDesc || o.cadDesc || "", descSrc: bomDesc ? "bom" : o.cadDesc ? "cad" : "" });
   }
   function selectedRefs() {
     const s = S.sel; if (!s) return new Set();
@@ -727,8 +735,8 @@
     }).join("");
     return `
       <div class="card-head"><div class="ref">${esc(c.ref)}</div><div class="chips">${chips.join("")}</div></div>
-      ${I.name ? `<p class="value">${esc(I.name)}</p>` : ""}
-      ${I.desc ? `<div class="desc">${esc(I.desc)}</div>` : ""}
+      ${I.desc ? `<div class="desc">${esc(I.desc)}${I.descSrc === "cad" ? ` <span class="chip" title="The BOM has no Description or Name for this part; text is from the CAD library">CAD</span>` : ""}</div>` : ""}
+      ${I.value ? `<p class="value">${esc(I.value)}</p>` : ""}
       ${I.pnMismatch ? `<div class="warnbox">Atlas PN differs: BOM ${esc(I.line.atlas)}, CAD library ${esc(I.atlasCad)}.</div>` : ""}
       <dl class="kv">
         <dt>Atlas PN</dt><dd class="big">${I.atlas ? esc(I.atlas) + (I.atlasSrc === "cad" ? ` <span class="chip" title="From the CAD library reference in the IPC-2581 file">CAD</span>` : "") + copyBtn(I.atlas) : na()}</dd>
@@ -752,7 +760,7 @@
     const pins = n ? n.pins.slice().sort((a, b) => natSort(a.comp, b.comp) || natSort(a.pin, b.pin)) : [];
     const rows = pins.map(p => {
       const I = S.board.compByRef.get(p.comp) ? partInfo(p.comp) : {};
-      return `<tr class="row" data-ref="${esc(p.comp)}" data-pin="${esc(p.pin)}"><td class="m">${esc(p.comp)}</td><td class="m">${esc(p.pin)}</td><td><span class="ell">${esc(I.name || I.desc || "")}</span></td></tr>`;
+      return `<tr class="row" data-ref="${esc(p.comp)}" data-pin="${esc(p.pin)}"><td class="m">${esc(p.comp)}</td><td class="m">${esc(p.pin)}</td><td><span class="ell">${esc(I.desc)}</span></td></tr>`;
     }).join("");
     const layers = e ? [...e.layers].sort((a, b) => (S.board.layerByName.get(a) || {}).order - (S.board.layerByName.get(b) || {}).order) : [];
     return `
@@ -764,19 +772,19 @@
         <dt>Trace length</dt><dd>${e && e.len ? "≈ " + fmtLen(e.len, 1) : "—"} <span class="sub muted" style="font-size:12px">(sum of tracks, no pours)</span></dd>
       </dl>
       <h3 class="sub"><span>Connected pins</span><span>Click to open the part</span></h3>
-      <table class="t"><thead><tr><th>Ref</th><th>Pin</th><th>Value</th></tr></thead><tbody>${rows || `<tr><td colspan="3" class="sub">No part pins on this net</td></tr>`}</tbody></table>`;
+      <table class="t"><thead><tr><th>Ref</th><th>Pin</th><th>Description</th></tr></thead><tbody>${rows || `<tr><td colspan="3" class="sub">No part pins on this net</td></tr>`}</tbody></table>`;
   }
 
   function groupCard(s) {
     const line = S.bom && S.bom.lines[s.line];
     const refs = s.refs.slice().sort(natSort);
     const first = refs.find(r => S.board.compByRef.get(r));
-    const I = first ? partInfo(first) : { atlas: line && line.atlas, mpn: line && line.mpn, mfr: line && line.mfr, name: line && line.name, desc: line && line.desc };
+    const I = first ? partInfo(first) : lineInfo(line);
     const missing = refs.filter(r => !S.board.compByRef.get(r));
     return `
-      <div class="card-head"><div class="ref" style="font-size:24px">${esc(I.atlas || I.name || "BOM line")}</div><div class="chips"><span class="chip lime">${refs.length} placed</span></div></div>
-      ${I.name ? `<p class="value">${esc(I.name)}</p>` : ""}
+      <div class="card-head"><div class="ref" style="font-size:24px">${esc(I.atlas || I.desc || "BOM line")}</div><div class="chips"><span class="chip lime">${refs.length} placed</span></div></div>
       ${I.desc ? `<div class="desc">${esc(I.desc)}</div>` : ""}
+      ${I.value ? `<p class="value">${esc(I.value)}</p>` : ""}
       <dl class="kv">
         <dt>Atlas PN</dt><dd class="big">${I.atlas ? esc(I.atlas) + copyBtn(I.atlas) : na()}</dd>
         <dt>Mfr PN</dt><dd class="big">${I.mpn ? esc(I.mpn) + copyBtn(I.mpn) : na("None listed")}</dd>
@@ -796,14 +804,14 @@
       ${S.bom ? `<label class="toggle"><input type="checkbox" id="grpToggle" ${S.groupParts ? "checked" : ""}> By BOM line</label>` : ""}</div>`;
     if (S.groupParts && S.bom) {
       const lines = S.bom.lines.filter(l => !S.matches || l.refs.some(r => S.matches.has(r)));
-      return head + `<table class="t"><thead><tr><th>Atlas PN</th><th>Value</th><th>Qty</th><th>Refs</th></tr></thead><tbody>${lines.map(l =>
-        `<tr class="row${S.sel && S.sel.type === "group" && S.sel.line === l.idx ? " on" : ""}" data-group="${l.idx}"><td class="m">${hl(l.atlas, q)}</td><td><span class="ell">${hl(l.name || l.desc, q)}</span></td><td class="m">${l.refs.length}</td><td class="m sub"><span class="ell">${hl(l.refs.join(", "), q)}</span></td></tr>`).join("")}</tbody></table>`;
+      return head + `<table class="t"><thead><tr><th>Atlas PN</th><th>Description</th><th>Qty</th><th>Refs</th></tr></thead><tbody>${lines.map(l =>
+        `<tr class="row${S.sel && S.sel.type === "group" && S.sel.line === l.idx ? " on" : ""}" data-group="${l.idx}"><td class="m">${hl(l.atlas, q)}</td><td><span class="ell">${hl(l.desc || l.name, q)}</span></td><td class="m">${l.refs.length}</td><td class="m sub"><span class="ell">${hl(l.refs.join(", "), q)}</span></td></tr>`).join("")}</tbody></table>`;
     }
     const comps = S.board.comps.filter(c => !S.matches || S.matches.has(c.ref)).sort((a, b) => natSort(a.ref, b.ref));
     if (!comps.length) return head + `<div class="empty-note">No parts match.</div>`;
-    return head + `<table class="t"><thead><tr><th>Ref</th><th>Value / description</th><th>Atlas PN</th></tr></thead><tbody>${comps.map(c => {
+    return head + `<table class="t"><thead><tr><th>Ref</th><th>Description</th><th>Atlas PN</th></tr></thead><tbody>${comps.map(c => {
       const I = partInfo(c.ref);
-      return `<tr class="row${sel.has(c.ref) ? " on" : ""}" data-ref="${esc(c.ref)}"><td class="m">${hl(c.ref, q)}${c.side === "BOTTOM" ? ` <span class="sub">B</span>` : ""}</td><td><span class="ell" title="${esc(I.desc)}">${hl(I.name || I.desc || c.pkg, q)}</span></td><td class="m">${I.atlas ? hl(I.atlas, q) : `<span class="na">—</span>`}</td></tr>`;
+      return `<tr class="row${sel.has(c.ref) ? " on" : ""}" data-ref="${esc(c.ref)}"><td class="m">${hl(c.ref, q)}${c.side === "BOTTOM" ? ` <span class="sub">B</span>` : ""}</td><td><span class="ell" title="${esc(I.desc)}">${hl(I.desc || c.pkg, q)}</span></td><td class="m">${I.atlas ? hl(I.atlas, q) : `<span class="na">—</span>`}</td></tr>`;
     }).join("")}</tbody></table>`;
   }
 
@@ -853,6 +861,7 @@
       <div class="files">
         ${file("IPC-2581", f.ipc, `rev ${esc(f.ipcRev)} · ${kb(f.ipc)} · ${esc(b.units.toLowerCase())}${f.ipcAlt.length ? " · also found: " + f.ipcAlt.map(esc).join(", ") : ""}`)}
         ${file("BOM", f.bom, S.bom ? `${S.bom.lines.length} lines · sheet “${esc(S.bom.sheet)}”` : esc(S.bomErr))}
+        ${S.bom ? `<div class="row-actions"><button type="button" class="hud-btn" data-mapcols>BOM columns…</button></div>` : ""}
         ${imgRow("TOP")}
         ${imgRow("BOTTOM")}
       </div>
@@ -880,7 +889,7 @@
     const m = new Set();
     for (const c of S.board.comps) {
       const I = partInfo(c.ref);
-      if ([c.ref, c.pkg, I.atlas, I.mpn, I.mfr, I.name, I.desc].some(v => v && String(v).toLowerCase().includes(q))) m.add(c.ref);
+      if ([c.ref, c.pkg, I.atlas, I.mpn, I.mfr, I.value, I.desc].some(v => v && String(v).toLowerCase().includes(q))) m.add(c.ref);
     }
     S.matches = m;
     S.netMatches = netList().filter(n => n.toLowerCase().includes(q));
@@ -904,7 +913,7 @@
     if (refs.length > 1) {
       // all matches share one BOM line -> show the group
       const lines = new Set(refs.map(r => S.bom && S.bom.byRef.get(r)).filter(Boolean));
-      if (lines.size === 1) { const l = [...lines][0]; return select({ type: "group", refs: l.refs.slice(), line: l.idx, title: l.atlas || l.name }, { focus: true }); }
+      if (lines.size === 1) { const l = [...lines][0]; return select({ type: "group", refs: l.refs.slice(), line: l.idx, title: l.atlas || l.desc || l.name }, { focus: true }); }
       return select({ type: "group", refs, line: -1, title: "“" + S.query + "”" }, { focus: true });
     }
     if (S.netMatches.length) select({ type: "net", name: S.netMatches[0] }, { focus: true });
@@ -940,6 +949,49 @@
     $("#cursor").textContent = bx == null ? "—" : `X ${fmtLen(bx).replace(/ .*/, "")}  Y ${fmtLen(by)}`;
   }
 
+  // ---------- BOM column mapping (operator prompt) ----------
+  const MAP_FIELDS = [["atlas", "Atlas PN"], ["desc", "Description"], ["name", "Name / value"], ["mpn", "Mfr PN"], ["mfr", "Manufacturer"]];
+  const colsKey = () => "pcbv.bomcols." + S.bom.headers.join("|");      // headers only, no BOM data
+  function applySavedCols() {
+    const c = store.get(colsKey(), null);
+    if (c && c.ref === S.bom.cols.ref && c.ref >= 0) P.bomBuild(S.bom, c);
+  }
+  function missingCols() {
+    const c = S.bom.cols, m = [];
+    if (c.atlas < 0) m.push("Atlas PN");
+    if (c.desc < 0 && c.name < 0) m.push("Description or Name");
+    return "No column was found for: " + m.join(", ") + ". Pick the column for each field.";
+  }
+  function openColMap(why) {
+    const dlg = $("#mapDlg"), bom = S.bom;
+    if (!bom || !dlg || !dlg.showModal) return;
+    const sample = bom.data.find(r => r && String(r[bom.cols.ref] || "").trim()) || [];
+    const opts = cur => `<option value="-1">— none —</option>` + bom.headers.map((h, i) => h && i !== bom.cols.ref ? `<option value="${i}"${i === cur ? " selected" : ""}>${esc(h)}</option>` : "").join("");
+    dlg.innerHTML = `<form method="dialog">
+      <h2>Match the BOM columns</h2>
+      <p>${esc(why)}</p>
+      <div class="map">
+        <span class="mono muted">Field</span><span class="mono muted">BOM column</span><span class="mono muted">First row (${esc(sample[bom.cols.ref] || "")})</span>
+        ${MAP_FIELDS.map(([k, label]) => `<label for="map-${k}">${label}</label><select id="map-${k}" data-col="${k}">${opts(bom.cols[k])}</select><span class="sample" data-sample="${k}"></span>`).join("")}
+      </div>
+      <p class="note">The viewer shows Description first, and Name when there is no Description. This choice is kept in this browser for BOMs with the same headers.</p>
+      <div class="dlg-actions"><button class="btn" value="cancel">Skip</button><button class="btn primary" value="ok">Apply</button></div>
+    </form>`;
+    const upd = () => dlg.querySelectorAll("select").forEach(s => {
+      const i = +s.value; dlg.querySelector(`[data-sample="${s.dataset.col}"]`).textContent = i >= 0 ? (String(sample[i] || "").trim() || "(empty)") : "";
+    });
+    dlg.onchange = upd; upd();
+    dlg.onclose = () => {
+      if (dlg.returnValue !== "ok") return;
+      const cols = { ...bom.cols };
+      dlg.querySelectorAll("select").forEach(s => { cols[s.dataset.col] = +s.value; });
+      P.bomBuild(bom, cols); store.set(colsKey(), cols);
+      runSearch(); renderPanel(); redraw();
+    };
+    dlg.returnValue = "";
+    dlg.showModal();
+  }
+
   // ---------- toast / busy ----------
   function toast(msg, bad) {
     let host = $("#toasts");
@@ -960,7 +1012,7 @@
     const c = S.board.compByRef.get(h.comp); if (!c) { tip.hidden = true; return; }
     const I = partInfo(c.ref);
     const pin = h.pin != null ? c.pins.find(p => p.num === h.pin) : null;
-    tip.innerHTML = `<b>${esc(c.ref)}</b> ${esc(I.name || "")}${I.atlas ? ` <span class="k">· ${esc(I.atlas)}</span>` : ""}` +
+    tip.innerHTML = `<b>${esc(c.ref)}</b> ${I.atlas ? `<span class="k">${esc(I.atlas)}</span>` : ""}` +
       (I.desc ? `<br><span class="k">${esc(I.desc)}</span>` : "") +
       (pin ? `<br>Pin ${esc(pin.num)} · ${pin.net ? esc(pin.net) : "no net"}` : "");
     tip.hidden = false;
@@ -1074,9 +1126,10 @@
     if (t.closest("[data-back]")) { back(); return; }
     const al = t.closest("[data-align]"); if (al) { startAlign(al.dataset.align); return; }
     const rf = t.closest("[data-refit]"); if (rf) { resetAlign(rf.dataset.refit); return; }
+    if (t.closest("[data-mapcols]")) { openColMap("Pick the BOM column for each field."); return; }
     if (t.id === "grpToggle") { S.groupParts = t.checked; renderPanel(); return; }
     const gr = t.closest("[data-group]");
-    if (gr && S.bom) { const l = S.bom.lines[+gr.dataset.group]; if (l) select({ type: "group", refs: l.refs.slice(), line: l.idx, title: l.atlas || l.name }, { focus: true }); return; }
+    if (gr && S.bom) { const l = S.bom.lines[+gr.dataset.group]; if (l) select({ type: "group", refs: l.refs.slice(), line: l.idx, title: l.atlas || l.desc || l.name }, { focus: true }); return; }
     const nt = t.closest("[data-net]"); if (nt && !t.closest("[data-ref]")) { select({ type: "net", name: nt.dataset.net }, { focus: true }); return; }
     const rf2 = t.closest("[data-ref]");
     if (rf2) select({ type: "comp", ref: rf2.dataset.ref, pin: rf2.dataset.pin || null }, { focus: true });
@@ -1091,7 +1144,7 @@
 
   // Keyboard
   addEventListener("keydown", e => {
-    if ((e.target.matches && e.target.matches("input, textarea")) || e.ctrlKey || e.metaKey || e.altKey) return;
+    if ((e.target.matches && e.target.matches("input, textarea, select")) || e.ctrlKey || e.metaKey || e.altKey || document.querySelector("dialog[open]")) return;
     if (!S.board) return;
     if (S.aligning) {
       const a = S.align[S.aligning], st = (e.shiftKey ? 10 : 1) / S.cam.z;
