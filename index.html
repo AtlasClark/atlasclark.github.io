@@ -306,12 +306,13 @@
   </footer>
 
   <script>
-    const REV = "rev 1.1.0";
+    const REV = "rev 1.2.0";
 
     // ---------- TOOL REGISTRY ----------
     // status: "live" (linked) | "beta" (linked, flagged) | "planned" (not linked)
-    // Entries below are placeholders — replace with real tools.
+    // "planned" entries are placeholders.
     const TOOLS = [
+      { slug: "pcb-viewer",      name: "PCB Viewer",           summary: "Open a board project (IPC-2581, BOM, 3D images). Pick parts for Atlas PN and Mfr PN; trace nets. Files stay local.", category: "Engineering", tags: ["PCB", "BOM", "Local"], status: "beta" },
       { slug: "unit-converter",  name: "Unit Converter",       summary: "Length, force, mass, and pressure conversions with engineering precision.", category: "Engineering", tags: ["Calc"],          status: "planned" },
       { slug: "load-calc",       name: "Load & Margin Calc",   summary: "Quick working-load and safety-factor checks for rigging setups.",           category: "Engineering", tags: ["Calc", "Safety"], status: "planned" },
       { slug: "log-viewer",      name: "Serial Log Viewer",    summary: "Drop in a device log; filter, search, and plot it in the browser.",         category: "Test",        tags: ["Data", "Debug"],  status: "planned" },
