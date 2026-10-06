@@ -1,1 +1,9 @@
 .claude/
+.dev/
+
+# Board project files are local only. Never commit them.
+Reference Project Folder/
+*.cvg
+*.xlsx
+*.xlsm
+*.xls
