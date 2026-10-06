@@ -8,7 +8,7 @@
 */
 (function () {
   "use strict";
-  const REV = "rev 1.1.0";
+  const REV = "rev 1.2.0";
   const P = window.PCBV;
   const $ = s => document.querySelector(s);
   const $$ = s => Array.from(document.querySelectorAll(s));
@@ -45,11 +45,15 @@
   // File intake
   // ======================================================================
   const RX_IPC = /\.(cvg|xml)$/i, RX_BOM = /\.(xlsx|xlsm|xls|csv|tsv)$/i, RX_IMG = /\.(png|jpe?g|webp|bmp)$/i;
+  // Altium export names: "<Project> PCB 3D Print Top" / "... Bottom". Otherwise the LAST side word wins,
+  // so a project name such as "Bottom Plate" does not decide the side.
+  const SIDE_WORD = { top: "TOP", front: "TOP", bottom: "BOTTOM", bot: "BOTTOM", btm: "BOTTOM", back: "BOTTOM", rear: "BOTTOM" };
   const sideOfName = n => {
     const b = n.replace(/\.[^.]+$/, "");
-    if (/(^|[^a-z])(bot|bottom|btm|back|rear)([^a-z]|$)/i.test(b)) return "BOTTOM";
-    if (/(^|[^a-z])(top|front)([^a-z]|$)/i.test(b)) return "TOP";
-    return null;
+    const m = b.match(/3d\s*print\s*(top|bottom|bot)/i);
+    if (m) return SIDE_WORD[m[1].toLowerCase()];
+    const all = b.match(/(?:^|[^a-z])(top|front|bottom|bot|btm|back|rear)(?=[^a-z]|$)/gi);
+    return all ? SIDE_WORD[all[all.length - 1].replace(/^[^a-z]/i, "").toLowerCase()] : null;
   };
 
   async function loadFiles(list) {
@@ -76,6 +80,7 @@
         busy("Parsing " + cands[0].f.name + "…");
         await frame();
         const board = P.parseIPC2581(await cands[0].f.text());
+        S.boardKey = await hashKey("board:" + board.stepName);
         // New board = new project: drop parts of the old one not in this batch
         S.board = board; S.sel = null; S.hist = []; S.hover = null;
         S.files.ipc = cands[0].f; S.files.ipcRev = board.rev; S.files.ipcAlt = cands.slice(1).map(c => c.f.name + " (rev " + c.rev + ")");
@@ -88,7 +93,7 @@
       // ---- BOM ----
       if (boms.length) {
         const f = boms.find(b => /bom/i.test(b.name)) || boms[0];
-        try { S.bom = await P.readBOM(f); S.files.bom = f; S.bomErr = ""; applySavedCols(); askMap = S.bom.needsMap; }
+        try { S.bom = await P.readBOM(f); S.files.bom = f; S.bomErr = ""; S.bomKey = await hashKey("bom:" + S.bom.headers.join("|")); applySavedCols(); askMap = S.bom.needsMap; }
         catch (e) { S.bom = null; S.files.bom = f; S.bomErr = e.message; notes.push("BOM: " + e.message); }
       }
       // ---- images ----
@@ -147,7 +152,7 @@
     $("#hud").hidden = $("#zoomHud").hidden = !has;
     $("#q").disabled = !has;
     $("#projName").textContent = has ? S.board.stepName : "";
-    document.title = has ? S.board.stepName + " · PCB Viewer" : "PCB Viewer";
+    // Title stays generic: Chrome history (and Sync) records it.
     if (has && newBoard) { resize(); fit(false); }
     if (has && newBoard) S.mode = S.imgs[S.side] ? "blend" : "cad";
     if (S.mode !== "cad" && !S.imgs[S.side]) S.mode = "cad";
@@ -510,7 +515,8 @@
   // ======================================================================
   // Photo alignment
   // ======================================================================
-  const alignKey = sd => `pcbv.align.${S.board.stepName}.${sd}.${S.imgs[sd].w}x${S.imgs[sd].h}`;
+  // Saved keys hold a hash of the board name, never the name itself.
+  const alignKey = sd => `pcbv.a.${S.boardKey}.${sd === "TOP" ? "t" : "b"}.${S.imgs[sd].w}x${S.imgs[sd].h}`;
   function initAlign(sd) {
     const saved = store.get(alignKey(sd), null);
     if (saved && isFinite(saved.s)) { S.align[sd] = Object.assign(saved, { how: "saved" }); return; }
@@ -877,7 +883,7 @@
       ${meta.length ? `<h3 class="sub"><span>BOM header</span></h3><dl class="kv">${meta.map(m => `<dt>${esc(m.k)}</dt><dd>${esc(m.v)}</dd>`).join("")}</dl>` : ""}
       <h3 class="sub"><span>Checks</span></h3>
       <ul class="checks">${checks().map(c => `<li class="${c.bad ? "bad" : "good"}">${esc(c.t)}</li>`).join("")}</ul>
-      <p class="privacy mono" style="margin-top:22px"><span class="lock"></span>Files are read in memory in this tab only. Close the tab to clear them. Only view settings and photo alignment are kept in this browser.</p>`;
+      <p class="privacy mono" style="margin-top:22px"><span class="lock"></span>Files are read in memory in this tab only. Close the tab to clear them. This browser keeps only view settings, photo alignment, and BOM column choices, under hashed names. <button type="button" class="linkish" data-clear>Clear saved settings</button></p>`;
   }
 
   // ======================================================================
@@ -951,7 +957,7 @@
 
   // ---------- BOM column mapping (operator prompt) ----------
   const MAP_FIELDS = [["atlas", "Atlas PN"], ["desc", "Description"], ["name", "Name / value"], ["mpn", "Mfr PN"], ["mfr", "Manufacturer"]];
-  const colsKey = () => "pcbv.bomcols." + S.bom.headers.join("|");      // headers only, no BOM data
+  const colsKey = () => "pcbv.c." + S.bomKey;                           // hash of the header row
   function applySavedCols() {
     const c = store.get(colsKey(), null);
     if (c && c.ref === S.bom.cols.ref && c.ref >= 0) P.bomBuild(S.bom, c);
@@ -1193,6 +1199,31 @@
 
   new ResizeObserver(() => resize()).observe(stage);
   if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { readColors(); redraw(); });
+
+  // ---------- saved settings: hashing, cleanup, clear ----------
+  async function hashKey(s) {
+    try {
+      const b = await crypto.subtle.digest("SHA-256", new TextEncoder().encode("pcbv:" + s));
+      return Array.from(new Uint8Array(b).slice(0, 12), x => x.toString(16).padStart(2, "0")).join("");
+    } catch {                                     // no WebCrypto (e.g. file://): FNV-1a
+      let h = 0x811c9dc5; for (const ch of s) { h ^= ch.codePointAt(0); h = Math.imul(h, 16777619) >>> 0; }
+      return "f" + h.toString(16);
+    }
+  }
+  const viewerKeys = () => { try { return Object.keys(localStorage).filter(k => k.startsWith("pcbv.")); } catch { return []; } };
+  // Remove keys from rev 1.0–1.1 that held the board name / BOM headers as plain text
+  viewerKeys().filter(k => /^pcbv\.(align|bomcols)\./.test(k)).forEach(k => { try { localStorage.removeItem(k); } catch {} });
+
+  function clearSaved() {
+    for (const k of viewerKeys().concat("theme")) try { localStorage.removeItem(k); } catch {}
+    delete root.dataset.theme;
+    S.show = { copper: true, far: true, silk: true, outlines: true, labels: true, drills: true, mech: false };
+    S.units = "mm";
+    for (const sd of ["TOP", "BOTTOM"]) if (S.align[sd] && S.align[sd].how !== "auto" && S.board) S.align[sd] = autoFit(sd);
+    readColors(); syncHud(); renderPanel(); redraw();
+    toast("Saved settings cleared from this browser.");
+  }
+  document.addEventListener("click", e => { if (e.target.closest("[data-clear]")) clearSaved(); });
 
   // Debug/test hook (no network; only accepts File objects)
   window.PCBV.app = { loadFiles, state: S };

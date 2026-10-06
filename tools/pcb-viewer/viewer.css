@@ -1,4 +1,6 @@
 /* PCB Viewer — styles. Tokens match the tools hub (index.html at repo root). */
+@font-face { font-family: "Geist"; src: url("fonts/Geist-Variable.woff2") format("woff2"); font-weight: 100 900; font-display: swap; }
+@font-face { font-family: "Geist Mono"; src: url("fonts/GeistMono-Variable.woff2") format("woff2"); font-weight: 100 900; font-display: swap; }
 :root {
   --bg: #F3F3EE; --bg-raised: #FBFBF8; --bg-sunk: #E9E9E2;
   --ink: #10110E; --ink-2: #3A3B35; --muted: #74756C; --line: #DCDCD3;
