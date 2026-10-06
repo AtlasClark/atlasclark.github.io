@@ -18,7 +18,9 @@ assets/brand/           web-sized logos and icons (originals in source/)
 ## Tools
 - `tools/pcb-viewer/` — PCB Viewer. Opens a project folder (IPC-2581 `.cvg`, BOM `.xlsx`/`.csv`,
   TOP/BOT images) in the browser. Files are read in memory only; the page CSP blocks all network
-  requests. Board project files must never be committed: `.gitignore` blocks `*.cvg`, `*.xlsx`,
+  requests, and the page loads nothing from other hosts (Geist fonts are in `fonts/`, SIL OFL 1.1).
+  Image names: `<Project> PCB 3D Print Top` / `<Project> PCB 3D Print Bottom`.
+  Board project files must never be committed: `.gitignore` blocks `*.cvg`, `*.xlsx`,
   `*.xls`, `*.xlsm`, and `Reference Project Folder/`.
 
 ## Preview locally

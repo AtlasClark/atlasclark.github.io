@@ -5,21 +5,19 @@
   .cvg, BOM .xlsx/.csv, TOP/BOT orthographic images). The page draws the board,
   lets the operator pick parts (Atlas PN, Mfr PN, description) and nets (all
   connected parts), and overlays the 3D images. Files are read in the browser
-  only; the CSP below blocks all network requests from scripts.
+  only; the CSP below blocks all network requests from scripts, and the page
+  loads nothing from other hosts (fonts are in fonts/, SIL OFL 1.1).
   Files: index.html, viewer.css, js/ipc2581.js, js/bom.js, js/app.js
 -->
 <html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' blob: data:; worker-src 'none'; frame-src 'none'; form-action 'none'; base-uri 'none'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' blob: data:; worker-src 'none'; frame-src 'none'; form-action 'none'; base-uri 'none'">
   <meta name="referrer" content="no-referrer">
   <title>PCB Viewer</title>
   <meta name="description" content="Local-only PCB viewer: IPC-2581 layout, BOM lookup, and net tracing in the browser.">
   <link rel="icon" type="image/png" href="../../assets/brand/favicon-64.png">
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="viewer.css">
 </head>
 <body>
@@ -112,14 +110,14 @@
           <ul class="expect mono">
             <li><b>IPC-2581</b><span>.cvg / .xml · required · rev B preferred</span></li>
             <li><b>BOM</b><span>.xlsx / .csv · Atlas PN, Mfr PN</span></li>
-            <li><b>Top image</b><span>.png / .jpg · name has “TOP”</span></li>
-            <li><b>Bottom image</b><span>.png / .jpg · name has “BOT”</span></li>
+            <li><b>Top image</b><span>.png / .jpg · name ends “Top”</span></li>
+            <li><b>Bottom image</b><span>.png / .jpg · name ends “Bottom”</span></li>
           </ul>
           <div class="drop-actions">
             <button class="btn primary" type="button" id="dropFolderBtn">Open project folder</button>
             <button class="btn" type="button" id="dropFilesBtn">Choose files</button>
           </div>
-          <p class="privacy mono"><span class="lock" aria-hidden="true"></span>Files stay on this computer. Nothing is uploaded or saved. Network access is blocked on this page.</p>
+          <p class="privacy mono"><span class="lock" aria-hidden="true"></span><span>Files stay on this computer. Nothing is uploaded or saved. Network access is blocked on this page. <button type="button" class="linkish" data-clear>Clear saved settings</button></span></p>
         </div>
       </div>
       <div class="dropping" id="dropping" hidden><span>Drop to open</span></div>
