@@ -22,6 +22,12 @@ assets/brand/           web-sized logos and icons (originals in source/)
   Image names: `<Project> PCB 3D Print Top` / `<Project> PCB 3D Print Bottom`.
   Board project files must never be committed: `.gitignore` blocks `*.cvg`, `*.xlsx`,
   `*.xls`, `*.xlsm`, and `Reference Project Folder/`.
+- `tools/ops-dashboard/` — Ops Dashboard. Projects, orders, POs, scopes of work, notes, to-dos.
+  Data stays in the browser (localStorage + IndexedDB snapshots) and an optional JSON backup file
+  (Chrome/Edge). Same CSP and self-hosted fonts as the PCB Viewer. Browser storage is per origin:
+  data saved under `file://` does not appear on the live site. Use 💾 > "Open an existing backup
+  file" once to load it. Backup files (`atlas-ops-*.json`) and `Daily_Dashboard/` must never be
+  committed: `.gitignore` blocks them.
 
 ## Preview locally
 `python -m http.server 5517`, then open http://localhost:5517
