@@ -1,0 +1,2387 @@
+<!DOCTYPE html>
+<!--
+  Ops Dashboard — Atlas Devices tools
+  Scope: personal operations tracker. Projects (kanban), fab/assembly orders,
+  purchase orders, scopes of work, daily notes and to-dos. All data stays in
+  this browser (localStorage + IndexedDB snapshots) and, when linked, in a JSON
+  backup file on the operator's disk (File System Access API, Chrome/Edge).
+  The CSP below blocks all network requests from scripts; the page loads
+  nothing from other hosts (fonts are in fonts/, SIL OFL 1.1).
+  Bump REV on each change.
+-->
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' blob: data:; worker-src 'none'; frame-src 'none'; form-action 'none'; base-uri 'none'">
+<meta name="referrer" content="no-referrer">
+<title>Ops Dashboard</title>
+<meta name="theme-color" content="#0B0C0A">
+<link rel="icon" type="image/png" href="../../assets/brand/favicon-64.png">
+<style>
+  @font-face { font-family: "Geist"; src: url("fonts/Geist-Variable.woff2") format("woff2"); font-weight: 100 900; font-display: swap; }
+  @font-face { font-family: "Geist Mono"; src: url("fonts/GeistMono-Variable.woff2") format("woff2"); font-weight: 100 900; font-display: swap; }
+  /* ===== Atlas Devices brand tokens — mirrored from atlasclark.github.io ===== */
+  :root {
+    --font: "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    --mono: "Geist Mono", ui-monospace, "SFMono-Regular", Consolas, monospace;
+    --radius: 14px;
+    --radius-sm: 10px;
+    --lime: #D0DD2B;          /* brand lime */
+    --on-lime: #10110E;
+    --wordmark-src: url("../../assets/brand/wordmark.png");
+  }
+  [data-theme="light"] {
+    --bg: #F3F3EE; --bg2: #ECECE5; --surface: #FBFBF8; --surface2: #F3F3EE;
+    --border: #DCDCD3; --text: #10110E; --ink-2: #3A3B35; --text-dim: #5E5F57; --text-faint: #9A9B91;
+    --input-bg: #FBFBF8; --hover: #EEEEE7; --col-bg: rgba(16,17,14,.022);
+    --accent-text: #5F6A00;   /* lime is too light for text on cream */
+    --accent: var(--accent-text);
+    --grad: var(--lime);
+    --shadow: none; --shadow-lg: 0 24px 60px rgba(16,17,14,.16);
+    --dot: 16, 17, 14; --dot-hot: 140, 152, 0;
+    --green: #3E8A4E; --yellow: #A87A06; --red: #B8402F; --orange: #B8611B;
+    --blue: #2F6AA8; --purple: #6E4FAE; --pink: #A8466F; --teal: #1D7F78;
+    color-scheme: light;
+  }
+  [data-theme="dark"] {
+    --bg: #0B0C0A; --bg2: #10110E; --surface: #131411; --surface2: #1A1B17;
+    --border: #24251F; --text: #ECEDE6; --ink-2: #B9BAB1; --text-dim: #9C9D94; --text-faint: #65665E;
+    --input-bg: #10110E; --hover: #1B1C18; --col-bg: rgba(236,237,230,.018);
+    --accent-text: #D0DD2B;
+    --accent: var(--accent-text);
+    --grad: var(--lime);
+    --shadow: none; --shadow-lg: 0 24px 70px rgba(0,0,0,.55);
+    --dot: 236, 237, 230; --dot-hot: 208, 221, 43;
+    --green: #86C98F; --yellow: #E2C14E; --red: #EE7B68; --orange: #EBA160;
+    --blue: #82AEE0; --purple: #B49CEB; --pink: #E39BBB; --teal: #6FC9BE;
+    color-scheme: dark;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body {
+    font-family: var(--font); background: var(--bg); color: var(--text);
+    display: flex; flex-direction: column; overflow: hidden;
+  }
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 6px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--text-faint); }
+
+  /* ===== Top bar ===== */
+  .topbar {
+    display: flex; align-items: center; gap: 18px; padding: 10px 20px;
+    background: var(--surface); border-bottom: 1px solid var(--border);
+    flex-wrap: wrap; z-index: 20;
+  }
+  .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 17px; letter-spacing: .3px; }
+  .brand .logo {
+    width: 32px; height: 32px; border-radius: 9px; background: var(--grad);
+    display: grid; place-items: center; color: #fff; font-size: 16px; font-weight: 800;
+    box-shadow: 0 3px 12px rgba(99,102,241,.4);
+  }
+  .brand small { display: block; font-weight: 500; font-size: 10.5px; color: var(--text-dim); letter-spacing: 1.2px; text-transform: uppercase; }
+  .clock { margin-left: 4px; font-size: 12.5px; color: var(--text-dim); line-height: 1.35; }
+  .tabs { display: flex; gap: 4px; margin-left: auto; background: var(--bg2); padding: 4px; border-radius: 12px; }
+  .tab-btn {
+    border: none; background: transparent; color: var(--text-dim); font-family: inherit;
+    font-size: 13.5px; font-weight: 600; padding: 8px 16px; border-radius: 9px; cursor: pointer;
+    display: flex; align-items: center; gap: 8px; transition: all .15s;
+  }
+  .tab-btn:hover { color: var(--text); background: var(--hover); }
+  .tab-btn.active { background: var(--grad); color: #fff; box-shadow: 0 2px 10px rgba(99,102,241,.35); }
+  .tab-btn .count {
+    background: rgba(255,255,255,.18); font-size: 11px; padding: 1px 7px; border-radius: 20px; font-weight: 700;
+  }
+  .tab-btn:not(.active) .count { background: var(--surface2); color: var(--text-dim); border: 1px solid var(--border); }
+  .topbar .actions { display: flex; gap: 8px; margin-left: 6px; }
+
+  /* ===== Buttons / inputs ===== */
+  .btn {
+    border: 1px solid var(--border); background: var(--surface2); color: var(--text);
+    font-family: inherit; font-size: 13px; font-weight: 600; padding: 8px 14px;
+    border-radius: var(--radius-sm); cursor: pointer; display: inline-flex; align-items: center; gap: 7px;
+    transition: all .15s; white-space: nowrap;
+  }
+  .btn:hover { background: var(--hover); border-color: var(--text-faint); }
+  .btn-primary { background: var(--grad); border: none; color: #fff; box-shadow: 0 2px 10px rgba(99,102,241,.35); }
+  .btn-primary:hover { filter: brightness(1.12); background: var(--grad); }
+  .btn-icon { padding: 8px 10px; }
+  .btn-danger:hover { border-color: var(--red); color: var(--red); background: rgba(248,113,113,.08); }
+  input, select, textarea {
+    font-family: inherit; font-size: 13.5px; color: var(--text);
+    background: var(--input-bg); border: 1px solid var(--border); border-radius: var(--radius-sm);
+    padding: 8px 12px; outline: none; transition: border .15s, box-shadow .15s;
+  }
+  input:focus, select:focus, textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(99,102,241,.18); }
+  textarea { resize: vertical; min-height: 80px; line-height: 1.5; }
+  input[type="date"] { color-scheme: dark; }
+  [data-theme="light"] input[type="date"] { color-scheme: light; }
+  .search-wrap { position: relative; }
+  .search-wrap input { padding-left: 32px; width: 220px; }
+  .search-wrap::before {
+    content: "⌕"; position: absolute; left: 11px; top: 50%; transform: translateY(-54%);
+    color: var(--text-faint); font-size: 16px; pointer-events: none;
+  }
+
+  /* ===== Layout ===== */
+  main { flex: 1; overflow: hidden; display: flex; flex-direction: column; }
+  .tab-panel { display: none; flex: 1; overflow: hidden; flex-direction: column; }
+  .tab-panel.active { display: flex; }
+  .toolbar {
+    display: flex; align-items: center; gap: 10px; padding: 14px 20px 10px; flex-wrap: wrap;
+  }
+  .toolbar .spacer { flex: 1; }
+  .toolbar label.inline { font-size: 12.5px; color: var(--text-dim); font-weight: 600; display: flex; align-items: center; gap: 6px; cursor: pointer; }
+  .chipbar { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+  .chip {
+    border: 1px solid var(--border); background: var(--surface2); color: var(--text-dim);
+    font-size: 12px; font-weight: 600; padding: 5px 12px; border-radius: 20px; cursor: pointer;
+    font-family: inherit; transition: all .15s; display: inline-flex; align-items: center; gap: 6px;
+  }
+  .chip:hover { color: var(--text); border-color: var(--text-faint); }
+  .chip.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .chip .dot { width: 7px; height: 7px; border-radius: 50%; }
+
+  /* ===== Kanban ===== */
+  .kanban {
+    display: grid; grid-template-columns: repeat(4, minmax(240px, 1fr)); gap: 14px;
+    padding: 6px 20px 20px; flex: 1; overflow: auto; align-items: start;
+  }
+  .kcol { background: var(--col-bg); border: 1px solid var(--border); border-radius: var(--radius); display: flex; flex-direction: column; max-height: 100%; min-height: 200px; }
+  .kcol.drag-over { border-color: var(--accent); background: rgba(99,102,241,.07); }
+  .kcol-head {
+    display: flex; align-items: center; gap: 9px; padding: 12px 14px;
+    font-weight: 700; font-size: 13px; letter-spacing: .4px; text-transform: uppercase;
+    border-bottom: 1px solid var(--border); position: sticky; top: 0;
+  }
+  .kcol-head .dot { width: 9px; height: 9px; border-radius: 50%; box-shadow: 0 0 8px currentColor; }
+  .kcol-head .count { margin-left: auto; background: var(--surface2); border: 1px solid var(--border); color: var(--text-dim); font-size: 11.5px; padding: 1px 8px; border-radius: 20px; }
+  .kcol-body { padding: 10px; display: flex; flex-direction: column; gap: 9px; overflow-y: auto; flex: 1; }
+  .kcol-body .empty-hint { color: var(--text-faint); font-size: 12px; text-align: center; padding: 18px 6px; border: 1.5px dashed var(--border); border-radius: var(--radius-sm); }
+  .kcard {
+    background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm);
+    padding: 11px 12px; cursor: grab; box-shadow: var(--shadow); transition: transform .12s, border .15s;
+    border-left: 3px solid var(--border);
+  }
+  .kcard:hover { border-color: var(--text-faint); transform: translateY(-1px); }
+  .kcard.dragging { opacity: .45; cursor: grabbing; }
+  .kcard .kcard-top { display: flex; align-items: flex-start; gap: 8px; }
+  .kcard h4 { font-size: 13.5px; font-weight: 650; line-height: 1.35; flex: 1; }
+  .kcard .kcard-menu { display: flex; gap: 2px; opacity: 0; transition: opacity .15s; }
+  .kcard:hover .kcard-menu { opacity: 1; }
+  .icon-btn {
+    border: none; background: transparent; color: var(--text-dim); cursor: pointer;
+    font-size: 13px; padding: 2px 5px; border-radius: 5px; font-family: inherit;
+  }
+  .icon-btn:hover { background: var(--hover); color: var(--text); }
+  .kcard p.desc { font-size: 12px; color: var(--text-dim); margin-top: 5px; line-height: 1.45; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+  .kcard .meta { display: flex; align-items: center; gap: 6px; margin-top: 9px; flex-wrap: wrap; }
+  .badge { font-size: 10.5px; font-weight: 700; padding: 2.5px 8px; border-radius: 20px; letter-spacing: .3px; }
+  .tagchip { font-size: 10.5px; font-weight: 600; padding: 2.5px 8px; border-radius: 20px; background: var(--surface2); border: 1px solid var(--border); color: var(--text-dim); }
+  .due { font-size: 11px; color: var(--text-dim); margin-left: auto; display: flex; align-items: center; gap: 4px; }
+  .due.overdue { color: var(--red); font-weight: 700; }
+  .due.soon { color: var(--yellow); font-weight: 600; }
+
+  /* ===== Tables ===== */
+  .table-wrap { flex: 1; overflow: auto; padding: 0 20px 20px; }
+  table.data { width: 100%; border-collapse: separate; border-spacing: 0; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+  table.data thead th {
+    text-align: left; font-size: 11.5px; text-transform: uppercase; letter-spacing: .7px;
+    color: var(--text-dim); padding: 11px 14px; background: var(--surface2);
+    border-bottom: 1px solid var(--border); cursor: pointer; user-select: none; white-space: nowrap;
+    position: sticky; top: 0; z-index: 5;
+  }
+  table.data thead th:hover { color: var(--text); }
+  table.data thead th .arrow { font-size: 10px; margin-left: 4px; color: var(--accent); }
+  table.data tbody td { padding: 11px 14px; font-size: 13px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+  table.data tbody tr:last-child td { border-bottom: none; }
+  table.data tbody tr { transition: background .12s; }
+  table.data tbody tr:hover { background: var(--hover); }
+  table.data .mono { font-family: 'Cascadia Code', Consolas, monospace; font-size: 12.5px; }
+  table.data td .sub { display: block; font-size: 11.5px; color: var(--text-dim); margin-top: 2px; }
+  .row-actions { display: flex; gap: 2px; justify-content: flex-end; opacity: 0; transition: opacity .15s; }
+  tr:hover .row-actions { opacity: 1; }
+  .empty-state { text-align: center; padding: 60px 20px; color: var(--text-dim); }
+  .empty-state .big { font-size: 40px; margin-bottom: 10px; opacity: .5; }
+
+  /* status pills */
+  .pill { display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px; font-weight: 700; padding: 4px 11px; border-radius: 20px; white-space: nowrap; }
+  .pill .dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+
+  .hold-badge { color: var(--red); font-weight: 800; letter-spacing: .6px; }
+  tr.on-hold td { background: color-mix(in srgb, var(--red) 6%, transparent); }
+  tr.on-hold td:first-child { box-shadow: inset 3px 0 0 var(--red); }
+  tr.on-hold .prog > div { background: var(--text-faint); }
+  .log-btn.held { color: var(--red); border-color: color-mix(in srgb, var(--red) 50%, transparent); }
+  .phase-lbl { font-size: 9.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .9px; color: var(--text-faint); margin-bottom: 3px; }
+
+  /* progress bar for orders */
+  .prog { width: 90px; height: 6px; background: var(--bg2); border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+  .prog > div { height: 100%; background: var(--grad); border-radius: 6px; }
+
+  /* order notes log */
+  .log-btn {
+    opacity: 1 !important; border: 1px solid var(--border); border-radius: 20px;
+    padding: 3px 10px; font-size: 11.5px; font-weight: 600; color: var(--text-dim);
+  }
+  .log-btn:hover { color: var(--text); border-color: var(--text-faint); }
+  .log-btn.has { color: var(--accent); border-color: var(--accent); }
+  .log-btn.open { background: var(--accent); color: #fff; border-color: var(--accent); }
+  tr.order-log-row td { background: var(--bg2); padding: 12px 16px 14px 42px; }
+  tr.order-log-row:hover { background: transparent; }
+  .log-add { display: flex; gap: 7px; margin-bottom: 9px; max-width: 580px; }
+  .log-add input { flex: 1; min-width: 0; }
+  .log-entry { display: flex; gap: 12px; align-items: baseline; padding: 5px 0; border-bottom: 1px dashed var(--border); font-size: 12.5px; max-width: 720px; }
+  .log-entry:last-child { border-bottom: none; }
+  .log-date { color: var(--text-dim); font-size: 11px; white-space: nowrap; min-width: 74px; }
+  .log-text { flex: 1; white-space: pre-wrap; word-break: break-word; line-height: 1.45; }
+  .log-entry .icon-btn { opacity: 0; }
+  .log-entry:hover .icon-btn { opacity: 1; }
+  .log-empty { color: var(--text-faint); font-size: 12px; padding: 2px 0; }
+
+  /* confirm toggle */
+  .conf-toggle {
+    display: inline-flex; align-items: center; gap: 7px; cursor: pointer; border: 1px solid var(--border);
+    padding: 4px 11px; border-radius: 20px; font-size: 11.5px; font-weight: 700; color: var(--text-dim);
+    background: var(--surface2); transition: all .15s; font-family: inherit;
+  }
+  .conf-toggle:hover { border-color: var(--text-faint); }
+  .conf-toggle.on { background: rgba(52,211,153,.13); border-color: rgba(52,211,153,.5); color: var(--green); }
+
+  /* ===== Scopes of Work ===== */
+  .sow-grid {
+    flex: 1; overflow: auto; padding: 6px 20px 20px;
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 14px; align-content: start;
+  }
+  .sow-card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+    border-top: 3px solid var(--border); padding: 15px 16px 14px; box-shadow: var(--shadow);
+    display: flex; flex-direction: column; gap: 9px; transition: transform .12s, border-color .15s;
+    position: relative;
+  }
+  .sow-timer {
+    position: absolute; top: 11px; right: 13px; text-align: right;
+    font-family: 'Cascadia Code', Consolas, monospace; line-height: 1.15;
+  }
+  .sow-timer .lbl { display: block; font-size: 8.5px; letter-spacing: 1.2px; font-weight: 800; color: var(--text-faint); font-family: var(--font); }
+  .sow-timer .t { font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .sow-timer.live .t { color: var(--green); }
+  .sow-timer.live .lbl { color: var(--green); }
+  .sow-timer.live::after {
+    content: ""; position: absolute; top: 4px; right: -7px; width: 5px; height: 5px;
+    border-radius: 50%; background: var(--green); animation: pulseDot 1.6s ease-in-out infinite;
+  }
+  .sow-timer.done .t { color: var(--text-dim); }
+  @keyframes pulseDot { 0%, 100% { opacity: 1; } 50% { opacity: .25; } }
+  .sow-card:hover { transform: translateY(-2px); border-color: var(--text-faint); }
+  .sow-top { display: flex; align-items: flex-start; gap: 9px; }
+  .sow-num { font-family: 'Cascadia Code', Consolas, monospace; font-size: 11.5px; color: var(--text-dim); letter-spacing: .4px; }
+  .sow-card h4 { font-size: 14.5px; font-weight: 650; line-height: 1.35; margin-top: 2px; }
+  .sow-client { font-size: 12.5px; color: var(--text-dim); display: flex; align-items: center; gap: 6px; }
+  .sow-desc { font-size: 12px; color: var(--text-dim); line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+  .sow-dates { display: flex; gap: 14px; flex-wrap: wrap; font-size: 11.5px; color: var(--text-dim); }
+  .sow-dates b { display: block; font-size: 9.5px; text-transform: uppercase; letter-spacing: .8px; color: var(--text-faint); font-weight: 700; margin-bottom: 1px; }
+  .sow-bar { height: 6px; background: var(--bg2); border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+  .sow-bar > div { height: 100%; border-radius: 6px; }
+  .sow-foot { display: flex; align-items: center; gap: 8px; margin-top: auto; padding-top: 3px; flex-wrap: wrap; }
+  .sow-owner {
+    display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--text-dim);
+  }
+  .sow-owner .av {
+    width: 20px; height: 20px; border-radius: 50%; background: var(--grad); color: #fff;
+    display: grid; place-items: center; font-size: 9.5px; font-weight: 800;
+  }
+  .sow-card .kcard-menu { display: flex; gap: 2px; opacity: 0; transition: opacity .15s; margin-left: auto; }
+  .sow-card:hover .kcard-menu { opacity: 1; }
+
+  /* ===== Notes ===== */
+  .notes-pane { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+  .notes-section { display: flex; flex-direction: column; overflow: hidden; min-height: 120px; }
+  .notes-section.today { flex: 0 1 auto; max-height: 52%; }
+  .notes-section.prev { flex: 1 1 auto; border-top: 1px solid var(--border); background: var(--col-bg); }
+  .notes-sec-head {
+    display: flex; align-items: center; gap: 9px; padding: 12px 20px 8px;
+    font-weight: 700; font-size: 12.5px; letter-spacing: .5px; text-transform: uppercase;
+  }
+  .notes-sec-head .dot { width: 8px; height: 8px; border-radius: 50%; box-shadow: 0 0 8px currentColor; }
+  .notes-sec-head .count { background: var(--surface2); border: 1px solid var(--border); color: var(--text-dim); font-size: 11.5px; padding: 1px 8px; border-radius: 20px; }
+  .notes-sec-head .sec-date { margin-left: auto; font-size: 11.5px; font-weight: 500; color: var(--text-dim); text-transform: none; letter-spacing: 0; }
+  .quick-note { display: flex; gap: 7px; padding: 0 20px 10px; max-width: 620px; }
+  .quick-note input { flex: 1; min-width: 0; }
+  .notes-grid {
+    flex: 1; overflow: auto; padding: 2px 20px 16px;
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 14px; align-content: start;
+  }
+  .note-card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 14px 15px; box-shadow: var(--shadow); display: flex; flex-direction: column; gap: 8px;
+    transition: transform .12s, border .15s; position: relative;
+  }
+  .note-card:hover { transform: translateY(-2px); border-color: var(--text-faint); }
+  .note-card.pinned { border-color: var(--yellow); }
+  .note-card .note-head { display: flex; align-items: flex-start; gap: 8px; }
+  .note-card h4 { font-size: 14px; font-weight: 650; flex: 1; line-height: 1.35; }
+  .note-card .note-date { font-size: 11px; color: var(--text-dim); }
+  .note-card .body { font-size: 12.5px; color: var(--text-dim); line-height: 1.55; white-space: pre-wrap; word-break: break-word; }
+  .note-card .labels { display: flex; gap: 5px; flex-wrap: wrap; margin-top: auto; }
+  .pin-btn { position: absolute; top: -8px; right: 12px; background: var(--yellow); color: #442; border: none; border-radius: 20px; font-size: 10px; font-weight: 800; padding: 2px 9px; cursor: pointer; display: none; }
+  .note-card.pinned .pin-btn { display: block; }
+
+  /* ===== Note links & cross-references ===== */
+  .nlinks { display: flex; gap: 5px; flex-wrap: wrap; }
+  .nlink {
+    font-size: 10.5px; font-weight: 600; padding: 3px 9px; border-radius: 20px;
+    background: transparent; border: 1px solid var(--border); cursor: pointer; font-family: inherit;
+    max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; transition: all .15s;
+  }
+  .nlink:hover { background: var(--hover); transform: translateY(-1px); }
+  .ref-btn {
+    border: 1px solid color-mix(in srgb, var(--pink) 45%, transparent); color: var(--pink);
+    background: transparent; border-radius: 20px; padding: 3px 10px; font-size: 11px;
+    font-weight: 700; cursor: pointer; font-family: inherit; opacity: 1 !important; transition: all .15s;
+  }
+  .ref-btn:hover { background: color-mix(in srgb, var(--pink) 12%, transparent); }
+  .note-card.connected {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 40%, transparent), var(--shadow);
+  }
+  @keyframes flashPulse {
+    from { box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 70%, transparent); }
+    to { box-shadow: 0 0 0 16px transparent; }
+  }
+  .flash { animation: flashPulse .9s ease 2; border-color: var(--accent) !important; }
+  tr.flash td { background: color-mix(in srgb, var(--accent) 12%, transparent) !important; }
+
+  /* ===== To-do column ===== */
+  .notes-layout { flex: 1; display: flex; overflow: hidden; }
+  .todo-col {
+    width: 330px; min-width: 270px; border-right: 1px solid var(--border);
+    display: flex; flex-direction: column; gap: 10px; padding: 8px 16px 16px 20px;
+    background: var(--col-bg);
+  }
+  .todo-head { display: flex; align-items: center; gap: 9px; font-weight: 700; font-size: 13px; text-transform: uppercase; letter-spacing: .4px; padding-top: 4px; }
+  .todo-head .count { background: var(--surface2); border: 1px solid var(--border); color: var(--text-dim); font-size: 11.5px; padding: 1px 8px; border-radius: 20px; }
+  .todo-add { display: flex; gap: 7px; }
+  .todo-add input { flex: 1; min-width: 0; }
+  .todo-list { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 7px; padding-right: 2px; }
+  .todo-item {
+    display: flex; align-items: center; gap: 10px; background: var(--surface);
+    border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 9px 11px;
+    font-size: 13px; box-shadow: var(--shadow); transition: border .15s;
+  }
+  .todo-item:hover { border-color: var(--text-faint); }
+  .todo-item .txt { flex: 1; cursor: text; word-break: break-word; line-height: 1.4; }
+  .todo-item.done { opacity: .55; }
+  .todo-item.done .txt { text-decoration: line-through; color: var(--text-dim); }
+  .todo-check { width: 16px; height: 16px; accent-color: var(--accent); cursor: pointer; flex-shrink: 0; }
+  .todo-item .icon-btn { opacity: 0; }
+  .todo-item:hover .icon-btn { opacity: 1; }
+  .todo-empty { border: 1.5px dashed var(--border); border-radius: var(--radius-sm); padding: 18px 10px; color: var(--text-faint); font-size: 12px; text-align: center; }
+  @media (max-width: 900px) {
+    .notes-layout { flex-direction: column; }
+    .todo-col { width: 100%; min-width: 0; max-height: 42%; border-right: none; border-bottom: 1px solid var(--border); }
+  }
+
+  /* ===== Modal ===== */
+  .overlay {
+    position: fixed; inset: 0; background: rgba(5,8,15,.62); backdrop-filter: blur(3px);
+    display: none; align-items: flex-start; justify-content: center; z-index: 100; padding: 7vh 16px;
+  }
+  .overlay.open { display: flex; }
+  .modal {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 16px;
+    width: 520px; max-width: 100%; max-height: 84vh; overflow-y: auto; box-shadow: var(--shadow-lg);
+    animation: pop .18s ease;
+  }
+  @keyframes pop { from { transform: translateY(14px) scale(.98); opacity: 0; } }
+  .modal-head { display: flex; align-items: center; padding: 16px 20px; border-bottom: 1px solid var(--border); }
+  .modal-head h3 { font-size: 15.5px; flex: 1; }
+  .modal-body { padding: 18px 20px; display: flex; flex-direction: column; gap: 13px; }
+  .modal-foot { display: flex; justify-content: flex-end; gap: 9px; padding: 14px 20px; border-top: 1px solid var(--border); }
+  .field { display: flex; flex-direction: column; gap: 5px; }
+  .field label { font-size: 11.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .6px; color: var(--text-dim); }
+  .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .field input, .field select, .field textarea { width: 100%; }
+
+  /* ===== Toast ===== */
+  #toasts { position: fixed; bottom: 20px; right: 20px; display: flex; flex-direction: column; gap: 8px; z-index: 200; }
+  .toast {
+    background: var(--surface); border: 1px solid var(--border); border-left: 3px solid var(--green);
+    padding: 11px 16px; border-radius: 10px; font-size: 13px; font-weight: 600; box-shadow: var(--shadow-lg);
+    animation: slidein .25s ease; display: flex; align-items: center; gap: 9px;
+  }
+  .toast.warn { border-left-color: var(--yellow); }
+  .toast.err { border-left-color: var(--red); }
+  @keyframes slidein { from { transform: translateX(30px); opacity: 0; } }
+
+  .stat-strip { display: flex; gap: 10px; padding: 0 20px; flex-wrap: wrap; }
+  .stat {
+    background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm);
+    padding: 8px 16px; font-size: 12px; color: var(--text-dim); display: flex; align-items: baseline; gap: 8px;
+  }
+  .stat b { font-size: 17px; color: var(--text); }
+
+  /* =====================================================================
+     ATLAS BRAND LAYER — matches atlasclark.github.io
+     Flat 1px-line surfaces, ink-on-cream, lime accent, mono uppercase labels.
+     ===================================================================== */
+  body { font-size: 14px; -webkit-font-smoothing: antialiased; background-color: var(--bg); }
+  /* static dot grid — fallback when the animated field is off or motion is reduced */
+  body.fx-off {
+    background-image: radial-gradient(rgba(var(--dot), .06) 1px, transparent 1.2px);
+    background-size: 22px 22px;
+  }
+  /* animated dot field (ported from atlasclark.github.io hero) */
+  #field { position: fixed; inset: 0; width: 100vw; height: 100vh; z-index: 0; pointer-events: none; display: block; }
+  body.fx-off #field { display: none; }
+  .topbar { position: relative; z-index: 20; }
+  main { position: relative; z-index: 1; }
+  #fxBtn.on { color: var(--accent-text); border-color: color-mix(in srgb, var(--accent-text) 45%, var(--border)); }
+  ::selection { background: var(--lime); color: var(--on-lime); }
+  :focus-visible { outline: 2px solid var(--accent-text); outline-offset: 2px; }
+  .mono, .tab-btn, .chip, .kcol-head, table.data thead th, .field label,
+  .badge, .tagchip, .pill, .phase-lbl, .notes-sec-head, .todo-head, .clock,
+  .stat, .sow-num, .sow-dates b, .sow-timer .lbl, .log-date, .due, .note-date, .conf-toggle {
+    font-family: var(--mono);
+  }
+
+  /* ---- top bar ---- */
+  .topbar {
+    background: color-mix(in srgb, var(--bg) 86%, transparent);
+    backdrop-filter: saturate(1.4) blur(10px); -webkit-backdrop-filter: saturate(1.4) blur(10px);
+    border-bottom: 1px solid var(--border); padding: 0 24px; min-height: 62px; gap: 20px;
+  }
+  .brand { gap: 14px; font-weight: 500; }
+  .brand .wordmark {
+    display: none; width: 132px; aspect-ratio: 900 / 152; background: var(--text);
+    -webkit-mask: var(--wordmark-src) center / contain no-repeat; mask: var(--wordmark-src) center / contain no-repeat;
+  }
+  .has-wm .brand .wordmark { display: block; }
+  .has-wm .brand .wm-text { display: none; }
+  .wm-text { font: 600 15px var(--font); letter-spacing: .06em; }
+  .wm-text b { font-weight: 400; margin-left: 5px; color: var(--text-dim); }
+  .brand .div { width: 1px; height: 18px; background: var(--border); }
+  .brand-lbl {
+    display: flex; align-items: center; gap: 9px;
+    font: 500 12px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--text-dim);
+  }
+  .brand-lbl small { font: 400 10.5px var(--mono); letter-spacing: .05em; color: var(--text-faint); text-transform: none; }
+  .pulse { width: 7px; height: 7px; border-radius: 50%; background: var(--lime); animation: brandPulse 2.4s ease-out infinite; flex-shrink: 0; }
+  @keyframes brandPulse {
+    0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--lime) 70%, transparent); }
+    70%, 100% { box-shadow: 0 0 0 9px transparent; }
+  }
+  .clock { font-size: 11px; letter-spacing: .04em; color: var(--text-faint); text-transform: uppercase; }
+  .clock b { color: var(--text); font-weight: 500; }
+
+  .tabs { background: transparent; padding: 0; gap: 2px; }
+  .tab-btn {
+    font-size: 11.5px; font-weight: 500; letter-spacing: .06em; text-transform: uppercase;
+    color: var(--ink-2); padding: 8px 11px; border-radius: 7px; gap: 7px;
+  }
+  .tab-btn .n { color: var(--text-faint); margin-right: -2px; }
+  .tab-btn:hover { background: var(--surface); color: var(--text); }
+  .tab-btn.active { background: var(--text); color: var(--bg); box-shadow: none; }
+  .tab-btn.active .n { color: var(--lime); }
+  .tab-btn .count, .tab-btn:not(.active) .count {
+    font-size: 10.5px; padding: 1px 6px; border-radius: 999px; font-weight: 500;
+    background: transparent; border: 1px solid var(--border); color: var(--text-dim);
+  }
+  .tab-btn.active .count { border-color: color-mix(in srgb, var(--bg) 30%, transparent); color: var(--bg); }
+
+  /* ---- buttons & inputs ---- */
+  .btn {
+    background: var(--surface); border: 1px solid var(--border); color: var(--text);
+    border-radius: var(--radius-sm); font-weight: 500; font-size: 13px; height: 38px; padding: 0 14px;
+    transition: transform .15s, border-color .15s, background-color .15s, color .15s;
+  }
+  .btn:hover { border-color: var(--ink-2); background: var(--surface); transform: translateY(-1px); }
+  .btn-icon { width: 38px; padding: 0; justify-content: center; }
+  .btn-primary, .btn-primary:hover { background: var(--text); color: var(--bg); border: 1px solid var(--text); box-shadow: none; filter: none; }
+  .btn-primary:hover { background: var(--lime); border-color: var(--lime); color: var(--on-lime); }
+  .btn-danger:hover { border-color: var(--red); color: var(--red); background: transparent; }
+  input, select, textarea {
+    background: var(--input-bg); border: 1px solid var(--border); border-radius: var(--radius-sm);
+    font-family: var(--font); color: var(--text);
+  }
+  input:focus, select:focus, textarea:focus { border-color: var(--ink-2); box-shadow: none; }
+  input::placeholder, textarea::placeholder { color: var(--text-faint); }
+  input[type="checkbox"] { accent-color: var(--text); }
+  .search-wrap input { height: 38px; }
+  .search-wrap::before { color: var(--text-faint); }
+  select { height: 38px; }
+
+  /* ---- chips (filters) ---- */
+  .chip {
+    height: 30px; padding: 0 11px; border-radius: 999px; background: transparent;
+    font-size: 11px; font-weight: 500; letter-spacing: .04em; text-transform: uppercase; color: var(--ink-2);
+  }
+  .chip:hover { border-color: var(--ink-2); color: var(--text); }
+  .chip.active { background: var(--text); border-color: var(--text); color: var(--bg); }
+
+  .toolbar { padding: 16px 24px 12px; }
+  .stat {
+    background: transparent; border: none; border-left: 1px dashed var(--border); border-radius: 0;
+    padding: 2px 0 2px 14px; flex-direction: column; gap: 1px; align-items: flex-start;
+    font-size: 10.5px; letter-spacing: .06em; text-transform: uppercase; color: var(--text-faint);
+  }
+  .stat b { font: 500 17px var(--font); letter-spacing: -.01em; text-transform: none; order: -1; }
+
+  /* ---- kanban ---- */
+  .kanban { padding: 6px 24px 24px; gap: 12px; }
+  .kcol { background: var(--col-bg); border: 1px solid var(--border); border-radius: var(--radius); }
+  .kcol.drag-over { border-color: var(--accent-text); background: color-mix(in srgb, var(--lime) 7%, transparent); }
+  .kcol-head { font-size: 11.5px; font-weight: 500; letter-spacing: .08em; padding: 13px 14px; border-bottom: 1px solid var(--border); }
+  .kcol-head .dot { width: 7px; height: 7px; box-shadow: none; }
+  .kcol-head .count { background: transparent; border: 1px solid var(--border); font-size: 10.5px; }
+  .kcol-body .empty-hint { font-family: var(--mono); font-size: 11px; letter-spacing: .04em; text-transform: uppercase; }
+
+  /* cards: raised, flat, lime line sweeps across the top on hover (site's tool cards) */
+  .kcard, .sow-card, .note-card { position: relative; background: var(--surface); box-shadow: none; overflow: hidden; }
+  .kcard::after, .sow-card::after, .note-card::after {
+    content: ""; position: absolute; left: 0; top: 0; height: 2px; width: 0;
+    background: var(--lime); transition: width .3s ease; pointer-events: none;
+  }
+  .kcard:hover::after, .sow-card:hover::after, .note-card:hover::after { width: 100%; }
+  .kcard:hover, .sow-card:hover, .note-card:hover { transform: translateY(-1px); border-color: var(--ink-2); }
+  .kcard { border-radius: var(--radius-sm); border-left-width: 3px; }
+  .kcard h4, .sow-card h4, .note-card h4 { font-weight: 500; letter-spacing: -.01em; }
+  .note-card { overflow: visible; }
+  .note-card::after { border-radius: var(--radius) var(--radius) 0 0; }
+
+  .badge { font-size: 10px; font-weight: 500; letter-spacing: .05em; text-transform: uppercase; }
+  .tagchip { font-size: 10.5px; background: transparent; border: 1px solid var(--border); color: var(--text-dim); letter-spacing: .02em; }
+  .pill { font-size: 10.5px; font-weight: 500; letter-spacing: .06em; text-transform: uppercase; }
+  .due { font-size: 10.5px; letter-spacing: .02em; }
+  .icon-btn:hover { background: var(--hover); }
+
+  /* ---- tables ---- */
+  .table-wrap { padding: 0 24px 24px; }
+  table.data { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); }
+  table.data thead th {
+    background: var(--surface); font-size: 10.5px; font-weight: 500; letter-spacing: .08em;
+    color: var(--text-faint); border-bottom: 1px solid var(--border);
+  }
+  table.data thead th:hover { color: var(--text); }
+  table.data thead th .arrow { color: var(--accent-text); }
+  table.data tbody td { font-size: 13px; }
+  table.data tbody tr:hover { background: var(--bg); }
+  .prog { background: var(--bg2); border-color: var(--border); }
+  .prog > div { background: var(--lime); }
+  .conf-toggle { font-size: 10.5px; font-weight: 500; letter-spacing: .05em; text-transform: uppercase; background: transparent; }
+  .conf-toggle.on { background: color-mix(in srgb, var(--lime) 16%, transparent); border-color: color-mix(in srgb, var(--lime) 60%, transparent); color: var(--accent-text); }
+  .log-btn.open { background: var(--text); color: var(--bg); border-color: var(--text); }
+  .log-btn.has { color: var(--accent-text); border-color: color-mix(in srgb, var(--accent-text) 50%, transparent); }
+  tr.order-log-row td { background: var(--bg); }
+
+  /* ---- scopes ---- */
+  .sow-grid, .notes-grid { padding-left: 24px; padding-right: 24px; }
+  .sow-card { border-top-width: 1px; }
+  .sow-card::before {   /* status stripe kept, but as a slim left rule */
+    content: ""; position: absolute; left: 0; top: 14px; bottom: 14px; width: 2px; border-radius: 2px;
+    background: var(--sow-c, var(--border));
+  }
+  .sow-timer.live .t, .sow-timer.live .lbl { color: var(--accent-text); }
+  .sow-timer.live::after { background: var(--lime); }
+  .sow-owner .av { background: var(--lime); color: var(--on-lime); font-family: var(--mono); }
+  .sow-bar { background: var(--bg2); }
+
+  /* ---- notes ---- */
+  .notes-sec-head { font-size: 11px; font-weight: 500; letter-spacing: .1em; }
+  .notes-sec-head .dot { width: 6px; height: 6px; box-shadow: none; }
+  .notes-section.today .notes-sec-head .dot { background: var(--lime) !important; animation: brandPulse 2.4s ease-out infinite; }
+  .notes-sec-head .sec-date { font-family: var(--mono); font-size: 11px; color: var(--text-faint); }
+  .notes-section.prev { background: transparent; border-top: 1px dashed var(--border); }
+  .todo-col { background: transparent; }
+  .todo-head { font-size: 11px; font-weight: 500; letter-spacing: .1em; }
+  .todo-item { background: var(--surface); box-shadow: none; }
+  .todo-check { accent-color: var(--text); }
+  .pin-btn { background: var(--lime); color: var(--on-lime); font-family: var(--mono); letter-spacing: .06em; }
+  .note-card.pinned { border-color: color-mix(in srgb, var(--lime) 70%, var(--border)); }
+  .ref-btn { font-family: var(--mono); font-weight: 500; }
+  .nlink { font-family: var(--mono); font-weight: 500; letter-spacing: .01em; }
+  .note-card.connected { border-color: var(--accent-text); box-shadow: 0 0 0 2px color-mix(in srgb, var(--lime) 45%, transparent); }
+
+  /* ---- modal & toast ---- */
+  .overlay { background: color-mix(in srgb, var(--bg) 70%, transparent); backdrop-filter: blur(4px); }
+  .modal { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; }
+  .modal-head { border-bottom: 1px solid var(--border); }
+  .modal-head h3 { font-weight: 500; letter-spacing: -.01em; }
+  .modal-foot { border-top: 1px dashed var(--border); }
+  .field label { font-size: 10.5px; font-weight: 500; letter-spacing: .08em; color: var(--text-faint); }
+  .toast {
+    background: var(--surface); border: 1px solid var(--border); border-left: 3px solid var(--lime);
+    font-weight: 500; box-shadow: var(--shadow-lg);
+  }
+  .toast.warn { border-left-color: var(--yellow); }
+  .toast.err { border-left-color: var(--red); }
+  .empty-state { font-family: var(--mono); font-size: 12px; letter-spacing: .03em; color: var(--text-faint); }
+  .empty-state .big { filter: grayscale(1); opacity: .35; }
+
+  /* ---- brand links home ---- */
+  a.brand { color: inherit; text-decoration: none; }
+  /* ---- status bar (revision, storage) ---- */
+  .statusbar {
+    position: relative; z-index: 20; display: flex; align-items: center; gap: 12px;
+    min-height: 28px; padding: 0 24px; border-top: 1px solid var(--border);
+    background: color-mix(in srgb, var(--bg) 86%, transparent);
+    font: 400 11px var(--mono); letter-spacing: .04em; color: var(--text-faint);
+    white-space: nowrap; overflow: hidden;
+  }
+  .statusbar .grow { flex: 1; }
+  .statusbar .sep { width: 1px; height: 12px; background: var(--border); }
+  .statusbar .rev { color: var(--accent-text); }
+  #toasts { bottom: 44px; }
+  @media (max-width: 640px) { .statusbar .hide-sm { display: none; } }
+
+  @media (max-width: 1100px) { .kanban { grid-template-columns: repeat(2, 1fr); } }
+  @media (max-width: 640px) { .kanban { grid-template-columns: 1fr; } .search-wrap input { width: 140px; } }
+</style>
+</head>
+<body>
+  <canvas id="field" aria-hidden="true"></canvas>
+  <header class="topbar">
+    <a class="brand" href="../../" title="Atlas Devices Tools, home">
+      <span class="wordmark" role="img" aria-label="Atlas Devices"></span>
+      <span class="wm-text">ATLAS<b>DEVICES</b></span>
+      <span class="div"></span>
+      <div class="brand-lbl"><span class="pulse"></span>Ops</div>
+    </a>
+    <div class="clock" id="clock"></div>
+    <nav class="tabs">
+      <button class="tab-btn active" data-tab="projects"><span class="n">01</span>Projects <span class="count" id="cnt-projects">0</span></button>
+      <button class="tab-btn" data-tab="orders"><span class="n">02</span>Orders <span class="count" id="cnt-orders">0</span></button>
+      <button class="tab-btn" data-tab="pos"><span class="n">03</span>POs <span class="count" id="cnt-pos">0</span></button>
+      <button class="tab-btn" data-tab="sow"><span class="n">04</span>Scopes <span class="count" id="cnt-sow">0</span></button>
+      <button class="tab-btn" data-tab="notes"><span class="n">05</span>Notes <span class="count" id="cnt-notes">0</span></button>
+    </nav>
+    <div class="actions">
+      <button class="btn" id="backupStatus" title="Auto-backup status — click to set up or resume">💾 …</button>
+      <button class="btn btn-icon" id="snapBtn" title="Snapshot history — restore an earlier automatic snapshot">⟲</button>
+      <button class="btn btn-icon" id="exportBtn" title="Export all data as JSON backup">⭳</button>
+      <button class="btn btn-icon" id="importBtn" title="Import JSON backup">⭱</button>
+      <input type="file" id="importFile" accept=".json" hidden>
+      <button class="btn btn-icon" id="fxBtn" title="Toggle animated background" aria-label="Toggle animated background" aria-pressed="true">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M2 9c2.5-3 4.5-3 7 0s4.5 3 7 0 4.5-3 6 0M2 15c2.5-3 4.5-3 7 0s4.5 3 7 0 4.5-3 6 0"/></svg>
+      </button>
+      <button class="btn btn-icon" id="themeBtn" title="Toggle light / dark theme" aria-label="Toggle color theme">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="4.5"/><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M5.3 18.7l1.4-1.4M17.3 6.7l1.4-1.4"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <main>
+    <!-- ============ PROJECTS ============ -->
+    <section class="tab-panel active" id="panel-projects">
+      <div class="toolbar">
+        <button class="btn btn-primary" onclick="openProjectModal()">＋ New Project</button>
+        <div class="search-wrap"><input type="text" id="projSearch" placeholder="Search projects…"></div>
+        <select id="projSort" title="Card sort order within columns">
+          <option value="manual">Sort: Manual (drag)</option>
+          <option value="priority">Sort: Priority</option>
+          <option value="due">Sort: Due date</option>
+          <option value="title">Sort: Title A–Z</option>
+          <option value="created">Sort: Newest</option>
+        </select>
+        <div class="chipbar" id="projPrioChips"></div>
+        <div class="spacer"></div>
+        <div class="stat-strip" id="projStats" style="padding:0"></div>
+      </div>
+      <div class="kanban" id="kanban"></div>
+    </section>
+
+    <!-- ============ OPEN ORDERS ============ -->
+    <section class="tab-panel" id="panel-orders">
+      <div class="toolbar">
+        <button class="btn btn-primary" onclick="openOrderModal()">＋ New Order</button>
+        <div class="search-wrap"><input type="text" id="orderSearch" placeholder="Search orders…"></div>
+        <div class="chipbar" id="orderTypeChips"></div>
+        <div class="chipbar" id="orderPhaseChips" style="border-left:1px solid var(--border);padding-left:10px"></div>
+        <div class="spacer"></div>
+        <label class="inline"><input type="checkbox" id="showClosedOrders"> Show completed</label>
+        <div class="stat-strip" id="orderStats" style="padding:0"></div>
+      </div>
+      <div class="table-wrap" id="ordersTableWrap"></div>
+    </section>
+
+    <!-- ============ PURCHASE ORDERS ============ -->
+    <section class="tab-panel" id="panel-pos">
+      <div class="toolbar">
+        <button class="btn btn-primary" onclick="openPoModal()">＋ New PO</button>
+        <div class="search-wrap"><input type="text" id="poSearch" placeholder="Search POs…"></div>
+        <div class="chipbar" id="poFilterChips"></div>
+        <div class="spacer"></div>
+        <label class="inline"><input type="checkbox" id="showDeliveredPos" checked> Show delivered</label>
+        <div class="stat-strip" id="poStats" style="padding:0"></div>
+      </div>
+      <div class="table-wrap" id="posTableWrap"></div>
+    </section>
+
+    <!-- ============ SCOPES OF WORK ============ -->
+    <section class="tab-panel" id="panel-sow">
+      <div class="toolbar">
+        <button class="btn btn-primary" onclick="openSowModal()">＋ New Scope of Work</button>
+        <div class="search-wrap"><input type="text" id="sowSearch" placeholder="Search scopes…"></div>
+        <select id="sowSort">
+          <option value="target">Sort: Target date</option>
+          <option value="start">Sort: Start date</option>
+          <option value="client">Sort: Client A–Z</option>
+          <option value="number">Sort: SOW #</option>
+          <option value="title">Sort: Title A–Z</option>
+        </select>
+        <div class="chipbar" id="sowStatusChips"></div>
+        <div class="spacer"></div>
+        <div class="stat-strip" id="sowStats" style="padding:0"></div>
+      </div>
+      <div class="sow-grid" id="sowGrid"></div>
+    </section>
+
+    <!-- ============ DAILY NOTES ============ -->
+    <section class="tab-panel" id="panel-notes">
+      <div class="toolbar">
+        <button class="btn btn-primary" onclick="openNoteModal()">＋ New Note</button>
+        <div class="search-wrap"><input type="text" id="noteSearch" placeholder="Search notes…"></div>
+        <select id="noteSort">
+          <option value="newest">Sort: Newest first</option>
+          <option value="oldest">Sort: Oldest first</option>
+          <option value="title">Sort: Title A–Z</option>
+        </select>
+        <div class="chipbar" id="noteLabelChips"></div>
+      </div>
+      <div class="notes-layout">
+        <aside class="todo-col">
+          <div class="todo-head">✓ To-Do <span class="count" id="todoCount">0</span>
+            <button class="icon-btn" style="margin-left:auto" title="Clear completed to-dos" onclick="clearDoneTodos()">Clear ✓</button>
+          </div>
+          <div class="todo-add">
+            <input type="text" id="todoInput" placeholder="Add a task… (Enter)">
+            <button class="btn btn-primary btn-icon" onclick="addTodo()" title="Add task">＋</button>
+          </div>
+          <div class="todo-list" id="todoList"></div>
+        </aside>
+        <div class="notes-pane" id="notesPane">
+          <section class="notes-section today">
+            <div class="notes-sec-head">
+              <span class="dot" style="background:var(--accent);color:var(--accent)"></span>
+              Today's Notes <span class="count" id="todayNoteCount">0</span>
+              <span class="sec-date" id="todayDateLbl"></span>
+            </div>
+            <div class="quick-note">
+              <input type="text" id="quickNote" placeholder="Quick note for today… (Enter to add)">
+              <button class="btn btn-primary btn-icon" onclick="quickAddNote()" title="Add note">＋</button>
+            </div>
+            <div class="notes-grid" id="todayGrid"></div>
+          </section>
+          <section class="notes-section prev">
+            <div class="notes-sec-head">
+              <span class="dot" style="background:var(--text-faint)"></span>
+              Previous Notes <span class="count" id="prevNoteCount">0</span>
+            </div>
+            <div class="notes-grid" id="prevGrid"></div>
+          </section>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- Modal -->
+  <div class="overlay" id="overlay">
+    <div class="modal">
+      <div class="modal-head"><h3 id="modalTitle"></h3><button class="icon-btn" style="font-size:17px" onclick="closeModal()">✕</button></div>
+      <div class="modal-body" id="modalBody"></div>
+      <div class="modal-foot">
+        <button class="btn" onclick="closeModal()">Cancel</button>
+        <button class="btn btn-primary" id="modalSave">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <footer class="statusbar">
+    <span title="This page has no network access. Data stays in this browser and your backup file.">Local only</span>
+    <span class="sep hide-sm"></span>
+    <span class="hide-sm">Browser storage · JSON backup</span>
+    <span class="grow"></span>
+    <span class="rev" id="rev"></span>
+  </footer>
+
+  <div id="toasts"></div>
+<script>
+"use strict";
+/* =====================================================================
+   Atlas Ops Dashboard — all data stored in this browser via localStorage.
+   Use Export (⭳) regularly to back up as JSON; Import (⭱) to restore.
+   ===================================================================== */
+
+const LS_KEY = "atlas_ops_dashboard_v1";
+const PROJECT_STATUSES = ["Queued", "In-Progress", "On Hold", "Completed"];
+const STATUS_COLORS = { "Queued": "var(--blue)", "In-Progress": "var(--yellow)", "On Hold": "var(--orange)", "Completed": "var(--green)" };
+const PRIORITIES = ["Low", "Medium", "High", "Critical"];
+const PRIO_COLORS = { Low: "var(--teal)", Medium: "var(--blue)", High: "var(--orange)", Critical: "var(--red)" };
+const PRIO_RANK = { Critical: 0, High: 1, Medium: 2, Low: 3 };
+const ORDER_TYPES = ["Fabrication", "Assembly", "Fab/Assembly", "Other"];
+const ORDER_STATUSES = ["Quote In Progress", "Order Confirmed", "Consignment Kitted", "Consignment Shipped", "In Production", "Shipped", "Received", "Complete"];
+const ORDER_STATUS_COLORS = {
+  "Quote In Progress": "var(--pink)", "Order Confirmed": "var(--blue)",
+  "Consignment Kitted": "var(--purple)", "Consignment Shipped": "var(--teal)",
+  "In Production": "var(--yellow)", "Shipped": "var(--orange)",
+  "Received": "var(--blue)", "Complete": "var(--green)",
+};
+function phaseOf(o) {
+  if (o && o.hold) return "On Hold";
+  const i = ORDER_STATUSES.indexOf(typeof o === "string" ? o : o.status);
+  return i < 4 ? "Pre-Production" : i < 7 ? "Production" : "Complete";
+}
+function orderCreated(o) {
+  return o.createdDate || (o.created ? new Date(o.created).toISOString().slice(0, 10) : "");
+}
+const LABEL_PALETTE = ["var(--blue)", "var(--purple)", "var(--teal)", "var(--pink)", "var(--orange)", "var(--green)", "var(--yellow)", "var(--red)"];
+
+/* ---------------- state ---------------- */
+let wasSeeded = false;
+/* pristineSeed = nothing but untouched sample data. Never let that overwrite a backup.
+   MUST be declared before load() runs — load() assigns it on the seed path. */
+let pristineSeed = false;
+let state = load();
+let ui = {
+  projSearch: "", projSort: "manual", projPrio: "All",
+  orderSearch: "", orderType: "All", orderPhase: "All", orderSortKey: "due", orderSortDir: 1,
+  poSearch: "", poFilter: "All", poSortKey: "estDelivery", poSortDir: 1,
+  noteSearch: "", noteSort: "newest", noteLabel: "All",
+  sowSearch: "", sowSort: "target", sowStatus: "All",
+  expandedOrders: {},
+};
+let editingId = null;
+let modalSaveFn = null;
+
+function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
+function todayStr() { return new Date().toISOString().slice(0, 10); }
+
+function load() {
+  try {
+    const raw = localStorage.getItem(LS_KEY);
+    if (raw) {
+      const data = JSON.parse(raw);
+      // migrate retired statuses
+      (data.orders || []).forEach(o => {
+        if (o.status === "Ready") o.status = "Shipped";
+        if (o.status === "Open") o.status = "Order Confirmed";
+        if (!o.createdDate) o.createdDate = o.created ? new Date(o.created).toISOString().slice(0, 10) : todayStr();
+      });
+      // scopes: collapse the old 6-stage list down to Open / Closed
+      (data.sows || []).forEach(s => {
+        if (s.status !== "Open" && s.status !== "Closed") {
+          s.status = (s.status === "Complete") ? "Closed" : "Open";
+        }
+        if (s.status === "Closed" && !s.closedAt) {
+          s.closedAt = s.target ? new Date(s.target + "T00:00:00").getTime() : Date.now();
+        }
+      });
+      return data;
+    }
+  } catch (e) { console.error("Load failed", e); }
+  wasSeeded = true; pristineSeed = true;
+  return seed();
+}
+function save() {
+  pristineSeed = false;
+  localStorage.setItem(LS_KEY, JSON.stringify(state));
+  mirrorToIdb();     // second copy in IndexedDB — independent of file permissions
+  scheduleBackup();  // third copy in your chosen backup file
+}
+function countOf(d) {
+  const c = {
+    projects: (d.projects || []).length, orders: (d.orders || []).length,
+    pos: (d.pos || []).length, sows: (d.sows || []).length,
+    notes: (d.notes || []).length, todos: (d.todos || []).length,
+  };
+  c.total = c.projects + c.orders + c.pos + c.sows + c.notes + c.todos;
+  return c;
+}
+function countSummary(c) {
+  return [["projects", c.projects], ["orders", c.orders], ["POs", c.pos], ["scopes", c.sows], ["notes", c.notes], ["to-dos", c.todos]]
+    .filter(([, n]) => n).map(([k, n]) => n + " " + k).join(", ") || "nothing";
+}
+
+let mirrorTimer = null;
+function mirrorToIdb() {
+  clearTimeout(mirrorTimer);
+  mirrorTimer = setTimeout(async () => {
+    try {
+      const copy = JSON.parse(JSON.stringify(state));
+      await idbSet("snapshot", { ts: Date.now(), data: copy });
+      // rolling history: keep up to 20, at most one per hour
+      const hist = (await idbGet("snapshots")) || [];
+      if (!hist.length || Date.now() - hist[0].ts > 3600e3) {
+        hist.unshift({ ts: Date.now(), counts: countOf(copy), data: copy });
+        await idbSet("snapshots", hist.slice(0, 20));
+      }
+    } catch (e) { console.error("IDB mirror failed", e); }
+  }, 700);
+}
+
+/* ---- snapshot history browser ---- */
+async function openSnapshots() {
+  let hist = [];
+  try { hist = (await idbGet("snapshots")) || []; } catch (e) {}
+  const cur = countOf(state);
+  openModal("Snapshot history", `
+    <div style="font-size:12.5px;color:var(--text-dim);line-height:1.5">
+      Automatic local snapshots, newest first (up to 20, one per hour).
+      Currently on screen: <b>${countSummary(cur)}</b>.
+    </div>
+    ${hist.length ? hist.map((h, i) => `
+      <div style="display:flex;align-items:center;gap:10px;border:1px solid var(--border);border-radius:8px;padding:9px 12px">
+        <div style="flex:1">
+          <div style="font-size:12.5px;font-weight:650">${new Date(h.ts).toLocaleString()}</div>
+          <div style="font-size:11.5px;color:var(--text-dim)">${countSummary(h.counts || countOf(h.data))}</div>
+        </div>
+        <button class="btn" onclick="restoreSnapshot(${i})">Restore</button>
+      </div>`).join("")
+      : `<div style="font-size:12.5px;color:var(--text-dim)">No snapshots yet — they start accumulating as you make changes.</div>`}
+  `, null);
+  document.getElementById("modalSave").style.display = "none";
+}
+async function restoreSnapshot(i) {
+  const hist = (await idbGet("snapshots")) || [];
+  const h = hist[i];
+  if (!h) return;
+  if (!confirm(`Restore the snapshot from ${new Date(h.ts).toLocaleString()}?\n\n` +
+    `It contains: ${countSummary(h.counts || countOf(h.data))}\n` +
+    `This replaces what's on screen now (${countSummary(countOf(state))}).`)) return;
+  state = h.data; pristineSeed = false;
+  document.documentElement.dataset.theme = state.theme || "dark";
+  save(); renderAll(); closeModal();
+  toast("Snapshot restored");
+}
+
+function seed() {
+  const t = todayStr();
+  return {
+    theme: "dark",
+    projects: [
+      { id: uid(), title: "Sample: Enclosure redesign Rev C", desc: "Update mounting bosses and add strain relief per field feedback.", status: "In-Progress", priority: "High", due: t, tags: ["mechanical", "rev-c"], created: Date.now() },
+      { id: uid(), title: "Sample: Firmware v2.4 release", desc: "Final validation pass and release notes.", status: "Queued", priority: "Medium", due: "", tags: ["firmware"], created: Date.now() - 1 },
+    ],
+    orders: [
+      { id: uid(), number: "ORD-1042", item: "Chassis plates (qty 25)", type: "Fabrication", vendor: "Precision Metalworks", status: "In Production", due: t, notes: "Anodized black", created: Date.now() },
+      { id: uid(), number: "ORD-1043", item: "Control board assembly (qty 10)", type: "Assembly", vendor: "In-house", status: "Quote In Progress", due: "", notes: "", created: Date.now() - 1 },
+    ],
+    pos: [
+      { id: uid(), po: "PO-2201", vendor: "Digi-Key", items: "Connectors & passives", orderDate: t, estDelivery: t, confirmed: false, deliveredDate: "", notes: "", created: Date.now() },
+    ],
+    sows: [],
+    todos: [],
+    notes: [
+      { id: uid(), title: "Welcome to Atlas Ops 👋", body: "This dashboard saves everything locally in your browser.\n\n• Drag project cards between columns\n• Click table headers to sort\n• Use ⭳ to export a JSON backup\n\nDelete these sample entries whenever you're ready.", date: t, labels: ["general"], pinned: true, created: Date.now() },
+    ],
+  };
+}
+
+/* ---------------- helpers ---------------- */
+function esc(s) { return String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
+function fmtDate(d) {
+  if (!d) return "—";
+  const dt = new Date(d + "T00:00:00");
+  if (isNaN(dt)) return d;
+  return dt.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+}
+function daysUntil(d) {
+  if (!d) return null;
+  return Math.round((new Date(d + "T00:00:00") - new Date(todayStr() + "T00:00:00")) / 86400000);
+}
+function labelColor(name) {
+  let h = 0; for (const ch of name) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  return LABEL_PALETTE[h % LABEL_PALETTE.length];
+}
+function toast(msg, kind = "") {
+  const el = document.createElement("div");
+  el.className = "toast " + kind;
+  el.textContent = msg;
+  document.getElementById("toasts").appendChild(el);
+  setTimeout(() => { el.style.opacity = "0"; el.style.transition = "opacity .3s"; setTimeout(() => el.remove(), 320); }, 2600);
+}
+function dueBadge(d, done) {
+  if (!d || done) return d ? `<span class="due">📅 ${fmtDate(d)}</span>` : "";
+  const n = daysUntil(d);
+  let cls = "", label = fmtDate(d);
+  if (n < 0) { cls = "overdue"; label += ` · ${-n}d late`; }
+  else if (n === 0) { cls = "soon"; label += " · today"; }
+  else if (n <= 3) { cls = "soon"; label += ` · ${n}d`; }
+  return `<span class="due ${cls}">📅 ${label}</span>`;
+}
+
+/* ---------------- modal ---------------- */
+function openModal(title, bodyHtml, onSave) {
+  document.getElementById("modalTitle").textContent = title;
+  document.getElementById("modalBody").innerHTML = bodyHtml;
+  const ms = document.getElementById("modalSave");
+  ms.textContent = "Save"; ms.style.display = "";
+  modalSaveFn = onSave;
+  document.getElementById("overlay").classList.add("open");
+  const first = document.querySelector("#modalBody input, #modalBody textarea");
+  if (first) setTimeout(() => first.focus(), 60);
+}
+function closeModal() { document.getElementById("overlay").classList.remove("open"); modalSaveFn = null; editingId = null; }
+document.getElementById("modalSave").addEventListener("click", () => { if (modalSaveFn && modalSaveFn() !== false) closeModal(); });
+document.getElementById("overlay").addEventListener("mousedown", e => { if (e.target.id === "overlay") closeModal(); });
+document.addEventListener("keydown", e => {
+  if (e.key === "Escape") closeModal();
+  if ((e.ctrlKey || e.metaKey) && e.key === "Enter" && modalSaveFn) { if (modalSaveFn() !== false) closeModal(); }
+});
+function val(id) { return document.getElementById(id).value.trim(); }
+function fld(label, inner) { return `<div class="field"><label>${label}</label>${inner}</div>`; }
+function selOpts(list, sel) { return list.map(o => `<option ${o === sel ? "selected" : ""}>${o}</option>`).join(""); }
+
+/* =====================================================================
+   PROJECTS — kanban
+   ===================================================================== */
+function openProjectModal(id) {
+  editingId = id || null;
+  const p = id ? state.projects.find(x => x.id === id) : { title: "", desc: "", status: "Queued", priority: "Medium", due: "", tags: [] };
+  openModal(id ? "Edit Project" : "New Project", `
+    ${fld("Title", `<input id="f_title" value="${esc(p.title)}" placeholder="Project name">`)}
+    ${fld("Description", `<textarea id="f_desc" placeholder="Details, scope, next steps…">${esc(p.desc)}</textarea>`)}
+    <div class="field-row">
+      ${fld("Status", `<select id="f_status">${selOpts(PROJECT_STATUSES, p.status)}</select>`)}
+      ${fld("Priority", `<select id="f_prio">${selOpts(PRIORITIES, p.priority)}</select>`)}
+    </div>
+    <div class="field-row">
+      ${fld("Due date", `<input type="date" id="f_due" value="${esc(p.due)}">`)}
+      ${fld("Tags (comma-separated)", `<input id="f_tags" value="${esc((p.tags || []).join(", "))}" placeholder="e.g. mechanical, urgent">`)}
+    </div>
+  `, () => {
+    const title = val("f_title");
+    if (!title) { toast("Title is required", "warn"); return false; }
+    const data = {
+      title, desc: val("f_desc"), status: val("f_status"), priority: val("f_prio"),
+      due: val("f_due"), tags: val("f_tags").split(",").map(s => s.trim().replace(/['"<>]/g, "")).filter(Boolean),
+    };
+    if (editingId) Object.assign(state.projects.find(x => x.id === editingId), data);
+    else state.projects.push({ id: uid(), created: Date.now(), ...data });
+    save(); renderProjects(); toast(editingId ? "Project updated" : "Project added");
+  });
+}
+function deleteProject(id) {
+  if (!confirm("Delete this project?")) return;
+  state.projects = state.projects.filter(p => p.id !== id);
+  save(); renderProjects(); toast("Project deleted", "warn");
+}
+
+function projectsFiltered() {
+  const q = ui.projSearch.toLowerCase();
+  return state.projects.filter(p =>
+    (ui.projPrio === "All" || p.priority === ui.projPrio) &&
+    (!q || (p.title + " " + p.desc + " " + (p.tags || []).join(" ")).toLowerCase().includes(q))
+  );
+}
+function sortCards(cards) {
+  const s = ui.projSort;
+  if (s === "manual") return cards;
+  const c = [...cards];
+  if (s === "priority") c.sort((a, b) => PRIO_RANK[a.priority] - PRIO_RANK[b.priority]);
+  if (s === "due") c.sort((a, b) => (a.due || "9999") < (b.due || "9999") ? -1 : 1);
+  if (s === "title") c.sort((a, b) => a.title.localeCompare(b.title));
+  if (s === "created") c.sort((a, b) => b.created - a.created);
+  return c;
+}
+
+function renderProjects() {
+  const board = document.getElementById("kanban");
+  const filtered = projectsFiltered();
+  board.innerHTML = PROJECT_STATUSES.map(st => {
+    const cards = sortCards(filtered.filter(p => p.status === st));
+    return `<div class="kcol" data-status="${st}">
+      <div class="kcol-head"><span class="dot" style="background:${STATUS_COLORS[st]};color:${STATUS_COLORS[st]}"></span>${st}<span class="count">${cards.length}</span></div>
+      <div class="kcol-body" data-status="${st}">
+        ${cards.length ? cards.map(cardHtml).join("") : `<div class="empty-hint">Drop cards here</div>`}
+      </div>
+    </div>`;
+  }).join("");
+  attachDnD();
+
+  // counts + stats
+  document.getElementById("cnt-projects").textContent = state.projects.filter(p => p.status !== "Completed").length;
+  const overdue = state.projects.filter(p => p.status !== "Completed" && p.due && daysUntil(p.due) < 0).length;
+  document.getElementById("projStats").innerHTML =
+    `<div class="stat"><b>${state.projects.length}</b> total</div>` +
+    `<div class="stat"><b>${state.projects.filter(p => p.status === "In-Progress").length}</b> active</div>` +
+    (overdue ? `<div class="stat" style="border-color:var(--red)"><b style="color:var(--red)">${overdue}</b> overdue</div>` : "");
+  renderPrioChips();
+}
+function cardHtml(p) {
+  const tags = (p.tags || []).map(t => `<span class="tagchip">${esc(t)}</span>`).join("");
+  return `<div class="kcard" draggable="true" data-id="${p.id}" style="border-left-color:${PRIO_COLORS[p.priority]}" ondblclick="openProjectModal('${p.id}')">
+    <div class="kcard-top">
+      <h4>${esc(p.title)}</h4>
+      <div class="kcard-menu">
+        <button class="icon-btn" title="Edit" onclick="openProjectModal('${p.id}')">✎</button>
+        <button class="icon-btn" title="Delete" onclick="deleteProject('${p.id}')">🗑</button>
+      </div>
+    </div>
+    ${p.desc ? `<p class="desc">${esc(p.desc)}</p>` : ""}
+    <div class="meta">
+      <span class="badge" style="background:color-mix(in srgb, ${PRIO_COLORS[p.priority]} 18%, transparent);color:${PRIO_COLORS[p.priority]}">${p.priority}</span>
+      ${tags}
+      ${refBadge("p", p.id)}
+      ${dueBadge(p.due, p.status === "Completed")}
+    </div>
+  </div>`;
+}
+function renderPrioChips() {
+  document.getElementById("projPrioChips").innerHTML = ["All", ...PRIORITIES].map(p =>
+    `<button class="chip ${ui.projPrio === p ? "active" : ""}" onclick="ui.projPrio='${p}';renderProjects()">
+      ${p !== "All" ? `<span class="dot" style="background:${PRIO_COLORS[p]}"></span>` : ""}${p}</button>`
+  ).join("");
+}
+
+/* drag & drop */
+let dragId = null;
+function attachDnD() {
+  document.querySelectorAll(".kcard").forEach(card => {
+    card.addEventListener("dragstart", e => {
+      dragId = card.dataset.id;
+      card.classList.add("dragging");
+      e.dataTransfer.effectAllowed = "move";
+    });
+    card.addEventListener("dragend", () => { card.classList.remove("dragging"); dragId = null; });
+  });
+  document.querySelectorAll(".kcol").forEach(col => {
+    col.addEventListener("dragover", e => { e.preventDefault(); col.classList.add("drag-over"); e.dataTransfer.dropEffect = "move"; });
+    col.addEventListener("dragleave", e => { if (!col.contains(e.relatedTarget)) col.classList.remove("drag-over"); });
+    col.addEventListener("drop", e => {
+      e.preventDefault(); col.classList.remove("drag-over");
+      if (!dragId) return;
+      const proj = state.projects.find(p => p.id === dragId);
+      if (!proj) return;
+      const newStatus = col.dataset.status;
+      // manual reordering: insert relative to the card dropped on
+      const targetCard = e.target.closest(".kcard");
+      state.projects = state.projects.filter(p => p.id !== dragId);
+      proj.status = newStatus;
+      if (targetCard && targetCard.dataset.id !== dragId && ui.projSort === "manual") {
+        const idx = state.projects.findIndex(p => p.id === targetCard.dataset.id);
+        const rect = targetCard.getBoundingClientRect();
+        const before = e.clientY < rect.top + rect.height / 2;
+        state.projects.splice(before ? idx : idx + 1, 0, proj);
+      } else {
+        state.projects.push(proj);
+      }
+      save(); renderProjects();
+    });
+  });
+}
+
+/* =====================================================================
+   OPEN ORDERS
+   ===================================================================== */
+function openOrderModal(id) {
+  editingId = id || null;
+  const o = id ? state.orders.find(x => x.id === id) : { number: "", item: "", type: "Fabrication", vendor: "", status: "Quote In Progress", due: "", estShip: "", notes: "", hold: false, createdDate: todayStr() };
+  openModal(id ? "Edit Order" : "New Order", `
+    <div class="field-row">
+      ${fld("Order #", `<input id="f_num" value="${esc(o.number)}" placeholder="ORD-0000">`)}
+      ${fld("Type", `<select id="f_type">${selOpts(ORDER_TYPES, o.type)}</select>`)}
+    </div>
+    ${fld("Item / description", `<input id="f_item" value="${esc(o.item)}" placeholder="What's being made">`)}
+    <div class="field-row">
+      ${fld("Vendor / owner", `<input id="f_vendor" value="${esc(o.vendor)}" placeholder="Shop, vendor, or in-house">`)}
+      ${fld("Status", `<select id="f_ostatus">${selOpts(ORDER_STATUSES, o.status)}</select>`)}
+    </div>
+    <div class="field-row">
+      ${fld("Date created", `<input type="date" id="f_created" value="${esc(orderCreated(o))}">`)}
+      ${fld("Need-by date", `<input type="date" id="f_due" value="${esc(o.due)}">`)}
+    </div>
+    <div class="field-row">
+      ${fld("Est. ship date", `<input type="date" id="f_ship" value="${esc(o.estShip || "")}">`)}
+      ${fld("On hold", `<label class="inline" style="padding-top:8px"><input type="checkbox" id="f_hold" ${o.hold ? "checked" : ""}> Hold this order</label>`)}
+    </div>
+    ${fld("Notes", `<textarea id="f_notes" placeholder="Finish specs, revision, etc.">${esc(o.notes)}</textarea>`)}
+  `, () => {
+    const item = val("f_item");
+    if (!item) { toast("Item description is required", "warn"); return false; }
+    const data = { number: val("f_num"), item, type: val("f_type"), vendor: val("f_vendor"), status: val("f_ostatus"), due: val("f_due"), estShip: val("f_ship"), notes: val("f_notes"),
+      createdDate: val("f_created") || todayStr(), hold: document.getElementById("f_hold").checked };
+    if (editingId) Object.assign(state.orders.find(x => x.id === editingId), data);
+    else state.orders.push({ id: uid(), created: Date.now(), ...data });
+    save(); renderOrders(); toast(editingId ? "Order updated" : "Order added");
+  });
+}
+function deleteOrder(id) {
+  if (!confirm("Delete this order?")) return;
+  state.orders = state.orders.filter(o => o.id !== id);
+  save(); renderOrders(); toast("Order deleted", "warn");
+}
+function toggleOrderLog(id) {
+  ui.expandedOrders[id] = !ui.expandedOrders[id];
+  renderOrders();
+}
+function addOrderLog(id) {
+  const inp = document.getElementById("log-inp-" + id);
+  const text = inp.value.trim();
+  if (!text) return;
+  const o = state.orders.find(x => x.id === id);
+  (o.log = o.log || []).unshift({ ts: Date.now(), date: todayStr(), text });
+  save(); renderOrders();
+  const el = document.getElementById("log-inp-" + id);
+  if (el) el.focus();
+}
+function deleteOrderLog(id, ts) {
+  const o = state.orders.find(x => x.id === id);
+  o.log = (o.log || []).filter(e => e.ts !== ts);
+  save(); renderOrders();
+}
+function orderLogRowHtml(o) {
+  return `<tr class="order-log-row"><td colspan="9">
+    <div class="log-add">
+      <input id="log-inp-${o.id}" placeholder="Add note — issue, delay, change…" onkeydown="if(event.key==='Enter')addOrderLog('${o.id}')">
+      <button class="btn btn-primary btn-icon" onclick="addOrderLog('${o.id}')" title="Add note">＋</button>
+    </div>
+    ${(o.log || []).map(e => `<div class="log-entry">
+      <span class="log-date">${fmtDate(e.date)}</span>
+      <span class="log-text">${esc(e.text)}</span>
+      <button class="icon-btn" title="Delete note" onclick="deleteOrderLog('${o.id}',${e.ts})">🗑</button>
+    </div>`).join("") || `<div class="log-empty">No notes yet — log issues, delays, or changes here.</div>`}
+  </td></tr>`;
+}
+function cycleOrderStatus(id) {
+  const o = state.orders.find(x => x.id === id);
+  o.status = ORDER_STATUSES[(ORDER_STATUSES.indexOf(o.status) + 1) % ORDER_STATUSES.length];
+  save(); renderOrders();
+}
+function toggleOrderHold(id) {
+  const o = state.orders.find(x => x.id === id);
+  o.hold = !o.hold;
+  save(); renderOrders();
+  toast(o.hold ? "Order placed on hold" : "Hold released", o.hold ? "warn" : "");
+}
+function sortBy(uiPrefix, key) {
+  if (ui[uiPrefix + "SortKey"] === key) ui[uiPrefix + "SortDir"] *= -1;
+  else { ui[uiPrefix + "SortKey"] = key; ui[uiPrefix + "SortDir"] = 1; }
+  uiPrefix === "order" ? renderOrders() : renderPos();
+}
+function th(uiPrefix, key, label) {
+  const active = ui[uiPrefix + "SortKey"] === key;
+  return `<th onclick="sortBy('${uiPrefix}','${key}')">${label}${active ? `<span class="arrow">${ui[uiPrefix + "SortDir"] === 1 ? "▲" : "▼"}</span>` : ""}</th>`;
+}
+function cmp(a, b, key, dir) {
+  let x = a[key] ?? "", y = b[key] ?? "";
+  if (key === "createdDate") { x = orderCreated(a); y = orderCreated(b); }
+  if (key === "due" || key.includes("Date") || key === "estDelivery" || key === "estShip") { x = x || "9999-12-31"; y = y || "9999-12-31"; }
+  if (typeof x === "string") { x = x.toLowerCase(); y = String(y).toLowerCase(); }
+  return (x < y ? -1 : x > y ? 1 : 0) * dir;
+}
+
+function renderOrders() {
+  const q = ui.orderSearch.toLowerCase();
+  const showClosed = document.getElementById("showClosedOrders").checked;
+  let rows = state.orders.filter(o =>
+    (ui.orderType === "All" || o.type === ui.orderType) &&
+    (ui.orderPhase === "All" || phaseOf(o) === ui.orderPhase) &&
+    (showClosed || o.status !== "Complete") &&
+    (!q || (o.number + " " + o.item + " " + o.vendor + " " + o.notes + " " + (o.log || []).map(e => e.text).join(" ")).toLowerCase().includes(q))
+  );
+  rows.sort((a, b) => cmp(a, b, ui.orderSortKey, ui.orderSortDir));
+
+  document.getElementById("orderTypeChips").innerHTML = ["All", ...ORDER_TYPES].map(t => {
+    const n = t === "All" ? state.orders.filter(o => o.status !== "Complete").length : state.orders.filter(o => o.type === t && o.status !== "Complete").length;
+    return `<button class="chip ${ui.orderType === t ? "active" : ""}" onclick="ui.orderType='${t}';renderOrders()">${t} · ${n}</button>`;
+  }).join("");
+
+  document.getElementById("orderPhaseChips").innerHTML = ["All", "Pre-Production", "Production", "On Hold"].map(ph => {
+    const n = state.orders.filter(o => phaseOf(o) === ph).length;
+    const hold = ph === "On Hold";
+    return `<button class="chip ${ui.orderPhase === ph ? "active" : ""}" style="${hold && n && ui.orderPhase !== ph ? "color:var(--red);border-color:color-mix(in srgb,var(--red) 45%,transparent)" : ""}" onclick="ui.orderPhase='${ph}';renderOrders()">${ph === "All" ? "All Phases" : (hold ? "⏸ " : "") + ph + " · " + n}</button>`;
+  }).join("");
+
+  const wrap = document.getElementById("ordersTableWrap");
+  if (!rows.length) {
+    wrap.innerHTML = `<div class="empty-state"><div class="big">📦</div>No orders match. Add one with <b>＋ New Order</b>.</div>`;
+  } else {
+    wrap.innerHTML = `<table class="data"><thead><tr>
+      ${th("order", "number", "Order #")}${th("order", "item", "Item")}${th("order", "type", "Type")}${th("order", "vendor", "Vendor / Owner")}${th("order", "status", "Status")}${th("order", "createdDate", "Created")}${th("order", "due", "Need By")}${th("order", "estShip", "Est. Ship")}<th style="cursor:default"></th>
+    </tr></thead><tbody>
+    ${rows.map(o => {
+      const prog = (ORDER_STATUSES.indexOf(o.status) / (ORDER_STATUSES.length - 1)) * 100;
+      return `<tr data-id="${o.id}" class="${o.hold ? "on-hold" : ""}">
+        <td class="mono">${esc(o.number) || "—"}</td>
+        <td>${esc(o.item)}${o.notes ? `<span class="sub">${esc(o.notes)}</span>` : ""}</td>
+        <td><span class="tagchip">${o.type}</span></td>
+        <td>${esc(o.vendor) || "—"}</td>
+        <td><div class="phase-lbl">${o.hold ? `<span class="hold-badge">⏸ ON HOLD</span>` : phaseOf(o)}</div>
+            <span class="pill" style="color:${ORDER_STATUS_COLORS[o.status]};background:color-mix(in srgb, ${ORDER_STATUS_COLORS[o.status]} 14%, transparent);cursor:pointer" title="Click to advance status" onclick="cycleOrderStatus('${o.id}')"><span class="dot"></span>${o.status}</span>
+            <div class="prog" style="margin-top:5px" title="${ORDER_STATUSES.indexOf(o.status) + 1} of ${ORDER_STATUSES.length} stages"><div style="width:${prog}%"></div></div></td>
+        <td>${fmtDate(orderCreated(o))}</td>
+        <td>${dueBadge(o.due, o.status === "Complete") || "—"}</td>
+        <td>${o.estShip
+          ? `<span class="due${o.status === "Complete" || ORDER_STATUSES.indexOf(o.status) >= 5 ? "" : (o.due && o.estShip > o.due ? " overdue" : (daysUntil(o.estShip) < 0 ? " overdue" : (daysUntil(o.estShip) <= 3 ? " soon" : "")))}"
+              title="${o.due && o.estShip > o.due ? "Est. ship is after the need-by date" : "Estimated ship date"}">🚚 ${fmtDate(o.estShip)}${o.due && o.estShip > o.due && o.status !== "Complete" ? " ⚠" : ""}</span>`
+          : "—"}</td>
+        <td><div style="display:flex;align-items:center;gap:6px;justify-content:flex-end">
+          ${refBadge("o", o.id)}
+          <button class="icon-btn log-btn ${o.hold ? "held" : ""}" title="${o.hold ? "Release hold" : "Put order on hold"}" onclick="toggleOrderHold('${o.id}')">${o.hold ? "▶" : "⏸"}</button>
+          <button class="icon-btn log-btn ${(o.log || []).length ? "has" : ""} ${ui.expandedOrders[o.id] ? "open" : ""}" title="Order notes — issues, delays, changes" onclick="toggleOrderLog('${o.id}')">🗒${(o.log || []).length ? " " + o.log.length : ""}</button>
+          <div class="row-actions">
+            <button class="icon-btn" title="Edit" onclick="openOrderModal('${o.id}')">✎</button>
+            <button class="icon-btn" title="Delete" onclick="deleteOrder('${o.id}')">🗑</button>
+          </div>
+        </div></td>
+      </tr>${ui.expandedOrders[o.id] ? orderLogRowHtml(o) : ""}`;
+    }).join("")}
+    </tbody></table>`;
+  }
+  const open = state.orders.filter(o => o.status !== "Complete");
+  document.getElementById("cnt-orders").textContent = open.length;
+  document.getElementById("orderStats").innerHTML =
+    `<div class="stat"><b>${open.length}</b> open</div>` +
+    `<div class="stat"><b>${open.filter(o => phaseOf(o) === "Pre-Production").length}</b> pre-prod</div>` +
+    (open.filter(o => o.hold).length ? `<div class="stat" style="border-color:var(--red)"><b style="color:var(--red)">${open.filter(o => o.hold).length}</b> on hold</div>` : "") +
+    `<div class="stat"><b>${open.filter(o => o.due && daysUntil(o.due) < 0).length}</b> past need-by</div>`;
+}
+
+/* =====================================================================
+   PURCHASE ORDERS
+   ===================================================================== */
+function openPoModal(id) {
+  editingId = id || null;
+  const p = id ? state.pos.find(x => x.id === id) : { po: "", vendor: "", items: "", orderDate: todayStr(), estDelivery: "", confirmed: false, deliveredDate: "", notes: "" };
+  openModal(id ? "Edit Purchase Order" : "New Purchase Order", `
+    <div class="field-row">
+      ${fld("PO #", `<input id="f_po" value="${esc(p.po)}" placeholder="PO-0000">`)}
+      ${fld("Vendor", `<input id="f_vendor" value="${esc(p.vendor)}" placeholder="Supplier">`)}
+    </div>
+    ${fld("Items", `<input id="f_items" value="${esc(p.items)}" placeholder="What was ordered">`)}
+    <div class="field-row">
+      ${fld("Order date", `<input type="date" id="f_odate" value="${esc(p.orderDate)}">`)}
+      ${fld("Est. delivery", `<input type="date" id="f_edate" value="${esc(p.estDelivery)}">`)}
+    </div>
+    ${fld("Notes", `<textarea id="f_notes" placeholder="Tracking #, terms, partial shipments…">${esc(p.notes)}</textarea>`)}
+  `, () => {
+    const po = val("f_po");
+    if (!po) { toast("PO # is required", "warn"); return false; }
+    const data = { po, vendor: val("f_vendor"), items: val("f_items"), orderDate: val("f_odate"), estDelivery: val("f_edate"), notes: val("f_notes") };
+    if (editingId) Object.assign(state.pos.find(x => x.id === editingId), data);
+    else state.pos.push({ id: uid(), created: Date.now(), confirmed: false, deliveredDate: "", ...data });
+    save(); renderPos(); toast(editingId ? "PO updated" : "PO added");
+  });
+}
+function deletePo(id) {
+  if (!confirm("Delete this PO?")) return;
+  state.pos = state.pos.filter(p => p.id !== id);
+  save(); renderPos(); toast("PO deleted", "warn");
+}
+function toggleConfirm(id) {
+  const p = state.pos.find(x => x.id === id);
+  p.confirmed = !p.confirmed;
+  p.deliveredDate = p.confirmed ? todayStr() : "";
+  save(); renderPos();
+  toast(p.confirmed ? `${p.po} marked delivered` : `${p.po} delivery unconfirmed`, p.confirmed ? "" : "warn");
+}
+
+function renderPos() {
+  const q = ui.poSearch.toLowerCase();
+  const showDelivered = document.getElementById("showDeliveredPos").checked;
+  let rows = state.pos.filter(p => {
+    if (!showDelivered && p.confirmed) return false;
+    if (ui.poFilter === "Overdue" && !(p.estDelivery && !p.confirmed && daysUntil(p.estDelivery) < 0)) return false;
+    if (ui.poFilter === "Pending" && p.confirmed) return false;
+    if (ui.poFilter === "Delivered" && !p.confirmed) return false;
+    return !q || (p.po + " " + p.vendor + " " + p.items + " " + p.notes).toLowerCase().includes(q);
+  });
+  rows.sort((a, b) => cmp(a, b, ui.poSortKey, ui.poSortDir));
+
+  const overdueN = state.pos.filter(p => p.estDelivery && !p.confirmed && daysUntil(p.estDelivery) < 0).length;
+  document.getElementById("poFilterChips").innerHTML = ["All", "Pending", "Overdue", "Delivered"].map(f =>
+    `<button class="chip ${ui.poFilter === f ? "active" : ""}" onclick="ui.poFilter='${f}';renderPos()">${f}${f === "Overdue" && overdueN ? " · " + overdueN : ""}</button>`
+  ).join("");
+
+  const wrap = document.getElementById("posTableWrap");
+  if (!rows.length) {
+    wrap.innerHTML = `<div class="empty-state"><div class="big">🧾</div>No purchase orders match. Add one with <b>＋ New PO</b>.</div>`;
+  } else {
+    wrap.innerHTML = `<table class="data"><thead><tr>
+      ${th("po", "po", "PO #")}${th("po", "vendor", "Vendor")}${th("po", "items", "Items")}${th("po", "orderDate", "Order Date")}${th("po", "estDelivery", "Est. Delivery")}${th("po", "confirmed", "Delivery")}<th style="cursor:default"></th>
+    </tr></thead><tbody>
+    ${rows.map(p => {
+      const late = p.estDelivery && !p.confirmed && daysUntil(p.estDelivery) < 0;
+      return `<tr data-id="${p.id}">
+        <td class="mono"><b>${esc(p.po)}</b></td>
+        <td>${esc(p.vendor) || "—"}</td>
+        <td>${esc(p.items) || "—"}${p.notes ? `<span class="sub">${esc(p.notes)}</span>` : ""}</td>
+        <td>${fmtDate(p.orderDate)}</td>
+        <td>${p.confirmed ? fmtDate(p.estDelivery) : (dueBadge(p.estDelivery, false) || "—")}</td>
+        <td><button class="conf-toggle ${p.confirmed ? "on" : ""}" onclick="toggleConfirm('${p.id}')" title="Click to toggle delivery confirmation">
+          ${p.confirmed ? "✓ Delivered " + fmtDate(p.deliveredDate) : (late ? "⚠ Awaiting (late)" : "○ Awaiting")}
+        </button></td>
+        <td><div style="display:flex;align-items:center;gap:6px;justify-content:flex-end">
+          ${refBadge("po", p.id)}
+          <div class="row-actions">
+            <button class="icon-btn" title="Edit" onclick="openPoModal('${p.id}')">✎</button>
+            <button class="icon-btn" title="Delete" onclick="deletePo('${p.id}')">🗑</button>
+          </div>
+        </div></td>
+      </tr>`;
+    }).join("")}
+    </tbody></table>`;
+  }
+  const pending = state.pos.filter(p => !p.confirmed);
+  document.getElementById("cnt-pos").textContent = pending.length;
+  document.getElementById("poStats").innerHTML =
+    `<div class="stat"><b>${pending.length}</b> pending</div>` +
+    (overdueN ? `<div class="stat" style="border-color:var(--red)"><b style="color:var(--red)">${overdueN}</b> overdue</div>` : "");
+}
+
+/* =====================================================================
+   SCOPES OF WORK
+   ===================================================================== */
+const SOW_STATUSES = ["Open", "Closed"];
+const SOW_COLORS = { "Open": "var(--accent-text)", "Closed": "var(--text-faint)" };
+
+/* elapsed time a scope has been open — live while Open, frozen once Closed */
+function sowStartMs(s) {
+  return s.start ? new Date(s.start + "T00:00:00").getTime() : (s.created || Date.now());
+}
+function sowElapsedMs(s) {
+  const end = s.status === "Closed" ? (s.closedAt || Date.now()) : Date.now();
+  return Math.max(0, end - sowStartMs(s));
+}
+function fmtElapsed(ms) {
+  const t = Math.floor(ms / 1000);
+  const d = Math.floor(t / 86400), h = Math.floor((t % 86400) / 3600),
+        m = Math.floor((t % 3600) / 60), sec = t % 60;
+  const p = n => String(n).padStart(2, "0");
+  return (d ? d + "d " : "") + p(h) + ":" + p(m) + ":" + p(sec);
+}
+function tickSowTimers() {
+  document.querySelectorAll('.sow-timer[data-live="1"]').forEach(el => {
+    el.querySelector(".t").textContent = fmtElapsed(Date.now() - Number(el.dataset.start));
+  });
+}
+setInterval(tickSowTimers, 1000);
+function sows() { return state.sows || (state.sows = []); }
+function initials(s) {
+  const p = String(s || "").trim().split(/\s+/).filter(Boolean);
+  return p.length ? (p[0][0] + (p[1] ? p[1][0] : "")).toUpperCase() : "?";
+}
+/* elapsed-time progress between start and target */
+function sowProgress(s) {
+  if (s.status === "Closed") return 100;
+  if (!s.start || !s.target) return null;
+  const a = new Date(s.start + "T00:00:00"), b = new Date(s.target + "T00:00:00"), now = new Date(todayStr() + "T00:00:00");
+  if (b <= a) return null;
+  return Math.max(0, Math.min(100, Math.round((now - a) / (b - a) * 100)));
+}
+
+function openSowModal(id) {
+  editingId = id || null;
+  const s = id ? sows().find(x => x.id === id)
+    : { number: "", title: "", client: "", desc: "", status: "Open", start: todayStr(), target: "", owner: "" };
+  openModal(id ? "Edit Scope of Work" : "New Scope of Work", `
+    <div class="field-row">
+      ${fld("SOW #", `<input id="f_num" value="${esc(s.number)}" placeholder="SOW-0000">`)}
+      ${fld("Status", `<select id="f_sstatus">${selOpts(SOW_STATUSES, s.status)}</select>`)}
+    </div>
+    ${fld("Title", `<input id="f_title" value="${esc(s.title)}" placeholder="Scope title">`)}
+    <div class="field-row">
+      ${fld("Client / customer", `<input id="f_client" value="${esc(s.client)}" placeholder="Who it's for">`)}
+      ${fld("Owner", `<input id="f_owner" value="${esc(s.owner)}" placeholder="Responsible person">`)}
+    </div>
+    ${fld("Scope description", `<textarea id="f_desc" placeholder="What's in scope…">${esc(s.desc)}</textarea>`)}
+    <div class="field-row">
+      ${fld("Start date", `<input type="date" id="f_start" value="${esc(s.start)}">`)}
+      ${fld("Target completion", `<input type="date" id="f_target" value="${esc(s.target)}">`)}
+    </div>
+  `, () => {
+    const title = val("f_title");
+    if (!title) { toast("Title is required", "warn"); return false; }
+    const data = {
+      number: val("f_num"), title, client: val("f_client"), owner: val("f_owner"),
+      desc: val("f_desc"), status: val("f_sstatus"), start: val("f_start"), target: val("f_target"),
+    };
+    if (editingId) {
+      const cur = sows().find(x => x.id === editingId);
+      if (data.status === "Closed" && cur.status !== "Closed") data.closedAt = Date.now();
+      if (data.status === "Open") data.closedAt = null;
+      Object.assign(cur, data);
+    } else {
+      sows().push({ id: uid(), created: Date.now(), closedAt: data.status === "Closed" ? Date.now() : null, ...data });
+    }
+    save(); renderSows(); toast(editingId ? "Scope updated" : "Scope of work added");
+  });
+}
+function deleteSow(id) {
+  if (!confirm("Delete this scope of work?")) return;
+  state.sows = sows().filter(s => s.id !== id);
+  save(); renderSows(); toast("Scope deleted", "warn");
+}
+function cycleSowStatus(id) {
+  const s = sows().find(x => x.id === id);
+  if (s.status === "Open") { s.status = "Closed"; s.closedAt = Date.now(); }
+  else { s.status = "Open"; s.closedAt = null; }
+  save(); renderSows();
+  toast(s.status === "Closed" ? `Scope closed after ${fmtElapsed(sowElapsedMs(s))}` : "Scope reopened — timer running");
+}
+
+function renderSows() {
+  const q = ui.sowSearch.toLowerCase();
+  let rows = sows().filter(s =>
+    (ui.sowStatus === "All" || s.status === ui.sowStatus) &&
+    (!q || (s.number + " " + s.title + " " + s.client + " " + s.desc + " " + s.owner).toLowerCase().includes(q))
+  );
+  const k = ui.sowSort;
+  rows.sort((a, b) => {
+    if (k === "target" || k === "start") return ((a[k] || "9999") < (b[k] || "9999") ? -1 : 1);
+    return String(a[k === "number" ? "number" : k] || "").localeCompare(String(b[k === "number" ? "number" : k] || ""));
+  });
+
+  document.getElementById("sowStatusChips").innerHTML = ["All", ...SOW_STATUSES].map(st => {
+    const n = st === "All" ? sows().length : sows().filter(s => s.status === st).length;
+    return `<button class="chip ${ui.sowStatus === st ? "active" : ""}" onclick="ui.sowStatus='${st}';renderSows()">
+      ${st !== "All" ? `<span class="dot" style="background:${SOW_COLORS[st]}"></span>` : ""}${st} · ${n}</button>`;
+  }).join("");
+
+  const grid = document.getElementById("sowGrid");
+  grid.innerHTML = rows.length ? rows.map(s => {
+    const pct = sowProgress(s);
+    const late = s.target && s.status !== "Closed" && daysUntil(s.target) < 0;
+    const barColor = s.status === "Closed" ? "var(--green)" : late ? "var(--red)" : "var(--grad)";
+    const open = s.status === "Open";
+    return `<div class="sow-card" data-id="${s.id}" style="--sow-c:${SOW_COLORS[s.status]}" ondblclick="openSowModal('${s.id}')">
+      <div class="sow-timer ${open ? "live" : "done"}" data-live="${open ? 1 : 0}" data-start="${sowStartMs(s)}"
+           title="${open ? "Time open since " + fmtDate(s.start) : "Total time open (closed " + (s.closedAt ? new Date(s.closedAt).toLocaleDateString() : "—") + ")"}">
+        <span class="lbl">${open ? "OPEN" : "TOTAL"}</span><span class="t">${fmtElapsed(sowElapsedMs(s))}</span>
+      </div>
+      <div class="sow-top">
+        <div style="flex:1;padding-right:96px">
+          ${s.number ? `<div class="sow-num">${esc(s.number)}</div>` : ""}
+          <h4>${esc(s.title)}</h4>
+        </div>
+        <div class="kcard-menu">
+          <button class="icon-btn" title="Edit" onclick="openSowModal('${s.id}')">✎</button>
+          <button class="icon-btn" title="Delete" onclick="deleteSow('${s.id}')">🗑</button>
+        </div>
+      </div>
+      ${s.client ? `<div class="sow-client">🏢 ${esc(s.client)}</div>` : ""}
+      ${s.desc ? `<div class="sow-desc">${esc(s.desc)}</div>` : ""}
+      <div class="sow-dates">
+        <div><b>Start</b>${fmtDate(s.start)}</div>
+        <div><b>Target</b><span style="${late ? "color:var(--red);font-weight:700" : ""}">${fmtDate(s.target)}${late ? " · " + (-daysUntil(s.target)) + "d late" : ""}</span></div>
+      </div>
+      ${pct !== null ? `<div class="sow-bar" title="${s.status === "Closed" ? "Closed" : pct + "% of schedule elapsed"}"><div style="width:${pct}%;background:${barColor}"></div></div>` : ""}
+      <div class="sow-foot">
+        <span class="pill" style="color:${SOW_COLORS[s.status]};background:color-mix(in srgb, ${SOW_COLORS[s.status]} 14%, transparent);cursor:pointer" title="Click to ${open ? "close" : "reopen"} this scope" onclick="cycleSowStatus('${s.id}')"><span class="dot"></span>${s.status}</span>
+        ${refBadge("s", s.id)}
+        ${s.owner ? `<span class="sow-owner" style="margin-left:auto"><span class="av">${esc(initials(s.owner))}</span>${esc(s.owner)}</span>` : ""}
+      </div>
+    </div>`;
+  }).join("") : `<div class="empty-state" style="grid-column:1/-1"><div class="big">📋</div>No scopes of work yet. Add one with <b>＋ New Scope of Work</b>.</div>`;
+
+  const openOnes = sows().filter(s => s.status === "Open");
+  document.getElementById("cnt-sow").textContent = openOnes.length;
+  const late = openOnes.filter(s => s.target && daysUntil(s.target) < 0).length;
+  const oldest = openOnes.length ? Math.max(...openOnes.map(sowElapsedMs)) : 0;
+  document.getElementById("sowStats").innerHTML =
+    `<div class="stat"><b>${openOnes.length}</b> open</div>` +
+    (oldest ? `<div class="stat"><b>${Math.floor(oldest / 86400000)}d</b> longest open</div>` : "") +
+    (late ? `<div class="stat" style="border-color:var(--red)"><b style="color:var(--red)">${late}</b> past target</div>` : "");
+}
+
+/* =====================================================================
+   NOTE LINKS — connect notes to projects, orders, POs, and other notes
+   ===================================================================== */
+const LINK_TYPES = {
+  p: { name: "Project", icon: "◆", color: "var(--accent)" },
+  o: { name: "Order", icon: "📦", color: "var(--orange)" },
+  po: { name: "PO", icon: "🧾", color: "var(--teal)" },
+  s: { name: "Scope of Work", icon: "📋", color: "var(--purple)" },
+  n: { name: "Note", icon: "🔗", color: "var(--pink)" },
+};
+let modalLinks = [];
+
+function linkLabel(l) {
+  if (l.t === "p") { const x = state.projects.find(v => v.id === l.id); return x && x.title; }
+  if (l.t === "o") { const x = state.orders.find(v => v.id === l.id); return x && (x.number ? x.number + " · " + x.item : x.item); }
+  if (l.t === "po") { const x = state.pos.find(v => v.id === l.id); return x && (x.po + (x.vendor ? " · " + x.vendor : "")); }
+  if (l.t === "s") { const x = sows().find(v => v.id === l.id); return x && ((x.number ? x.number + " · " : "") + x.title); }
+  if (l.t === "n") { const x = state.notes.find(v => v.id === l.id); return x && x.title; }
+}
+function refNotes(t, id) { return state.notes.filter(n => (n.links || []).some(l => l.t === t && l.id === id)); }
+
+function addModalLink(v) {
+  if (!v) return;
+  const i = v.indexOf(":");
+  const l = { t: v.slice(0, i), id: v.slice(i + 1) };
+  if (l.t === "n" && l.id === editingId) { toast("A note can't link to itself", "warn"); return; }
+  if (modalLinks.some(x => x.t === l.t && x.id === l.id)) return;
+  modalLinks.push(l);
+  renderModalLinks();
+}
+function removeModalLink(i) { modalLinks.splice(i, 1); renderModalLinks(); }
+function renderModalLinks() {
+  const el = document.getElementById("f_linkchips");
+  if (!el) return;
+  el.innerHTML = modalLinks.map((l, i) => {
+    const T = LINK_TYPES[l.t], lbl = linkLabel(l) || "(deleted)";
+    return `<button type="button" class="chip" style="color:${T.color}" onclick="removeModalLink(${i})" title="Click to remove link">${T.icon} ${esc(lbl.length > 34 ? lbl.slice(0, 34) + "…" : lbl)} ✕</button>`;
+  }).join("") || `<span style="font-size:11.5px;color:var(--text-faint)">No links yet — pick from the dropdown above</span>`;
+}
+function nlinkChips(n) {
+  const chips = (n.links || []).map(l => {
+    const lbl = linkLabel(l);
+    if (!lbl) return "";
+    const T = LINK_TYPES[l.t];
+    return `<button class="nlink" style="color:${T.color};border-color:color-mix(in srgb, ${T.color} 40%, transparent)" onclick="gotoLink('${l.t}','${l.id}')" title="${T.name}: ${esc(lbl)}">${T.icon} ${esc(lbl.length > 30 ? lbl.slice(0, 30) + "…" : lbl)}</button>`;
+  }).join("");
+  return chips ? `<div class="nlinks">${chips}</div>` : "";
+}
+
+function flashEl(el) {
+  if (!el) return;
+  el.scrollIntoView({ behavior: "smooth", block: "center" });
+  el.classList.add("flash");
+  setTimeout(() => el.classList.remove("flash"), 2400);
+}
+function gotoLink(t, id) {
+  if (t === "n") {
+    switchTab("notes");
+    let el = document.querySelector(`.note-card[data-id="${id}"]`);
+    if (!el) { ui.noteLabel = "All"; ui.noteSearch = ""; document.getElementById("noteSearch").value = ""; renderNotes(); el = document.querySelector(`.note-card[data-id="${id}"]`); }
+    flashEl(el);
+  } else if (t === "p") {
+    switchTab("projects");
+    let el = document.querySelector(`.kcard[data-id="${id}"]`);
+    if (!el) { ui.projSearch = ""; ui.projPrio = "All"; document.getElementById("projSearch").value = ""; renderProjects(); el = document.querySelector(`.kcard[data-id="${id}"]`); }
+    flashEl(el);
+  } else if (t === "o") {
+    switchTab("orders");
+    let el = document.querySelector(`#ordersTableWrap tr[data-id="${id}"]`);
+    if (!el) {
+      ui.orderSearch = ""; ui.orderType = "All"; ui.orderPhase = "All";
+      document.getElementById("orderSearch").value = ""; document.getElementById("showClosedOrders").checked = true;
+      renderOrders(); el = document.querySelector(`#ordersTableWrap tr[data-id="${id}"]`);
+    }
+    flashEl(el);
+  } else if (t === "s") {
+    switchTab("sow");
+    let el = document.querySelector(`.sow-card[data-id="${id}"]`);
+    if (!el) { ui.sowSearch = ""; ui.sowStatus = "All"; document.getElementById("sowSearch").value = ""; renderSows(); el = document.querySelector(`.sow-card[data-id="${id}"]`); }
+    flashEl(el);
+  } else if (t === "po") {
+    switchTab("pos");
+    let el = document.querySelector(`#posTableWrap tr[data-id="${id}"]`);
+    if (!el) {
+      ui.poSearch = ""; ui.poFilter = "All";
+      document.getElementById("poSearch").value = ""; document.getElementById("showDeliveredPos").checked = true;
+      renderPos(); el = document.querySelector(`#posTableWrap tr[data-id="${id}"]`);
+    }
+    flashEl(el);
+  }
+}
+function gotoNotesReferencing(t, id) {
+  switchTab("notes");
+  ui.noteLabel = "All"; ui.noteSearch = ""; document.getElementById("noteSearch").value = "";
+  renderNotes();
+  refNotes(t, id).forEach(n => flashEl(document.querySelector(`.note-card[data-id="${n.id}"]`)));
+}
+function refBadge(t, id) {
+  const n = refNotes(t, id).length;
+  return n ? `<button class="ref-btn" title="${n} linked note${n > 1 ? "s" : ""} — click to view" onclick="event.stopPropagation();gotoNotesReferencing('${t}','${id}')">🔗 ${n}</button>` : "";
+}
+
+/* =====================================================================
+   DAILY NOTES
+   ===================================================================== */
+function openNoteModal(id) {
+  editingId = id || null;
+  const n = id ? state.notes.find(x => x.id === id) : { title: "", body: "", date: todayStr(), labels: [], pinned: false, links: [] };
+  modalLinks = [...(n.links || [])];
+  const og = (list, t, getLbl) => list.length ? `<optgroup label="${LINK_TYPES[t].name}s">${list.map(x =>
+    `<option value="${t}:${x.id}">${esc(String(getLbl(x)).slice(0, 55))}</option>`).join("")}</optgroup>` : "";
+  openModal(id ? "Edit Note" : "New Note", `
+    <div class="field-row">
+      ${fld("Title", `<input id="f_title" value="${esc(n.title)}" placeholder="Note title">`)}
+      ${fld("Date", `<input type="date" id="f_date" value="${esc(n.date)}">`)}
+    </div>
+    ${fld("Note", `<textarea id="f_body" rows="6" placeholder="What happened today…">${esc(n.body)}</textarea>`)}
+    ${fld("Labels (comma-separated)", `<input id="f_labels" value="${esc((n.labels || []).join(", "))}" placeholder="e.g. production, meeting, follow-up">`)}
+    ${fld("Linked items", `
+      <select id="f_linkpick" onchange="addModalLink(this.value);this.value=''">
+        <option value="">— link a project, order, PO, or another note —</option>
+        ${og(state.projects, "p", x => x.title)}
+        ${og(state.orders, "o", x => (x.number ? x.number + " · " : "") + x.item)}
+        ${og(state.pos, "po", x => x.po + (x.vendor ? " · " + x.vendor : ""))}
+        ${og(sows(), "s", x => (x.number ? x.number + " · " : "") + x.title)}
+        ${og(state.notes.filter(x => x.id !== editingId), "n", x => x.title)}
+      </select>
+      <div class="chipbar" id="f_linkchips" style="margin-top:6px"></div>
+    `)}
+  `, () => {
+    const title = val("f_title");
+    if (!title && !val("f_body")) { toast("Add a title or note text", "warn"); return false; }
+    const data = { title: title || "(untitled)", body: val("f_body"), date: val("f_date") || todayStr(), labels: val("f_labels").split(",").map(s => s.trim().toLowerCase().replace(/['"<>]/g, "")).filter(Boolean), links: [...modalLinks] };
+    if (editingId) Object.assign(state.notes.find(x => x.id === editingId), data);
+    else state.notes.push({ id: uid(), created: Date.now(), pinned: false, ...data });
+    save(); renderAll(); toast(editingId ? "Note updated" : "Note added");
+  });
+  renderModalLinks();
+}
+function deleteNote(id) {
+  if (!confirm("Delete this note?")) return;
+  state.notes = state.notes.filter(n => n.id !== id);
+  save(); renderNotes(); toast("Note deleted", "warn");
+}
+function togglePin(id) {
+  const n = state.notes.find(x => x.id === id);
+  n.pinned = !n.pinned;
+  save(); renderNotes();
+}
+
+function renderNotes() {
+  const q = ui.noteSearch.toLowerCase();
+  let rows = state.notes.filter(n =>
+    (ui.noteLabel === "All" || (n.labels || []).includes(ui.noteLabel)) &&
+    (!q || (n.title + " " + n.body + " " + (n.labels || []).join(" ")).toLowerCase().includes(q))
+  );
+  rows.sort((a, b) => {
+    if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
+    if (ui.noteSort === "newest") return (b.date + b.created) < (a.date + a.created) ? -1 : 1;
+    if (ui.noteSort === "oldest") return (a.date + a.created) < (b.date + b.created) ? -1 : 1;
+    return a.title.localeCompare(b.title);
+  });
+
+  const allLabels = [...new Set(state.notes.flatMap(n => n.labels || []))].sort();
+  document.getElementById("noteLabelChips").innerHTML = ["All", ...allLabels].map(l =>
+    `<button class="chip ${ui.noteLabel === l ? "active" : ""}" onclick="ui.noteLabel='${esc(l)}';renderNotes()">
+      ${l !== "All" ? `<span class="dot" style="background:${labelColor(l)}"></span>` : ""}${esc(l)}</button>`
+  ).join("");
+
+  const today = todayStr();
+  const todayRows = rows.filter(n => n.date === today);
+  const prevRows = rows.filter(n => n.date !== today);
+
+  document.getElementById("todayGrid").innerHTML = todayRows.length
+    ? todayRows.map(noteCardHtml).join("")
+    : `<div class="empty-state" style="grid-column:1/-1;padding:22px 20px">
+         <div class="big" style="font-size:26px">📝</div>
+         ${rows.length ? "No notes dated today match this filter." : "Nothing logged today yet — use the box above."}
+       </div>`;
+  document.getElementById("prevGrid").innerHTML = prevRows.length
+    ? prevRows.map(noteCardHtml).join("")
+    : `<div class="empty-state" style="grid-column:1/-1;padding:22px 20px">No earlier notes${ui.noteSearch || ui.noteLabel !== "All" ? " match this filter" : ""}.</div>`;
+
+  document.getElementById("todayNoteCount").textContent = todayRows.length;
+  document.getElementById("prevNoteCount").textContent = prevRows.length;
+  document.getElementById("todayDateLbl").textContent =
+    new Date(today + "T00:00:00").toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" });
+  document.getElementById("cnt-notes").textContent = state.notes.length;
+}
+
+function noteCardHtml(n) {
+  return `
+    <div class="note-card ${n.pinned ? "pinned" : ""}" data-id="${n.id}">
+      <button class="pin-btn" onclick="togglePin('${n.id}')" title="Unpin">★ PINNED</button>
+      <div class="note-head">
+        <h4>${esc(n.title)}</h4>
+        <div class="kcard-menu" style="opacity:1">
+          <button class="icon-btn" title="${n.pinned ? "Unpin" : "Pin"}" onclick="togglePin('${n.id}')">${n.pinned ? "★" : "☆"}</button>
+          <button class="icon-btn" title="Edit" onclick="openNoteModal('${n.id}')">✎</button>
+          <button class="icon-btn" title="Delete" onclick="deleteNote('${n.id}')">🗑</button>
+        </div>
+      </div>
+      <span class="note-date">📅 ${fmtDate(n.date)}</span>
+      ${n.body ? `<div class="body">${esc(n.body)}</div>` : ""}
+      ${nlinkChips(n)}
+      ${(n.labels || []).length ? `<div class="labels">${n.labels.map(l =>
+        `<span class="badge" style="background:color-mix(in srgb, ${labelColor(l)} 16%, transparent);color:${labelColor(l)};cursor:pointer" onclick="ui.noteLabel='${esc(l)}';renderNotes()">${esc(l)}</span>`).join("")}</div>` : ""}
+    </div>`;
+}
+
+function quickAddNote() {
+  const inp = document.getElementById("quickNote");
+  const text = inp.value.trim();
+  if (!text) return;
+  const nl = text.indexOf("\n");
+  state.notes.push({
+    id: uid(), created: Date.now(), pinned: false, date: todayStr(),
+    title: nl > 0 ? text.slice(0, nl) : text, body: nl > 0 ? text.slice(nl + 1) : "",
+    labels: [], links: [],
+  });
+  inp.value = "";
+  save(); renderNotes(); toast("Note added to today");
+  inp.focus();
+}
+document.getElementById("quickNote").addEventListener("keydown", e => { if (e.key === "Enter") quickAddNote(); });
+
+/* =====================================================================
+   TO-DO LIST (Daily Notes tab)
+   ===================================================================== */
+function todos() { return state.todos || (state.todos = []); }
+function addTodo() {
+  const inp = document.getElementById("todoInput");
+  const text = inp.value.trim();
+  if (!text) return;
+  todos().unshift({ id: uid(), text, done: false, created: Date.now() });
+  inp.value = "";
+  save(); renderTodos();
+  inp.focus();
+}
+function toggleTodo(id) {
+  const t = todos().find(x => x.id === id);
+  t.done = !t.done;
+  save(); renderTodos();
+}
+function deleteTodo(id) {
+  state.todos = todos().filter(t => t.id !== id);
+  save(); renderTodos();
+}
+function clearDoneTodos() {
+  const n = todos().filter(t => t.done).length;
+  if (!n) { toast("No completed to-dos to clear", "warn"); return; }
+  if (!confirm(`Remove ${n} completed to-do${n > 1 ? "s" : ""}?`)) return;
+  state.todos = todos().filter(t => !t.done);
+  save(); renderTodos(); toast("Completed to-dos cleared");
+}
+function editTodoStart(id) {
+  const span = document.querySelector(`.todo-item[data-id="${id}"] .txt`);
+  const t = todos().find(x => x.id === id);
+  if (!span || !t) return;
+  const inp = document.createElement("input");
+  inp.value = t.text;
+  inp.style.flex = "1"; inp.style.minWidth = "0";
+  span.replaceWith(inp);
+  inp.focus(); inp.select();
+  const finish = () => { const v = inp.value.trim(); if (v) t.text = v; save(); renderTodos(); };
+  inp.addEventListener("blur", finish);
+  inp.addEventListener("keydown", e => {
+    if (e.key === "Enter") inp.blur();
+    if (e.key === "Escape") { inp.removeEventListener("blur", finish); renderTodos(); }
+  });
+}
+function renderTodos() {
+  const list = [...todos()].sort((a, b) => a.done !== b.done ? (a.done ? 1 : -1) : b.created - a.created);
+  document.getElementById("todoCount").textContent = todos().filter(t => !t.done).length;
+  document.getElementById("todoList").innerHTML = list.length ? list.map(t => `
+    <div class="todo-item ${t.done ? "done" : ""}" data-id="${t.id}">
+      <input type="checkbox" class="todo-check" ${t.done ? "checked" : ""} onchange="toggleTodo('${t.id}')">
+      <span class="txt" title="Double-click to edit" ondblclick="editTodoStart('${t.id}')">${esc(t.text)}</span>
+      <button class="icon-btn" title="Delete" onclick="deleteTodo('${t.id}')">🗑</button>
+    </div>`).join("") : `<div class="todo-empty">Nothing to do — add a task above</div>`;
+}
+document.getElementById("todoInput").addEventListener("keydown", e => { if (e.key === "Enter") addTodo(); });
+
+/* =====================================================================
+   GLOBAL — tabs, theme, search, export/import, clock
+   ===================================================================== */
+function switchTab(name) {
+  document.querySelectorAll(".tab-btn").forEach(b => b.classList.toggle("active", b.dataset.tab === name));
+  document.querySelectorAll(".tab-panel").forEach(p => p.classList.toggle("active", p.id === "panel-" + name));
+}
+document.querySelectorAll(".tab-btn").forEach(btn => btn.addEventListener("click", () => switchTab(btn.dataset.tab)));
+
+/* hover a note → glow every note connected to it (either direction) */
+const notesPaneEl = document.getElementById("notesPane");
+notesPaneEl.addEventListener("mouseover", e => {
+  const card = e.target.closest(".note-card");
+  if (!card) return;
+  const n = state.notes.find(x => x.id === card.dataset.id);
+  if (!n) return;
+  const ids = new Set((n.links || []).filter(l => l.t === "n").map(l => l.id));
+  state.notes.forEach(m => { if ((m.links || []).some(l => l.t === "n" && l.id === n.id)) ids.add(m.id); });
+  ids.forEach(id => { const el = notesPaneEl.querySelector(`.note-card[data-id="${id}"]`); if (el) el.classList.add("connected"); });
+});
+notesPaneEl.addEventListener("mouseout", () => {
+  notesPaneEl.querySelectorAll(".connected").forEach(el => el.classList.remove("connected"));
+});
+
+document.getElementById("themeBtn").addEventListener("click", () => {
+  state.theme = state.theme === "dark" ? "light" : "dark";
+  document.documentElement.dataset.theme = state.theme;
+  save();
+});
+
+const bind = (id, key, fn) => document.getElementById(id).addEventListener("input", e => { ui[key] = e.target.value; fn(); });
+bind("projSearch", "projSearch", renderProjects);
+bind("orderSearch", "orderSearch", renderOrders);
+bind("poSearch", "poSearch", renderPos);
+bind("noteSearch", "noteSearch", renderNotes);
+bind("sowSearch", "sowSearch", renderSows);
+document.getElementById("sowSort").addEventListener("change", e => { ui.sowSort = e.target.value; renderSows(); });
+document.getElementById("projSort").addEventListener("change", e => { ui.projSort = e.target.value; renderProjects(); });
+document.getElementById("noteSort").addEventListener("change", e => { ui.noteSort = e.target.value; renderNotes(); });
+document.getElementById("showClosedOrders").addEventListener("change", renderOrders);
+document.getElementById("showDeliveredPos").addEventListener("change", renderPos);
+
+document.getElementById("exportBtn").addEventListener("click", () => {
+  const blob = new Blob([JSON.stringify(state, null, 2)], { type: "application/json" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `atlas-ops-backup-${todayStr()}.json`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+  toast("Backup exported");
+});
+document.getElementById("snapBtn").addEventListener("click", openSnapshots);
+document.getElementById("importBtn").addEventListener("click", () => document.getElementById("importFile").click());
+document.getElementById("importFile").addEventListener("change", e => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      const data = JSON.parse(reader.result);
+      if (!data.projects || !data.orders || !data.pos || !data.notes) throw new Error("Not a valid backup file");
+      data.sows = data.sows || []; data.todos = data.todos || [];
+      if (!confirm("Importing will replace ALL current data. Continue?")) return;
+      state = data;
+      save(); renderAll();
+      document.documentElement.dataset.theme = state.theme || "dark";
+      toast("Backup imported");
+    } catch (err) { toast("Import failed: " + err.message, "err"); }
+  };
+  reader.readAsText(file);
+  e.target.value = "";
+});
+
+/* =====================================================================
+   AUTO-BACKUP — writes a JSON file on every change (Chrome/Edge).
+   The file handle is remembered in IndexedDB; after a browser restart
+   you click the 💾 button once to re-grant write access.
+   ===================================================================== */
+const REV = "rev 1.0.0";   // site port of local build 2026-10-09-o
+const LS_BACKUP_TS = "atlas_ops_last_backup";
+let backupHandle = null, backupTimer = null, backupPaused = false, backupError = "";
+
+/* One shared connection, reused. Opening a new one per call leaked handles
+   and could block the upgrade transaction after site data is cleared. */
+let idbConn = null;
+function idbOpen() {
+  if (idbConn) return Promise.resolve(idbConn);
+  return new Promise((res, rej) => {
+    const r = indexedDB.open("atlas_ops_fs", 1);
+    r.onupgradeneeded = () => { if (!r.result.objectStoreNames.contains("kv")) r.result.createObjectStore("kv"); };
+    r.onsuccess = () => { idbConn = r.result; idbConn.onclose = () => { idbConn = null; }; res(idbConn); };
+    r.onerror = () => rej(r.error);
+    r.onblocked = () => rej(new Error("IndexedDB upgrade blocked"));
+  });
+}
+async function idbSet(k, v) {
+  const db = await idbOpen();
+  return new Promise((res, rej) => {
+    const tx = db.transaction("kv", "readwrite");
+    tx.objectStore("kv").put(v, k);
+    tx.oncomplete = () => res();
+    tx.onerror = () => rej(tx.error);
+  });
+}
+async function idbGet(k) {
+  const db = await idbOpen();
+  return new Promise((res, rej) => {
+    const rq = db.transaction("kv", "readonly").objectStore("kv").get(k);
+    rq.onsuccess = () => res(rq.result);
+    rq.onerror = () => rej(rq.error);
+  });
+}
+
+function scheduleBackup() {
+  if (!backupHandle || backupPaused) return;
+  clearTimeout(backupTimer);
+  backupTimer = setTimeout(writeBackup, 1200);
+}
+
+/* Writes are serialized: overlapping createWritable() calls on the same handle
+   throw NoModificationAllowedError (the file is locked by the open stream),
+   which is what was flipping auto-backup straight back to "paused". */
+let writeInFlight = false, writeQueued = false;
+
+async function writeBackup() {
+  clearTimeout(backupTimer);
+  if (!backupHandle || backupPaused) return;
+  if (writeInFlight) { writeQueued = true; return; }
+
+  /* GUARD 1 — never write untouched sample data over a backup file. */
+  if (pristineSeed) { console.warn("Backup skipped: state is untouched seed data"); return; }
+
+  /* GUARD 2 — never silently shrink a backup. If the file on disk holds
+     substantially more than memory, something is wrong: stop and ask. */
+  try {
+    const f = await backupHandle.getFile();
+    if (f.size > 2) {
+      const onDisk = JSON.parse(await f.text());
+      if (onDisk && onDisk.projects) {
+        const a = countOf(onDisk), b = countOf(state);
+        if (a.total >= 5 && b.total < a.total * 0.6) {
+          backupPaused = true;
+          updateBackupLabel();
+          const load = confirm(
+            `⚠ Backup safety stop\n\n` +
+            `The backup file holds MORE than what's on screen:\n` +
+            `   file:   ${countSummary(a)}\n` +
+            `   screen: ${countSummary(b)}\n\n` +
+            `Writing now would destroy data. Load the file's contents instead?\n\n` +
+            `OK = load the file (recommended)   ·   Cancel = leave everything untouched`);
+          if (load) {
+            state = onDisk; pristineSeed = false;
+            document.documentElement.dataset.theme = state.theme || "dark";
+            localStorage.setItem(LS_KEY, JSON.stringify(state));
+            renderAll(); backupPaused = false;
+            toast("Loaded backup file contents");
+            updateBackupLabel();
+          }
+          return;
+        }
+      }
+    }
+  } catch (e) { /* unreadable or not JSON — fall through to the normal write */ }
+
+  writeInFlight = true;
+  let lastErr = null;
+  const delays = [0, 500, 1500, 3500];   // 4 attempts with backoff — beats transient file locks
+  for (let i = 0; i < delays.length; i++) {
+    if (delays[i]) await new Promise(r => setTimeout(r, delays[i]));
+    try {
+      const perm = await backupHandle.queryPermission({ mode: "readwrite" });
+      if (perm !== "granted") throw Object.assign(new Error("queryPermission returned '" + perm + "'"), { name: "NotAllowedError" });
+      const w = await backupHandle.createWritable();
+      await w.write(JSON.stringify(state, null, 2));
+      await w.close();
+      localStorage.setItem(LS_BACKUP_TS, String(Date.now()));
+      backupError = ""; lastErr = null;
+      break;
+    } catch (e) {
+      lastErr = e;
+      console.error("Backup write attempt " + (i + 1) + " failed:", e.name, e.message, e);
+    }
+  }
+  writeInFlight = false;
+  if (lastErr) {
+    backupPaused = true; writeQueued = false;
+    backupError = lastErr.name + ": " + lastErr.message;
+    toast("Auto-backup failed — " + lastErr.name, "err");
+    showBackupDiagnostics(lastErr);
+  }
+  updateBackupLabel();
+  if (writeQueued && !backupPaused) { writeQueued = false; writeBackup(); }
+}
+
+/* Full diagnostic readout — so a failure tells us exactly what Chrome objected to. */
+async function showBackupDiagnostics(err) {
+  let perm = "n/a", fileInfo = "n/a";
+  try { if (backupHandle) perm = await backupHandle.queryPermission({ mode: "readwrite" }); } catch (e) { perm = "query threw " + e.name; }
+  try { const f = await backupHandle.getFile(); fileInfo = f.name + " · " + f.size + " bytes"; } catch (e) { fileInfo = "getFile() threw " + e.name + ": " + e.message; }
+  const rows = [
+    ["Error", err ? err.name : "—"],
+    ["Message", err ? err.message : "—"],
+    ["Page protocol", location.protocol],
+    ["Write permission", String(perm)],
+    ["Backup file", fileInfo],
+    ["API available", ("showSaveFilePicker" in window) ? "yes" : "no"],
+    ["Revision", REV],
+  ];
+  openModal("Auto-backup problem", `
+    <div style="font-size:12.5px;color:var(--text-dim);line-height:1.5">
+      The file write was rejected. Details below — send these to get it sorted.
+      Your data is still saved in this browser; nothing was lost.
+    </div>
+    <div style="border:1px solid var(--border);border-radius:8px;overflow:hidden">
+      ${rows.map(([k, v]) => `<div style="display:flex;gap:10px;padding:7px 11px;border-bottom:1px solid var(--border);font-size:12px">
+        <b style="min-width:118px;color:var(--text-dim);font-weight:700">${k}</b>
+        <span class="mono" style="word-break:break-word;flex:1">${esc(String(v))}</span></div>`).join("")}
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn" onclick="closeModal();backupClick(true)">Pick a different file</button>
+      <button class="btn" onclick="copyDiag()">Copy details</button>
+      <button class="btn" onclick="closeModal();document.getElementById('exportBtn').click()">Download backup now</button>
+    </div>
+    <div style="font-size:12px;color:var(--text-dim);line-height:1.5">
+      <b>Common cause:</b> the backup file sits in a folder synced by OneDrive/Dropbox, or is open in
+      another program — both hold a lock Chrome can't write through. Try picking a file in a plain
+      local folder (e.g. Documents), not a synced one.
+    </div>
+  `, () => { backupPaused = false; backupError = ""; writeBackup(); });
+  document.getElementById("modalSave").textContent = "Retry write";
+  window.__diag = rows.map(r => r.join(": ")).join("\n");
+}
+function copyDiag() {
+  navigator.clipboard.writeText(window.__diag || "").then(() => toast("Diagnostics copied"), () => toast("Copy failed", "err"));
+}
+/* Adopt a handle as the backup target — reading it first, always. */
+async function adoptBackupFile(h, { announce = true } = {}) {
+  let data = null, file = null, text = "";
+  try { file = await h.getFile(); text = await file.text(); } catch (e) { text = ""; }
+  try { data = JSON.parse(text); } catch (e) { data = null; }
+
+  if (data && data.projects) {
+    const inFile = countOf(data), inApp = countOf(state);
+    if (inFile.total > 0) {
+      const msg = `"${file.name}" contains:\n   ${countSummary(inFile)}\n\n` +
+        `Currently on screen:\n   ${countSummary(inApp)}\n\n` +
+        `Load the file's contents into the dashboard?\n` +
+        `OK = load the file   ·   Cancel = keep what's on screen`;
+      if (confirm(msg)) {
+        data.sows = data.sows || []; data.todos = data.todos || [];
+        state = data; pristineSeed = false;
+        document.documentElement.dataset.theme = state.theme || "dark";
+        localStorage.setItem(LS_KEY, JSON.stringify(state));
+        mirrorToIdb(); renderAll();
+        toast("Loaded " + inFile.total + " items from backup");
+      } else if (countOf(state).total < inFile.total) {
+        toast("Kept screen data — file will be overwritten on the next change", "warn");
+      }
+    }
+  } else if (text.trim()) {
+    if (!confirm(`"${file.name}" isn't an Atlas Ops backup file.\n\nUse it as the backup target anyway? Its current contents will be replaced.`)) return false;
+  }
+
+  backupHandle = h;
+  try { await idbSet("backupHandle", h); } catch (e) { console.error("Couldn't remember handle", e); }
+  backupPaused = false; backupError = "";
+  updateBackupLabel();
+  if (!pristineSeed) await writeBackup();
+  if (announce) toast("Auto-backup linked to " + (file ? file.name : "file"));
+  return true;
+}
+
+/* Startup: storage empty but the linked file has data → offer it. */
+async function maybeRestoreFromBackup() {
+  if (!backupHandle || !pristineSeed) return;
+  try {
+    const file = await backupHandle.getFile();
+    const data = JSON.parse(await file.text());
+    const c = countOf(data);
+    if (data.projects && c.total) {
+      if (confirm(`Browser storage was empty, but your backup file has data:\n   ${countSummary(c)}\n\nRestore it?`)) {
+        data.sows = data.sows || []; data.todos = data.todos || [];
+        state = data; pristineSeed = false;
+        localStorage.setItem(LS_KEY, JSON.stringify(state));
+        renderAll();
+        document.documentElement.dataset.theme = state.theme || "dark";
+        toast("Restored from backup file");
+      }
+    }
+  } catch (e) { /* empty or brand-new backup file — nothing to restore */ }
+}
+/* First-run / re-link chooser — loading an existing file is the default path. */
+function openBackupChooser() {
+  openModal("Auto-backup", `
+    <div style="font-size:12.5px;color:var(--text-dim);line-height:1.55">
+      Pick the file this dashboard keeps in sync. Choosing an existing backup
+      <b>loads it first</b> — it is never blanked.
+    </div>
+    <button class="btn btn-primary" style="justify-content:center;padding:12px" onclick="closeModal();backupUseExisting()">
+      📂 Open an existing backup file
+    </button>
+    <div style="font-size:11.5px;color:var(--text-dim);margin-top:-6px">
+      Loads its contents into the dashboard, then keeps writing to it.
+    </div>
+    <button class="btn" style="justify-content:center;padding:12px" onclick="closeModal();backupCreateNew()">
+      ✚ Start a new backup file
+    </button>
+    <div style="font-size:11.5px;color:var(--text-dim);margin-top:-6px">
+      For a fresh file. If you pick one that already has data, it's loaded rather than overwritten.
+    </div>
+  `, null);
+  document.getElementById("modalSave").style.display = "none";
+}
+
+async function backupUseExisting() {
+  try {
+    const [h] = await window.showOpenFilePicker({
+      multiple: false,
+      types: [{ description: "JSON backup", accept: { "application/json": [".json"] } }],
+    });
+    const p = await h.requestPermission({ mode: "readwrite" });
+    if (p !== "granted") { toast("Write access denied — file not linked", "warn"); return; }
+    await adoptBackupFile(h);
+  } catch (e) { if (e.name !== "AbortError") toast("Couldn't open file: " + e.message, "err"); }
+}
+
+async function backupCreateNew() {
+  try {
+    const h = await window.showSaveFilePicker({
+      suggestedName: "atlas-ops-autobackup.json",
+      types: [{ description: "JSON backup", accept: { "application/json": [".json"] } }],
+    });
+    await adoptBackupFile(h);   // reads it first even here — picking an existing file loads it
+  } catch (e) { if (e.name !== "AbortError") toast("Backup setup failed: " + e.message, "err"); }
+}
+
+async function backupClick(forcePick) {
+  if (!("showSaveFilePicker" in window)) { document.getElementById("exportBtn").click(); return; }
+  if (!backupHandle || forcePick) { openBackupChooser(); return; }
+  try {
+    if (backupHandle && !forcePick) {
+      const p = await backupHandle.requestPermission({ mode: "readwrite" });
+      if (p === "granted") {
+        backupPaused = false; backupError = "";
+        await maybeRestoreFromBackup();
+        await writeBackup();
+        updateBackupLabel();
+        if (!backupPaused) toast("Auto-backup active");
+        else if (confirm("Couldn't write to the saved backup file (" + backupError + ").\n\nPick a backup file again?")) return backupClick(true);
+        return;
+      }
+      if (!confirm("Chrome didn't grant write access to the saved backup file.\n\nChoose a backup file again?")) {
+        updateBackupLabel(); return;
+      }
+    }
+    openBackupChooser();
+  } catch (e) {
+    if (e.name !== "AbortError") toast("Backup setup failed: " + e.message, "err");
+  }
+  updateBackupLabel();
+}
+function updateBackupLabel() {
+  const el = document.getElementById("backupStatus");
+  const ts = Number(localStorage.getItem(LS_BACKUP_TS) || 0);
+  el.style.borderColor = ""; el.style.color = "";
+  if (!("showSaveFilePicker" in window)) {
+    el.textContent = "💾 Export manually";
+    el.title = "Auto-backup needs Chrome or Edge — click to download a JSON backup";
+  } else if (!backupHandle) {
+    el.textContent = "💾 Set up auto-backup";
+    el.title = "Click to choose a backup file — every change will be saved to it automatically";
+    el.style.borderColor = "var(--yellow)";
+  } else if (backupPaused) {
+    el.textContent = "💾 Click to resume backup";
+    el.title = (backupError ? "Last error — " + backupError + "\n" : "") +
+      "Click to re-grant write access to your backup file. Shift+click to pick a different file.";
+    el.style.borderColor = "var(--yellow)"; el.style.color = "var(--yellow)";
+  } else {
+    el.textContent = "💾 Backed up " + (ts ? new Date(ts).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : "—");
+    el.title = "Auto-backup active — last write shown. Click to force a backup now.\nShift+click to pick a different file. " + REV;
+  }
+}
+/* If localStorage came up empty but the IndexedDB mirror has data, offer it. */
+async function maybeRestoreFromIdb() {
+  if (!pristineSeed) return;
+  try {
+    const snap = await idbGet("snapshot");
+    if (snap && snap.data && snap.data.projects) {
+      const n = snap.data.projects.length + snap.data.orders.length + snap.data.pos.length + snap.data.notes.length;
+      if (n && confirm(`Browser storage was empty, but a local snapshot from ${new Date(snap.ts).toLocaleString()} has ${n} items.\n\nRestore it?`)) {
+        state = snap.data; pristineSeed = false;
+        localStorage.setItem(LS_KEY, JSON.stringify(state));
+        renderAll();
+        document.documentElement.dataset.theme = state.theme || "dark";
+        toast("Restored from local snapshot");
+      }
+    }
+  } catch (e) { console.error("IDB restore check failed", e); }
+}
+
+async function initBackup() {
+  console.log("Ops Dashboard — " + REV);
+  try { if (navigator.storage && navigator.storage.persist) await navigator.storage.persist(); } catch (e) {}
+  await maybeRestoreFromIdb();
+  if ("showSaveFilePicker" in window) {
+    try {
+      backupHandle = await idbGet("backupHandle");
+      if (backupHandle) {
+        const p = await backupHandle.queryPermission({ mode: "readwrite" });
+        if (p === "granted") { backupPaused = false; await maybeRestoreFromBackup(); await writeBackup(); }
+        else { backupPaused = true; toast("Click 💾 to resume auto-backup", "warn"); }
+      }
+    } catch (e) { console.error("Backup init failed", e); }
+  }
+  updateBackupLabel();
+}
+document.getElementById("backupStatus").addEventListener("click", e => {
+  if (e.shiftKey) return backupClick(true);           // Shift+click = pick a different backup file
+  if (backupHandle && !backupPaused) return writeBackup();
+  backupClick();
+});
+initBackup();
+
+function tickClock() {
+  const now = new Date();
+  document.getElementById("clock").innerHTML =
+    now.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric", year: "numeric" }) +
+    "<br><b>" + now.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" }) + "</b>";
+}
+setInterval(tickClock, 15000);
+
+function renderAll() { renderProjects(); renderOrders(); renderPos(); renderSows(); renderNotes(); renderTodos(); }
+document.getElementById("rev").textContent = REV;
+
+/* =====================================================================
+   DOT FIELD — rolling wave + cursor hot spot (from atlasclark.github.io)
+   Dashboard-specific changes vs. the site:
+     • full-window, fixed behind the UI; glow shows through gaps between cards
+     • capped at ~30fps and fully paused while the tab is hidden
+     • slightly subtler base alpha so dense tables stay readable
+     • respects prefers-reduced-motion; on/off toggle saved with your data
+   ===================================================================== */
+const fx = (() => {
+  const cv = document.getElementById("field"), ctx = cv.getContext("2d");
+  const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const GAP = 22, FRAME_MS = 33;
+  let w = 0, h = 0, mx = -1e4, my = -1e4, t = 0, raf = 0, last = 0, on = false;
+  let dot = "236,237,230", hot = "208,221,43";
+
+  const readColors = () => {
+    const cs = getComputedStyle(document.documentElement);
+    dot = cs.getPropertyValue("--dot").trim() || dot;
+    hot = cs.getPropertyValue("--dot-hot").trim() || hot;
+  };
+  function size() {
+    const dpr = Math.min(devicePixelRatio || 1, 2);
+    w = innerWidth; h = innerHeight;
+    cv.width = w * dpr; cv.height = h * dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+  function draw() {
+    ctx.clearRect(0, 0, w, h);
+    for (let y = GAP / 2; y < h; y += GAP) for (let x = GAP / 2; x < w; x += GAP) {
+      const wave = Math.sin(x * 0.012 + t) * Math.cos(y * 0.016 - t * 0.7);
+      const heat = Math.max(0, 1 - Math.hypot(x - mx, y - my) / 160);
+      const base = 0.06 + 0.08 * (wave + 1) / 2;
+      ctx.fillStyle = heat > 0.02 ? `rgba(${hot},${Math.min(1, base + heat * 0.9)})` : `rgba(${dot},${base})`;
+      ctx.beginPath(); ctx.arc(x, y, 1 + heat * 1.6 + (wave > 0.82 ? 0.5 : 0), 0, 6.2832); ctx.fill();
+    }
+  }
+  function loop(ts) {
+    raf = 0;
+    if (!on || document.hidden) return;
+    if (ts - last >= FRAME_MS) { last = ts; t += 0.016; draw(); }
+    raf = requestAnimationFrame(loop);
+  }
+  const start = () => { if (on && !raf && !document.hidden) raf = requestAnimationFrame(loop); };
+
+  addEventListener("resize", () => { size(); draw(); });
+  addEventListener("pointermove", e => { mx = e.clientX; my = e.clientY; }, { passive: true });
+  document.addEventListener("pointerleave", () => { mx = my = -1e4; });
+  addEventListener("blur", () => { mx = my = -1e4; });
+  document.addEventListener("visibilitychange", start);
+  new MutationObserver(() => { readColors(); draw(); })
+    .observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+
+  function set(enabled) {
+    on = enabled && !reduce;
+    document.body.classList.toggle("fx-off", !on);
+    const b = document.getElementById("fxBtn");
+    b.classList.toggle("on", on); b.setAttribute("aria-pressed", on);
+    b.title = reduce ? "Animated background disabled (reduced-motion is on in your OS)"
+                     : (on ? "Animated background: on" : "Animated background: off");
+    if (on) { readColors(); size(); draw(); start(); }
+    else if (raf) { cancelAnimationFrame(raf); raf = 0; }
+  }
+  return { set };
+})();
+document.getElementById("fxBtn").addEventListener("click", () => {
+  state.fx = state.fx === false;   // undefined/true → false, false → true
+  localStorage.setItem(LS_KEY, JSON.stringify(state));   // UI pref only — no backup write
+  fx.set(state.fx !== false);
+});
+/* Show the wordmark when it loads; otherwise keep the text fallback. */
+(() => {
+  const im = new Image();
+  im.onload = () => document.documentElement.classList.add("has-wm");
+  im.src = "../../assets/brand/wordmark.png";
+})();
+document.documentElement.dataset.theme = state.theme || "dark";
+tickClock();
+renderAll();
+fx.set(state.fx !== false);   // after theme is applied so the field reads the right colors
+</script>
+</body>
+</html>

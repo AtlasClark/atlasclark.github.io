@@ -7,3 +7,7 @@ Reference Project Folder/
 *.xlsx
 *.xlsm
 *.xls
+
+# Ops Dashboard data is local only. Never commit it.
+Daily_Dashboard/
+atlas-ops-*.json
