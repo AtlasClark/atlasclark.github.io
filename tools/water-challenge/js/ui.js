@@ -8,16 +8,17 @@ import { S, personalGoal, capFor, totalOn, metGoal, pastCap, atCap, dayScoreFor,
          currentGoal, currentGoalFor, currentAnnualGoal, currentIdleMax, goalTunables, legacyFlat,
          challengeStart, challengeEnd, yearElapsed, teamYearTotal, yearTargets, seasonStats,
          recentDays, topOf, dayRec, dayLeaders, dayResult, wonDay, satOut, tokensEarned,
-         duplicateNames, isAway, openAwaySince, goalForDate } from "./model.js";
+         duplicateNames, isAway, openAwaySince, goalForDate, petEventTimes } from "./model.js";
 import { petKindFor, ownsEquipped, graveEquipped, petHueFor, isGrave, gravesOf, petsOwned,
          graveLine, petLabel, petName, petRarityOf, petBinIndex, petGridOrder, penFound,
-         hashHue } from "./pets.js";
+         hashHue, rarityLabel, undoEffect } from "./pets.js";
 import { crownSvg, jesterSvg, hatSvg, drawPortrait, drawCritter, drawHeadstone, drawGoldPile } from "./art.js";
 import * as G from "./glass.js";
 import { diag, dir } from "./store.js";
 import { $, esc, fmt, fmtOz, fmtGal, todayKey, dateKey, prettyTime, clockStamp, has } from "./util.js";
 
-export const ui = { tab: "today", amount: C.DEFAULT_AMOUNT, connected: false, lastSync: "" };
+export const ui = { tab: "today", amount: C.DEFAULT_AMOUNT, connected: false, lastSync: "",
+                    armed: "" };   /* eid of the pour whose undo is waiting for a second click */
 
 /* ---- DOM helpers -------------------------------------------------------- */
 const htmlCache = {};
@@ -101,19 +102,21 @@ export function renderChips() {
 /* ---- glasses ------------------------------------------------------------ */
 let ordered = [], renderedSig = "";
 
+/* Measured on the section, not the grid: the grid's own width is set from the layout. */
 function wrapWidth() {
-  const el = $("glasses");
+  const el = $("view-today");
   const w = el ? el.clientWidth : 0;
   return Math.max(240, Math.min(C.WRAP_MAX, w || (document.body.clientWidth - C.SHELL_PAD * 2)));
 }
 
 export function relayout() {
-  if (G.applyTier(G.pickTier(activeParticipants().length, wrapWidth()))) { renderedSig = ""; return true; }
+  if (G.applyLayout(G.pickLayout(activeParticipants().length, wrapWidth()))) { renderedSig = ""; return true; }
   return false;
 }
 
 function buildGlasses() {
-  const T = C.CARD_TIERS[Math.max(0, G.dims.tier)];
+  const T = G.dims;
+  $("glasses").style.maxWidth = (T.cols * (T.card + C.CARD_GAP * 2)) + "px";   /* wrap at exactly cols */
   const rTop = Math.round(T.gw * 0.106), rBot = Math.round(T.gw * 0.212);
   const radius = rTop + "px " + rTop + "px " + rBot + "px " + rBot + "px";
   const compact = T.card < C.COMPACT_UNDER;
@@ -161,7 +164,7 @@ function renderGlasses() {
     renderedSig = "";
     return;
   }
-  const sig = G.dims.tier + "\u0002" + ordered.map(p => p.name + "\u0003" + p.color).join("\u0001");
+  const sig = G.dims.card + "x" + G.dims.cols + "\u0002" + ordered.map(p => p.name + "\u0003" + p.color).join("\u0001");
   if (sig !== renderedSig) { buildGlasses(); renderedSig = sig; }
   updateGlasses();
 }
@@ -231,10 +234,8 @@ export function toggleSwatches(card) {
 function renderAddButtons() {
   setHtml("addButtons", orderedBy(C.BUTTON_ORDER).map(p => {
     const n = ja(p.name);
-    return '<span class="pbtn-group" style="--pc:' + p.color + '">' +
-      '<button type="button" class="participant-button add" data-act="add" data-name="' + n + '">Add for ' + esc(p.name) + '</button>' +
-      '<button type="button" class="participant-button undo" data-act="undo" data-name="' + n +
-      '" title="Remove ' + n + '&rsquo;s most recent pour today">undo</button></span>';
+    return '<button type="button" class="participant-button" style="--pc:' + p.color + '" data-act="add" data-name="' + n + '">' +
+      'Add for ' + esc(p.name) + '</button>';
   }).join(""));
 }
 
@@ -264,39 +265,52 @@ function renderLeaderboard() {
   setEl("leaderBadge", win === "-" ? "Nobody has poured yet" : win === "Tie" ? "It is currently a tie" : esc(win) + " is leading", null);
 }
 
-function dayEndTs() { const d = new Date(); d.setHours(23, 59, 59, 0); return d.getTime(); }
-
+/* Pet events stay pinned at the top so everyone sees who got what; each carries the
+   time of the pour that caused it. Every pour below has its own undo, which asks
+   for a second click and says what it does to the pets first. */
 function renderActivity() {
-  const key = todayKey(), all = [];
+  const key = todayKey(), pets = [], pours = [];
+  const atOf = ts => (ts && new Date(ts).getTime()) || 0;
   for (const p of S.participants) {
-    for (const e of p.entries) {
-      if (e.date === key) all.push({ ts: e.ts, at: new Date(e.ts).getTime() || 0, name: p.name, oz: e.oz, by: e.by, kind: "water" });
-    }
+    for (const e of p.entries) if (e.date === key) pours.push({ p, e, at: atOf(e.ts) });
+    const t = petEventTimes(p, key);
     if (p.petRollDay === key && Number(p.rollKind) >= 0) {
-      all.push({ at: dayEndTs() - 2, name: p.name, kind: "roll", pet: Number(p.rollKind), fresh: !!p.rollWasNew });
+      pets.push({ kind: "roll", p, pet: Number(p.rollKind), fresh: !!p.rollWasNew, ts: t.roll });
     }
-    if (p.graveDay === key && Number(p.deadKind) >= 0) {
-      all.push({ at: dayEndTs() - 1, name: p.name, kind: "grave", pet: Number(p.deadKind) });
-    }
+    if (p.graveDay === key && Number(p.deadKind) >= 0) pets.push({ kind: "grave", p, pet: Number(p.deadKind), ts: t.grave });
   }
-  all.sort((a, b) => b.at - a.at);          /* pet events carry end-of-day, so they lead */
-  const h = all.slice(0, C.ACTIVITY_LIMIT).map(a => {
+  pets.sort((a, b) => atOf(b.ts) - atOf(a.ts));
+  pours.sort((a, b) => b.at - a.at);
+  if (ui.armed && !pours.some(x => x.e.eid === ui.armed)) ui.armed = "";
+
+  const h = pets.map(a => {
+    const when = '<span class="t">' + (a.ts ? esc(prettyTime(a.ts)) : "today") + '</span>';
     if (a.kind === "roll") {
-      return '<li class="ev-pet"><span class="t">pet</span><strong>' + esc(a.name) + '</strong> ' +
-             (a.fresh ? "unlocked the " : "rolled another ") + esc(petLabel(a.pet)) +
-             ' <span class="rar">' + esc(petRarityOf(a.pet).name) + '</span></li>';
+      return '<li class="ev-pet">' + '<span class="tag">' + (a.fresh ? "new pet" : "pet") + '</span>' + when +
+             '<strong>' + esc(a.p.name) + '</strong> ' + (a.fresh ? "unlocked the " : "rolled another ") + esc(petLabel(a.pet)) +
+             ' <span class="rar">' + esc(rarityLabel(a.pet)) + '</span></li>';
     }
-    if (a.kind === "grave") {
-      return '<li class="ev-grave"><span class="t">RIP</span><strong>' + esc(a.name) + '</strong> drowned ' +
-             esc(petLabel(a.pet)) + '</li>';
-    }
-    return '<li>' + (a.by ? '<span class="by" title="who logged it">' +
-             esc(a.by === C.HIDRATE_TAG ? C.HIDRATE_LABEL : a.by) + '</span>' : '') +
-           '<span class="t">' + esc(prettyTime(a.ts)) + '</span><strong>' + esc(a.name) + '</strong> added ' +
-           fmt(a.oz) + ' fl oz</li>';
+    return '<li class="ev-grave"><span class="tag">RIP</span>' + when + '<strong>' + esc(a.p.name) + '</strong> drowned the ' +
+           esc(petLabel(a.pet)) + '</li>';
   });
+  for (const { p, e } of pours.slice(0, C.ACTIVITY_LIMIT)) {
+    const armed = ui.armed === e.eid, by = e.by === C.HIDRATE_TAG ? C.HIDRATE_LABEL : e.by;
+    let note = "";
+    if (armed) {
+      const fx = undoEffect(p, e.eid);
+      note = '<div class="undo-note">Removes ' + fmt(e.oz) + ' oz from ' + esc(p.name) + (fx ? ': ' + esc(fx) : '') +
+             '. Click <b>remove</b> again to confirm.</div>';
+    }
+    h.push('<li class="pour' + (armed ? " armed" : "") + '" data-name="' + ja(p.name) + '" data-eid="' + esc(e.eid) + '">' +
+           '<button type="button" class="undo-x" data-act="undo" title="Remove this pour">' + (armed ? "remove" : "undo") + '</button>' +
+           (by ? '<span class="by" title="who logged it">' + esc(by) + '</span>' : '') +
+           '<span class="t">' + esc(prettyTime(e.ts)) + '</span><strong>' + esc(p.name) + '</strong> added ' +
+           fmt(e.oz) + ' fl oz' + note + '</li>');
+  }
   setHtml("activity", h.length ? h.join("") : '<p class="empty-state">No entries yet today. Start drinking.</p>');
 }
+
+export function renderActivityNow() { renderActivity(); }
 
 /* ---- team bar ----------------------------------------------------------- */
 function renderTeamBar() {
@@ -690,7 +704,7 @@ export function showDiag() {
   h.push(rRow("Permission", esc(diag.permission || "(not checked)")));
   h.push(rRow("Signed in as", esc(S.me || "(not set)")));
   h.push(rRow("Writes", diag.writes + ' this session' + (diag.lockSteals ? ' &middot; ' + diag.lockSteals + ' stale lock(s) cleared' : '')));
-  h.push(rRow("Layout", 'tier ' + (G.dims.tier + 1) + ' of ' + C.CARD_TIERS.length + ' &middot; ' + C.CARD_TIERS[Math.max(0, G.dims.tier)].card + 'px cards'));
+  h.push(rRow("Layout", G.dims.cols + ' per row &middot; ' + G.dims.card + 'px cards &middot; ' + G.dims.gw + '&times;' + G.dims.gh + 'px glasses'));
   h.push(rRow("Animation", G.stats.fps + ' fps &middot; ' + G.bubbleCount() + ' bubbles' +
               (G.stats.errors ? ' &middot; <span class="bad">' + G.stats.errors + ' errors, last: ' + esc(G.stats.lastError) + '</span>' : '')));
   h.push('</table>');

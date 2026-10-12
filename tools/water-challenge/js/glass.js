@@ -9,27 +9,38 @@ import { drawCritter, drawHeadstone } from "./art.js";
 
 export const anim = {};
 const reduceMotion = typeof window !== "undefined" && window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)");
-export const dims = { tier: -1, W: 124, H: 239, head: 34 };
+export const dims = { card: 0, cols: 0, gw: 132, gh: 246, W: 124, H: 239, head: 34 };
 export const stats = { errors: 0, lastError: "", fps: 0 };
 
 let active = true;              /* false while another tab is showing */
 export function setActive(on) { active = on; }
 
-/* ---- layout tiers ------------------------------------------------------- */
-export function pickTier(count, avail) {
-  const want = Math.min(count || 1, C.MAX_COLS);
-  for (let i = 0; i < C.CARD_TIERS.length; i++) {
-    if (Math.floor(avail / (C.CARD_TIERS[i].card + C.CARD_GAP * 2)) >= want) return i;
+/* ---- layout ------------------------------------------------------------- */
+/* Fewest rows whose cards stay at least CARD_COMFORT wide; if none does, the
+   widest cards on offer. Columns are then n / rows rounded up, so rows even out. */
+export function pickLayout(count, avail) {
+  const n = Math.max(1, count || 0);
+  let best = null;
+  for (let rows = 1; rows <= n; rows++) {
+    const cols = Math.ceil(n / rows);
+    if (cols > C.MAX_COLS || (best && cols === best.cols)) continue;
+    const fit = Math.floor((avail / cols - C.CARD_GAP * 2) / C.CARD_STEP) * C.CARD_STEP;
+    const lay = { cols, rows: Math.ceil(n / cols), card: Math.max(C.CARD_MIN, Math.min(C.CARD_MAX, fit)) };
+    if (fit >= C.CARD_COMFORT) return lay;
+    if (!best || lay.card > best.card) best = lay;
   }
-  return C.CARD_TIERS.length - 1;
+  return best;
 }
 
-export function applyTier(i) {
-  if (i === dims.tier) return false;
-  dims.tier = i;
-  dims.W = C.CARD_TIERS[i].gw - 8;          /* glass content box, minus borders */
-  dims.H = C.CARD_TIERS[i].gh - 7;
-  dims.head = Math.round(C.CARD_TIERS[i].gw * 0.42);
+export function applyLayout(lay) {
+  if (lay.card === dims.card && lay.cols === dims.cols) return false;
+  dims.card = lay.card;
+  dims.cols = lay.cols;
+  dims.gw = Math.round(lay.card * C.GLASS_W_RATIO);
+  dims.gh = Math.round(lay.card * C.GLASS_H_RATIO);
+  dims.W = dims.gw - 8;                    /* glass content box, minus borders */
+  dims.H = dims.gh - 7;
+  dims.head = Math.round(dims.gw * 0.42);
   for (const k in anim) seedBubbles(anim[k]);
   return true;
 }
@@ -85,6 +96,14 @@ export function unbindAll() { for (const k in anim) { anim[k].ctx = null; anim[k
 
 const motionOn = () => C.PET_MOTION && !(reduceMotion && reduceMotion.matches);
 const petX = st => dims.W / 2 + Math.sin(st.phase * 0.31) * (dims.W * 0.21);
+export const petR = () => Math.min(dims.W * 0.26, 30);
+const depthAt = level => Math.min(Math.max(level, 0), 1) * (dims.H - C.SURFACE_BAND);
+
+/* Enough water under the surface for a dive, now and where the level is heading. */
+export function canDive(st) {
+  const need = petR() * C.DIVE_MIN_DEPTH_R;
+  return depthAt(st.level) >= need && depthAt(st.target) >= need;
+}
 
 function ringAt(st, x, big) {
   st.rings.push({ r: 2, a: big ? 0.45 : 0.3, x });
@@ -214,7 +233,7 @@ function drawPetLayer(st) {
   ctx.clearRect(0, 0, st.dW, st.dH);
   if (!st.duckState) return;
   const top = H - Math.min(Math.max(st.level, 0), 1) * (H - C.SURFACE_BAND);
-  const r = Math.min(W * 0.26, 30);
+  const r = petR();
   if (st.duckState === 4) { drawHeadstone(ctx, W / 2 + offX, H - 4 + offY, r, st.critterHue); return; }
   if (st.duckState === 1) {
     drawFloating(ctx, st, W, H, top, offX, offY, r);
@@ -310,7 +329,7 @@ function step(st, f) {
 }
 
 /* Facing, hops and dives for a floating pet. Everything else stays still. */
-function stepMotion(st, f) {
+export function stepMotion(st, f) {
   const m = st.m, dt = f / 30;
   m.t += dt;
   if (st.duckState !== 1 || !motionOn()) { m.dive = -1; m.hop = -1; return; }
@@ -318,6 +337,8 @@ function stepMotion(st, f) {
   if (vel > 0.05) m.face = -1; else if (vel < -0.05) m.face = 1;
   m.flip += (m.face - m.flip) * (1 - Math.pow(1 - C.TURN_EASE, f));
   if (m.dive >= 0) {
+    /* The water dropped under it (an undo): turn round and come up from here. */
+    if (m.dive < 0.5 && depthAt(Math.min(st.level, st.target)) < petR() * C.SURFACE_DEPTH_R) m.dive = 1 - m.dive;
     m.dive += dt / C.DIVE_SECS;
     if (m.splashed === 0 && m.dive > 0.06) { m.splashed = 1; ringAt(st, petX(st), true); }
     if (m.splashed === 1 && m.dive > 0.92) { m.splashed = 2; ringAt(st, petX(st), true); }
@@ -326,7 +347,7 @@ function stepMotion(st, f) {
     m.hop += dt / C.HOP_SECS;
     if (m.hop >= 1) { m.hop = -1; ringAt(st, petX(st), false); m.nextHop = m.t + rnd(C.HOP_EVERY[0], C.HOP_EVERY[1]); }
   } else if (m.t > m.nextDive) {
-    if (st.level >= C.DIVE_MIN_LEVEL) { m.dive = 0; m.splashed = 0; }
+    if (canDive(st)) { m.dive = 0; m.splashed = 0; }
     else m.nextDive = m.t + rnd(C.DIVE_EVERY[0], C.DIVE_EVERY[1]);
   } else if (m.t > m.nextHop && st.level > 0.04) {
     m.hop = 0;

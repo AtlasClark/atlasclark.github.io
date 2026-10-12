@@ -3,8 +3,8 @@
    contract (FORMAT_REV 21, UTF-16 LE + BOM) must stay identical while R55 runs on the
    share: R55 deletes any field it does not know on its next write. */
 
-export const REV         = "rev 1.1.0";
-export const APP_VERSION = "web 1.1.0";   /* stamped as writerVersion */
+export const REV         = "rev 1.2.0";
+export const APP_VERSION = "web 1.2.0";   /* stamped as writerVersion */
 /* A folder stays at LEGACY_FORMAT (byte-compatible with R55) until someone upgrades
    it from Settings. Format 22 adds tokensSpent and keeps unknown fields; R55 must
    not be used on a folder after that. */
@@ -138,21 +138,25 @@ export const DIVE_EVERY     = [25, 60];   /* random gap between dives */
 export const HOP_EVERY      = [9, 24];    /* random gap between small hops */
 export const DIVE_SECS      = 2.6;
 export const HOP_SECS       = 0.7;
-export const DIVE_MIN_LEVEL = 0.3;        /* not enough water below this to dive */
+/* A dive needs this much water under the surface, in pet radii, both now and where
+   the level is heading. Below SURFACE_DEPTH_R mid-dive, the pet turns back up. */
+export const DIVE_MIN_DEPTH_R = 2.4;
+export const SURFACE_DEPTH_R  = 1.2;
 export const TURN_EASE      = 0.16;       /* how fast a pet turns to face its drift */
 export const UNDERWATER_TINT = 0.42;      /* water colour over anything below the surface */
 export const SPLASH_RINGS   = 3;
 export const RING_GROWTH    = 2.3;
 export const RING_FADE      = 0.915;
 
-/* Card sizes, largest first; the layout picks the largest that fits. */
-export const CARD_TIERS = [
-  { card: 188, gw: 132, gh: 246 },
-  { card: 164, gw: 116, gh: 216 },
-  { card: 142, gw: 100, gh: 186 },
-  { card: 124, gw:  88, gh: 164 },
-  { card: 108, gw:  76, gh: 142 }
-];
+/* Card layout. The page uses the fewest rows that keep every card at least
+   CARD_COMFORT wide, then shares the cards evenly over those rows (8 people on a
+   narrow screen read 4 + 4, not 5 + 3 of thin cups). The glass scales with the card. */
+export const CARD_MAX      = 188;
+export const CARD_COMFORT  = 144;
+export const CARD_MIN      = 100;
+export const CARD_STEP     = 4;         /* sizes snap to this, so a resize rebuilds less often */
+export const GLASS_W_RATIO = 132 / 188;
+export const GLASS_H_RATIO = 246 / 188;
 export const CARD_GAP      = 10;
 export const MAX_COLS      = 6;
 export const COMPACT_UNDER = 140;

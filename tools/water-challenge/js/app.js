@@ -9,7 +9,8 @@ import * as store from "./store.js";
 import { reconcilePets, equipPet } from "./pets.js";
 import * as G from "./glass.js";
 import { ui, render, setTab, setMsg, showBanner, renderChips, tickMasks, relayout, forceRebuild,
-         toggleSwatches, openBank, auditStreak, showDiag, closeOverlays, fillSettings, renderRoster } from "./ui.js";
+         toggleSwatches, openBank, auditStreak, showDiag, closeOverlays, fillSettings, renderRoster,
+         renderActivityNow } from "./ui.js";
 import { $, bus, todayKey, localStamp, fmt, fmtOz, trim, parseKey, shiftKey, clockStamp } from "./util.js";
 
 let lastSig = "", pollTimer = 0;
@@ -265,17 +266,25 @@ async function addWater(name) {
   });
 }
 
-async function undoLast(name) {
+/* First click arms a pour's undo for a few seconds; the second click removes it. */
+const ARM_MS = 5000;
+let armTimer = 0;
+function armUndo(eid) {
+  ui.armed = eid;
+  clearTimeout(armTimer);
+  armTimer = setTimeout(() => { ui.armed = ""; renderActivityNow(); }, ARM_MS);
+  renderActivityNow();
+}
+
+async function undoEntry(name, eid) {
   if (!guard()) return;
+  ui.armed = "";
+  clearTimeout(armTimer);
   await store.serial(async () => {
     const p = findParticipant(name), key = todayKey();
     if (!p) { setMsg(name + " is no longer on the roster.", false); return; }
-    let idx = -1;
-    p.entries.forEach((e, i) => {
-      if (e.date !== key || e.by === C.HIDRATE_TAG) return;
-      if (idx < 0 || String(e.ts) >= String(p.entries[idx].ts)) idx = i;
-    });
-    if (idx < 0) { setMsg("Nothing logged for " + p.name + " today.", false); return; }
+    const idx = p.entries.findIndex(e => e.eid === eid);
+    if (idx < 0) { setMsg("That pour was already removed.", false); render(); return; }
     const removed = p.entries[idx];
     p.entries.splice(idx, 1);
     if (!(await store.saveParticipant(p, [removed.eid]))) {
@@ -440,7 +449,12 @@ function wire() {
     const b = e.target.closest("[data-act]");
     if (!b) return;
     if (b.dataset.act === "add") addWater(b.dataset.name);
-    else if (b.dataset.act === "undo") undoLast(b.dataset.name);
+  };
+  $("activity").onclick = e => {
+    const b = e.target.closest("[data-act=undo]"), row = e.target.closest("li.pour");
+    if (!b || !row) return;
+    if (ui.armed === row.dataset.eid) undoEntry(row.dataset.name, row.dataset.eid);
+    else armUndo(row.dataset.eid);
   };
   $("glasses").onclick = e => {
     const t = e.target.closest("[data-act]"), card = e.target.closest(".participant-card");
@@ -469,7 +483,7 @@ function wire() {
     $(id).addEventListener("click", e => { if (e.target.id === id || e.target.closest(".report-x")) closeOverlays(); });
   }
   document.addEventListener("keydown", e => {
-    if (e.key === "Escape") { closeOverlays(); closeSettings(); }
+    if (e.key === "Escape") { closeOverlays(); closeSettings(); if (ui.armed) { ui.armed = ""; renderActivityNow(); } }
   });
   document.addEventListener("click", e => {
     if (!$("settingsPanel").hidden && !e.target.closest("#settingsPanel") && !e.target.closest("#cog")) closeSettings();

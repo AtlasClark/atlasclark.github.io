@@ -291,3 +291,27 @@ export async function equipPet(name, kind) {
   bus.msg(buried ? p.name + " is carrying the " + label + "'s headstone around. Grim."
                  : p.name + " equipped the " + label + ".", true);
 }
+
+/* Rarity text for the activity feed. The reward and the one outside the pen have
+   no bin (R55 showed them as Common). */
+export function rarityLabel(k) {
+  if (k === C.HOMUNCULUS_KIND) return "reward";
+  if (k === C.MYSTERY_KIND) return "not in the pen";
+  return petRarityOf(k).name;
+}
+
+/* What taking one of today's pours away would do to the pets, for the undo
+   prompt. Mirrors reconcilePets: a revive when the total drops back under the
+   cap, a take-back when it drops under the goal. */
+export function undoEffect(p, eid) {
+  const key = todayKey(), e = p.entries.find(x => x.eid === eid);
+  if (!e || e.date !== key) return "";
+  const total = totalOn(p, key), after = total - Number(e.oz), goal = personalGoal(p, key), bits = [];
+  if (p.graveDay === key && Number(p.deadKind) >= 0 && pastCap(total, p, key) && !pastCap(after, p, key)) {
+    bits.push("the " + petLabel(Number(p.deadKind)) + " comes back to life");
+  }
+  if (p.petRollDay === key && Number(p.rollKind) >= 0 && metGoal(total, goal) && !metGoal(after, goal)) {
+    bits.push(p.rollWasNew ? "the " + petLabel(Number(p.rollKind)) + " goes back" : "today's roll is taken back");
+  }
+  return bits.join(", and ");
+}

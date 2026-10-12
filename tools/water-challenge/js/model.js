@@ -440,3 +440,20 @@ export function topOf(stats, field) {
   }
   return best;
 }
+
+/* ---- when today's pet events happened ----------------------------------- */
+/* The time of the pour that first took the day's running total across a line.
+   The files hold no time for a roll or a drowning, but each one happens on the
+   pour that crosses the goal or the cap, so the time can be read back from it. */
+export function crossingTs(p, key, crossed) {
+  const list = p.entries.filter(e => e.date === key)
+                        .sort((a, b) => String(a.ts) < String(b.ts) ? -1 : String(a.ts) > String(b.ts) ? 1 : 0);
+  let sum = 0;
+  for (const e of list) { sum += Number(e.oz); if (crossed(sum)) return e.ts; }
+  return "";
+}
+
+export function petEventTimes(p, key) {
+  return { roll: crossingTs(p, key, t => metGoal(t, personalGoal(p, key))),
+           grave: crossingTs(p, key, t => pastCap(t, p, key)) };
+}
