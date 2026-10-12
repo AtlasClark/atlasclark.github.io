@@ -52,6 +52,10 @@ async function refresh() {
   await store.loadSettings();
   S.participants = await store.loadAll();
   dataChanged();
+  if (S.folderFormat > (Number(S.settings.formatRev) || C.LEGACY_FORMAT)) {
+    store.diagNote("restoring formatRev " + S.folderFormat + " in " + C.SETTINGS_FILE);
+    await store.saveSettings();
+  }
   await reconcile();
   lastSig = await store.folderSignature();
   ui.lastSync = clockStamp();
@@ -381,6 +385,26 @@ async function applySettings() {
   });
 }
 
+async function upgradeFormat() {
+  if (!guard()) return;
+  if (S.folderFormat >= C.FORMAT_REV) return;
+  const ok = await askConfirm("Upgrade this folder to format " + C.FORMAT_REV + "?",
+    "Do this only on the web-only copy of the data. Every file is rewritten in the new format. " +
+    "After this, the HTA must not be used on this folder: it would drop the new fields. " +
+    "The page will name anyone whose HTA writes here.", "Upgrade");
+  if (!ok) return;
+  await store.serial(async () => {
+    try {
+      const n = await store.upgradeFolder();
+      setMsg("Folder upgraded to format " + C.FORMAT_REV + ". " + n + " files rewritten.", true);
+    } catch (e) {
+      setMsg("Upgrade stopped: " + (e.message || e) + ". Reload and try again.", false);
+    }
+    await refresh();
+  });
+  fillSettings();
+}
+
 function openSettings() { fillSettings(); $("settingsPanel").hidden = false; $("cog").setAttribute("aria-expanded", "true"); $("goalVal").focus(); }
 function closeSettings() { $("settingsPanel").hidden = true; $("cog").setAttribute("aria-expanded", "false"); }
 
@@ -393,6 +417,7 @@ function wire() {
   $("tab-pets").onclick = () => setTab("pets");
   $("cog").onclick = () => $("settingsPanel").hidden ? openSettings() : closeSettings();
   $("applySettings").onclick = applySettings;
+  $("upgradeBtn").onclick = upgradeFormat;
   $("settingsPanel").addEventListener("keydown", e => { if (e.key === "Enter" && e.target.tagName === "INPUT") applySettings(); });
   $("amount").addEventListener("keydown", e => { if (e.key === "Enter" && commitAmount()) setMsg("", true); });
   $("amount").addEventListener("change", () => commitAmount());
@@ -484,6 +509,6 @@ async function boot() {
 }
 
 /* Dev harness hook (localhost only): connect a handle-like object without the picker. */
-if (location.hostname === "localhost" || location.hostname === "127.0.0.1") window.AWC = { connect, S, store };
+if (location.hostname === "localhost" || location.hostname === "127.0.0.1") window.AWC = { connect, S, store, G };
 
 boot();

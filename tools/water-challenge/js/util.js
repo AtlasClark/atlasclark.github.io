@@ -1,5 +1,23 @@
 /* Small shared helpers: dates, formatting, escaping, the message bus. */
 
+/* Dev only: ?today=YYYY-MM-DD on localhost shifts the clock by whole days, so
+   rollovers, months and away periods can be tried on demand. Evaluated before any
+   other module runs code, so every `new Date()` sees the shifted clock. */
+(function devClock() {
+  if (typeof location === "undefined" || !/^(localhost|127\.0\.0\.1)$/.test(location.hostname)) return;
+  const want = new URLSearchParams(location.search).get("today");
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(want || "");
+  if (!m) return;
+  const Real = Date, now = new Real();
+  const off = new Real(+m[1], +m[2] - 1, +m[3], now.getHours(), now.getMinutes(), now.getSeconds()).getTime() - now.getTime();
+  class DevDate extends Real {
+    constructor(...a) { if (a.length) super(...a); else super(Real.now() + off); }
+    static now() { return Real.now() + off; }
+  }
+  globalThis.Date = DevDate;
+  console.info("[dev] clock set to", want);
+})();
+
 export const $ = id => document.getElementById(id);
 
 export function pad2(n) { return (n < 10 ? "0" : "") + n; }

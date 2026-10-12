@@ -155,8 +155,14 @@ export function petKindFor(p) {
   return (isFinite(k) && k >= 0 && k < C.PET_MAX) ? k : C.PET_NO_PET;
 }
 
-export function toJson(p) {
-  const out = [];
+/* Fields this build does not know (written by a newer build) ride along untouched. */
+function extraFields(p) {
+  return Object.keys(p).filter(k => !k.startsWith("_") && !C.KNOWN_FIELDS.includes(k));
+}
+
+/* At format 21 the output is byte-for-byte R55's toJson (bar the writer stamp). */
+export function toJson(p, fmt = S.folderFormat) {
+  const out = [], v22 = fmt >= 22;
   out.push('{\n  "name": ' + q(p.name) + ',');
   out.push('\n  "color": ' + q(p.color) + ',');
   out.push('\n  "goal": ' + Number(currentGoalFor(p)) + ',');
@@ -173,7 +179,11 @@ export function toJson(p) {
   out.push('\n  "rollKind": ' + n1(p.rollKind) + ',');
   out.push('\n  "rollWasNew": ' + (p.rollWasNew ? "true" : "false") + ',');
   out.push('\n  "deadKind": ' + n1(p.deadKind) + ',');
-  out.push('\n  "writerRev": ' + C.FORMAT_REV + ',');
+  if (v22) {
+    out.push('\n  "tokensSpent": ' + (Number(p.tokensSpent) || 0) + ',');
+    for (const k of extraFields(p)) out.push('\n  ' + JSON.stringify(k) + ': ' + JSON.stringify(p[k]) + ',');
+  }
+  out.push('\n  "writerRev": ' + (v22 ? C.FORMAT_REV : C.LEGACY_FORMAT) + ',');
   out.push('\n  "writerVersion": ' + q(C.APP_VERSION) + ',');
   out.push('\n  "writerUser": ' + q(S.me) + ',');
   out.push('\n  "writtenAt": ' + q(localStamp(new Date())) + ',');
@@ -233,6 +243,9 @@ function mergeWithDisk(p, disk, removedIds, removedPets, revivedPets, clearRoll)
   out.away = mergeAway(p.away, disk ? disk.away : null);
   forceLegacyStamps(out.dayGoals);
   out.graves = mergePets(p.graves, disk ? disk.graves : null, revivedPets);
+  out.tokensSpent = Math.max(Number(p.tokensSpent) || 0, Number(disk && disk.tokensSpent) || 0);   /* spending only grows */
+  for (const k of extraFields(p)) out[k] = p[k];
+  if (disk) for (const k of extraFields(disk)) if (!(k in out)) out[k] = disk[k];
   if (disk && disk.graveDay > out.graveDay) out.graveDay = disk.graveDay;
   /* A roll recorded on disk today wins, unless this write is taking it back. */
   if (!clearRoll && disk && disk.petRollDay > out.petRollDay) {
@@ -271,6 +284,7 @@ export async function saveParticipant(p, removedIds, removedPets, revivedPets, c
       p.graves = merged.graves;
       p.dayGoals = merged.dayGoals;
       p.away = merged.away;
+      p.tokensSpent = merged.tokensSpent;
       dataChanged();
     });
   } catch (e) {
@@ -302,6 +316,9 @@ export async function loadSettings() {
     if (Number(o.goalWindowDays) > 0) s.goalWindowDays = Math.floor(Number(o.goalWindowDays));
     if (o.legacyFlatUntil !== undefined) s.legacyFlatUntil = String(o.legacyFlatUntil);
     if (Number(o.legacyGoalOz) > 0) s.legacyGoalOz = Number(o.legacyGoalOz);
+    if (Number(o.formatRev) > 0) s.formatRev = Math.floor(Number(o.formatRev));
+    if (o.upgradedAt) s.upgradedAt = String(o.upgradedAt);
+    if (o.upgradedBy) s.upgradedBy = String(o.upgradedBy);
     if (o.minGoalOz === undefined || o.goalFactor === undefined || o.minGoalDays === undefined ||
         o.dropTopDay === undefined || o.goalWindowDays === undefined || o.legacyFlatUntil === undefined) {
       await saveSettings();
@@ -323,6 +340,11 @@ export async function saveSettings() {
     ',\n  "legacyFlatUntil": ' + q(L.until) +
     ',\n  "legacyGoalOz": ' + Number(L.goal) +
     ',\n  "goalSetAt": ' + q(S.settings.goalSetAt || "") +
+    (S.folderFormat >= 22
+      ? ',\n  "formatRev": ' + S.folderFormat +
+        ',\n  "upgradedAt": ' + q(S.settings.upgradedAt || "") +
+        ',\n  "upgradedBy": ' + q(S.settings.upgradedBy || "")
+      : '') +
     ',\n  "updatedBy": ' + q(S.me) +
     ',\n  "updatedAt": ' + q(localStamp(new Date())) + '\n}\n';
   try {
@@ -337,13 +359,14 @@ export async function saveSettings() {
 /* ---- loading ------------------------------------------------------------ */
 function noteWriter(obj) {
   const rev = Number(obj.writerRev || 0), ver = obj.writerVersion || "";
-  if (rev === C.FORMAT_REV) {
+  if (rev === S.folderFormat) {
     if (!ver || ver === C.APP_VERSION) return;
     if (C.PEER_VERSIONS.includes(ver)) { S.peerWriters.push({ name: obj.name, ver, user: obj.writerUser || "unknown" }); return; }
     S.driftWriters.push({ name: obj.name, ver, user: obj.writerUser || "unknown" });
     return;
   }
   if (rev > C.FORMAT_REV) S.newerRevSeen = true;
+  if (rev > S.folderFormat) return;     /* a newer build: flagged above, not stale */
   S.staleWriters.push({ name: obj.name,
                         label: (obj.writerVersion ? obj.writerVersion + ", " : "") + (rev ? "format r" + rev : "unstamped"),
                         user: obj.writerUser || "unknown", at: obj.writtenAt || "" });
@@ -384,15 +407,39 @@ export async function loadAll() {
         seen[e.eid] = true;
       }
       o.goal = personalGoal(o, todayKey());
-      noteWriter(o);
       list.push(o);
     } catch (e) {
       if (prev[name]) { list.push(prev[name]); S.loadRecovered++; }
       else { S.loadFailed++; note("unreadable " + name + ": " + (e.message || e)); }
     }
   }
+  /* The folder's format: what _settings.json says, or higher if any file was
+     written higher (R55 strips formatRev when it saves settings). */
+  let fmt = Number(S.settings.formatRev) || C.LEGACY_FORMAT;
+  for (const o of list) {
+    const r = Number(o.writerRev) || 0;
+    if (r > fmt && r <= C.FORMAT_REV) fmt = r;
+  }
+  S.folderFormat = fmt;
+  for (const o of list) noteWriter(o);
   list.sort((a, b) => a.name < b.name ? -1 : 1);
   return list;
+}
+
+/* One-way: raise the folder to FORMAT_REV and rewrite every file at it. */
+export async function upgradeFolder() {
+  S.folderFormat = C.FORMAT_REV;
+  S.settings.formatRev = C.FORMAT_REV;
+  S.settings.upgradedAt = localStamp(new Date());
+  S.settings.upgradedBy = S.me;
+  if (!(await saveSettings())) throw new Error("could not write " + C.SETTINGS_FILE);
+  let n = 0;
+  for (const p of S.participants) {
+    if (!(await saveParticipant(p, null))) throw new Error("could not rewrite " + p.name + " (" + n + " done)");
+    n++;
+  }
+  note("folder upgraded to format " + C.FORMAT_REV + " (" + n + " files)");
+  return n;
 }
 
 /* Cheap change detector: name + size + mtime of every file. */

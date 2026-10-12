@@ -321,8 +321,14 @@ function renderStaleWarning() {
     html = "<b>Duplicate participant names:</b> " + esc(dup.join(", ")) + ". Two files claim the same name, so their " +
       "water is combined for streaks but scored separately in History. Rename or remove one of each pair in the data folder.";
   } else if (S.newerRevSeen) {
-    html = "This page writes format r" + C.FORMAT_REV + " but the folder has been written in a newer format. " +
+    html = "This page writes up to format r" + C.FORMAT_REV + " but the folder has been written in a newer format. " +
       "Reload the page to pick up the current build before logging anything else.";
+  } else if (S.staleWriters.length && S.folderFormat >= C.FORMAT_REV) {
+    const bits = S.staleWriters.slice(0, 4).map(w => esc(w.name) + " (" + esc(w.label) + ", " + esc(w.user) +
+      (w.at ? " at " + esc(String(w.at).replace("T", " ")) : "") + ")");
+    html = "<b>An HTA or an old copy wrote to this folder</b> after it moved to format " + S.folderFormat + ": " + bits.join(", ") +
+      (S.staleWriters.length > 4 ? " and " + (S.staleWriters.length - 4) + " more" : "") +
+      ". Older copies drop fields they do not know, such as spent tokens. Stop using them on this folder.";
   } else if (S.staleWriters.length) {
     const bits = S.staleWriters.slice(0, 4).map(w => esc(w.name) + " (" + esc(w.label) + ", " + esc(w.user) +
       (w.at ? " at " + esc(String(w.at).replace("T", " ")) : "") + ")");
@@ -630,7 +636,8 @@ export function showDiag() {
 
   h.push('<h4>Health</h4><table class="rt">');
   h.push(rRow("Status", probs.length ? '<span class="bad">' + esc(probs.join(" · ")) + '</span>' : '<span class="ok">all clear</span>'));
-  h.push(rRow("Build", esc(C.REV) + ' <span class="dim">&middot; writes as "' + esc(C.APP_VERSION) + '", data format ' + C.FORMAT_REV + '</span>'));
+  h.push(rRow("Build", esc(C.REV) + ' <span class="dim">&middot; writes as "' + esc(C.APP_VERSION) + '", up to format ' + C.FORMAT_REV + '</span>'));
+  h.push(rRow("Folder format", S.folderFormat + (S.folderFormat >= C.FORMAT_REV ? ' <span class="dim">web only</span>' : ' <span class="dim">shared with R55</span>')));
   h.push(rRow("Data folder", esc(dir ? dir.name : "(none)")));
   h.push(rRow("Files", S.participants.length + ' loaded' + (S.loadRecovered ? ' &middot; <span class="bad">' + S.loadRecovered + ' recovered</span>' : '')));
   if (S.peerWriters.length) {
@@ -697,6 +704,12 @@ export function fillSettings() {
   $("annualVal").value = currentAnnualGoal();
   $("startVal").value = challengeStart();
   $("idleVal").value = currentIdleMax();
+  const v22 = S.folderFormat >= C.FORMAT_REV;
+  $("fmtNote").innerHTML = v22
+    ? "Format " + S.folderFormat + " (web only)" + (S.settings.upgradedAt ? " since " + esc(S.settings.upgradedAt.replace("T", " ")) +
+      (S.settings.upgradedBy ? " by " + esc(S.settings.upgradedBy) : "") : "") + ". Do not use the HTA on this folder."
+    : "Format " + S.folderFormat + ", shared with the HTA (R55). Upgrade only the web-only copy of the data.";
+  $("upgradeBtn").hidden = v22;
   renderRoster();
 }
 

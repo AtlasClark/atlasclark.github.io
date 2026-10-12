@@ -8,6 +8,7 @@ import { rnd } from "./util.js";
 import { drawCritter, drawHeadstone } from "./art.js";
 
 export const anim = {};
+const reduceMotion = typeof window !== "undefined" && window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)");
 export const dims = { tier: -1, W: 124, H: 239, head: 34 };
 export const stats = { errors: 0, lastError: "", fps: 0 };
 
@@ -57,7 +58,8 @@ export function animState(name) {
     anim[name] = { level: 0, target: 0, amp: C.AMBIENT_AMP, phase: Math.random() * 6.283,
                    color: "#60a5fa", bubbles: [], rings: [], ctx: null, dctx: null,
                    duckState: 0, duckT: 0, critterKind: 0, critterHue: 0,
-                   duckCrown: false, duckJester: false };
+                   duckCrown: false, duckJester: false,
+                   m: { t: 0, face: 1, flip: 1, dive: -1, hop: -1, nextDive: rnd(6, 30), nextHop: rnd(3, 12), splashed: 0 } };
     seedBubbles(anim[name]);
   }
   return anim[name];
@@ -80,6 +82,14 @@ export function bindCanvases(name, glassCanvas, petCanvas, gw, gh) {
 }
 
 export function unbindAll() { for (const k in anim) { anim[k].ctx = null; anim[k].dctx = null; } }
+
+const motionOn = () => C.PET_MOTION && !(reduceMotion && reduceMotion.matches);
+const petX = st => dims.W / 2 + Math.sin(st.phase * 0.31) * (dims.W * 0.21);
+
+function ringAt(st, x, big) {
+  st.rings.push({ r: 2, a: big ? 0.45 : 0.3, x });
+  st.amp = Math.max(st.amp, big ? 7 : 4);
+}
 
 export function splash(name) {
   const st = animState(name);
@@ -168,7 +178,7 @@ function drawGlass(st) {
 
   for (const r of st.rings) {
     ctx.save();
-    ctx.translate(W / 2, top + 2);
+    ctx.translate(r.x === undefined ? W / 2 : r.x, top + 2);
     ctx.scale(1, 0.26);
     ctx.beginPath();
     ctx.arc(0, 0, r.r, 0, 6.2832);
@@ -207,17 +217,62 @@ function drawPetLayer(st) {
   const r = Math.min(W * 0.26, 30);
   if (st.duckState === 4) { drawHeadstone(ctx, W / 2 + offX, H - 4 + offY, r, st.critterHue); return; }
   if (st.duckState === 1) {
-    const dx = W / 2 + Math.sin(st.phase * 0.31) * (W * 0.21);
-    const dy = top + waveAt(st, dx);
-    const slope = (waveAt(st, dx + 5) - waveAt(st, dx - 5)) / 10;
-    drawCritter(ctx, dx + offX, dy + offY, r, Math.atan(slope), st.duckCrown, false,
-                st.critterKind || 0, st.critterHue || 0, st.duckJester);
+    drawFloating(ctx, st, W, H, top, offX, offY, r);
   } else if (st.duckState === 2) {
     drawSinking(ctx, st, W, H, top, offX, offY, r);
   } else if (st.duckState === 3) {
     drawCritter(ctx, W / 2 + offX, duckRestY(H, r) + offY, r, Math.PI, st.duckCrown, true,
                 st.critterKind || 0, st.critterHue || 0, st.duckJester);
   }
+  tintUnderwater(ctx, st, W, H, top, offX, offY);
+}
+
+function drawFloating(ctx, st, W, H, top, offX, offY, r) {
+  const m = st.m, moving = motionOn(), dx = petX(st), flip = moving ? m.flip : 1;
+  const slope = (waveAt(st, dx + 5) - waveAt(st, dx - 5)) / 10;
+  let dy = top + waveAt(st, dx), ang = Math.atan(slope) * (flip < 0 ? -1 : 1);
+  if (moving) {
+    dy += Math.sin(m.t * 2.1) * r * 0.035;                      /* a slow breath */
+    if (m.dive >= 0) {
+      const t = m.dive, depth = Math.min((H - top) * 0.6, r * 3.2);
+      dy += depth * Math.sin(Math.PI * t);
+      ang += -0.95 * Math.sin(2 * Math.PI * t);                 /* nose down, then up */
+      for (let i = 0; i < 3 && t > 0.12 && t < 0.88; i++) {      /* air it lets go of */
+        const by = dy - r * 0.6 - ((m.t * 26 + i * 9) % (r * 1.6));
+        if (by < top + 2) continue;
+        ctx.beginPath();
+        ctx.arc(dx + offX + (i - 1) * r * 0.22, by + offY, r * (0.07 - i * 0.012), 0, 6.2832);
+        ctx.fillStyle = "rgba(255,255,255,0.55)";
+        ctx.fill();
+      }
+    } else if (m.hop >= 0) {
+      dy -= r * 0.55 * Math.sin(Math.PI * m.hop);
+      ang += 0.22 * Math.sin(2 * Math.PI * m.hop);
+    }
+  }
+  ctx.save();
+  ctx.translate(dx + offX, dy + offY);
+  ctx.scale(Math.abs(flip) < 0.04 ? (flip < 0 ? -0.04 : 0.04) : flip, 1);   /* mid-turn: edge on */
+  drawCritter(ctx, 0, 0, r, ang, st.duckCrown, false, st.critterKind || 0, st.critterHue || 0, st.duckJester);
+  ctx.restore();
+}
+
+/* Whatever sits below the surface takes on the water's colour, so a pet reads as
+   in the glass rather than pasted on it. Only touches pixels already drawn. */
+function tintUnderwater(ctx, st, W, H, top, offX, offY) {
+  if (!C.UNDERWATER_TINT || st.level <= 0.01) return;
+  ctx.save();
+  ctx.globalCompositeOperation = "source-atop";
+  ctx.globalAlpha = C.UNDERWATER_TINT;
+  ctx.beginPath();
+  ctx.moveTo(offX, offY + H);
+  for (let x = 0; x <= W; x += 4) ctx.lineTo(offX + x, offY + top + waveAt(st, x));
+  ctx.lineTo(offX + W, offY + top + waveAt(st, W));
+  ctx.lineTo(offX + W, offY + H);
+  ctx.closePath();
+  ctx.fillStyle = st.color;
+  ctx.fill();
+  ctx.restore();
 }
 
 /* ---- the loop ----------------------------------------------------------- */
@@ -226,6 +281,7 @@ function busy() {
     const st = anim[k];
     if (!st.ctx) continue;
     if (Math.abs(st.target - st.level) > 0.0006 || st.rings.length || st.duckState === 2) return true;
+    if (st.m.dive >= 0 || st.m.hop >= 0 || Math.abs(st.m.flip - st.m.face) > 0.02) return true;
   }
   return false;
 }
@@ -243,6 +299,7 @@ function step(st, f) {
     st.duckT += f / (30 * C.DUCK_SINK_SECS);
     if (st.duckT >= 1) { st.duckState = 3; st.duckT = 0; }
   }
+  stepMotion(st, f);
   const waterH = Math.min(Math.max(st.level, 0), 1) * (dims.H - C.SURFACE_BAND);
   for (const b of st.bubbles) { b.y += b.v * f; if (b.y > waterH - 3 || waterH < 10) resetBubble(b); }
   st.rings = st.rings.filter(g => {
@@ -252,8 +309,31 @@ function step(st, f) {
   });
 }
 
+/* Facing, hops and dives for a floating pet. Everything else stays still. */
+function stepMotion(st, f) {
+  const m = st.m, dt = f / 30;
+  m.t += dt;
+  if (st.duckState !== 1 || !motionOn()) { m.dive = -1; m.hop = -1; return; }
+  const vel = Math.cos(st.phase * 0.31);               /* the drift's direction */
+  if (vel > 0.05) m.face = -1; else if (vel < -0.05) m.face = 1;
+  m.flip += (m.face - m.flip) * (1 - Math.pow(1 - C.TURN_EASE, f));
+  if (m.dive >= 0) {
+    m.dive += dt / C.DIVE_SECS;
+    if (m.splashed === 0 && m.dive > 0.06) { m.splashed = 1; ringAt(st, petX(st), true); }
+    if (m.splashed === 1 && m.dive > 0.92) { m.splashed = 2; ringAt(st, petX(st), true); }
+    if (m.dive >= 1) { m.dive = -1; m.nextDive = m.t + rnd(C.DIVE_EVERY[0], C.DIVE_EVERY[1]); }
+  } else if (m.hop >= 0) {
+    m.hop += dt / C.HOP_SECS;
+    if (m.hop >= 1) { m.hop = -1; ringAt(st, petX(st), false); m.nextHop = m.t + rnd(C.HOP_EVERY[0], C.HOP_EVERY[1]); }
+  } else if (m.t > m.nextDive) {
+    if (st.level >= C.DIVE_MIN_LEVEL) { m.dive = 0; m.splashed = 0; }
+    else m.nextDive = m.t + rnd(C.DIVE_EVERY[0], C.DIVE_EVERY[1]);
+  } else if (m.t > m.nextHop && st.level > 0.04) {
+    m.hop = 0;
+  }
+}
+
 let last = 0, lastDrawn = 0, frames = 0, fpsT = 0, running = false;
-const reduceMotion = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)");
 
 function frame(now) {
   requestAnimationFrame(frame);

@@ -3,10 +3,18 @@
    contract (FORMAT_REV 21, UTF-16 LE + BOM) must stay identical while R55 runs on the
    share: R55 deletes any field it does not know on its next write. */
 
-export const REV         = "rev 1.0.0";
-export const APP_VERSION = "web 1.0.0";   /* stamped as writerVersion */
-export const FORMAT_REV  = 21;
+export const REV         = "rev 1.1.0";
+export const APP_VERSION = "web 1.1.0";   /* stamped as writerVersion */
+/* A folder stays at LEGACY_FORMAT (byte-compatible with R55) until someone upgrades
+   it from Settings. Format 22 adds tokensSpent and keeps unknown fields; R55 must
+   not be used on a folder after that. */
+export const LEGACY_FORMAT = 21;
+export const FORMAT_REV    = 22;
 export const PEER_VERSIONS = ["r55"];     /* HTA builds that share format 21 without drift */
+/* Every field the page understands. Anything else in a file is kept as-is at 22. */
+export const KNOWN_FIELDS = ["name", "color", "goal", "dayGoals", "away", "created", "equippedPet",
+  "petRollDay", "pets", "graves", "graveDay", "lastRoll", "prevRoll", "rollKind", "rollWasNew",
+  "deadKind", "tokensSpent", "writerRev", "writerVersion", "writerUser", "writtenAt", "entries"];
 
 /* ---- files ---- */
 export const SETTINGS_FILE  = "_settings.json";
@@ -123,6 +131,16 @@ export const BUBBLE_MAX_R   = 4.0;
 export const BUBBLE_SPEED_MIN = 0.30;
 export const BUBBLE_SPEED_MAX = 0.85;
 export const BUBBLE_WOBBLE  = 2.4;
+/* Pet motion. Applied around the drawing (position, facing, tilt, tint), never
+   inside the shapes, so it survives new pet graphics. Times in seconds. */
+export const PET_MOTION     = true;
+export const DIVE_EVERY     = [25, 60];   /* random gap between dives */
+export const HOP_EVERY      = [9, 24];    /* random gap between small hops */
+export const DIVE_SECS      = 2.6;
+export const HOP_SECS       = 0.7;
+export const DIVE_MIN_LEVEL = 0.3;        /* not enough water below this to dive */
+export const TURN_EASE      = 0.16;       /* how fast a pet turns to face its drift */
+export const UNDERWATER_TINT = 0.42;      /* water colour over anything below the surface */
 export const SPLASH_RINGS   = 3;
 export const RING_GROWTH    = 2.3;
 export const RING_FADE      = 0.915;

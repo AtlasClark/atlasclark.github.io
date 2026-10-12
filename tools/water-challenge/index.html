@@ -9,7 +9,8 @@
   _settings.json). The page reaches it through the File System Access API (Chrome/Edge)
   and remembers the folder handle in this browser. Nothing is stored on this site,
   and the CSP below blocks every network request from scripts.
-  Runs side by side with R55: same files, same format (21), same locks.
+  A folder stays at format 21 (byte-compatible with R55, same locks) until it is upgraded
+  from Settings to format 22, after which only this page may write to it.
   Bump REV in js/config.js on each change.
 -->
 <html lang="en">
@@ -55,7 +56,10 @@
       <p class="sp-note">Everyone's goal is set from their own last 30 days. The default only applies to someone
         without enough history yet. Stored in _settings.json on the share. Finished days keep the goal they were
         played under, so changing anything here never rewrites past wins, goals or streaks.</p>
-      <div class="sp-title">Roster</div>
+      <div class="sp-title">Data format</div>
+      <p class="hint" id="fmtNote"></p>
+      <button type="button" id="upgradeBtn" class="btn muted small-gap">Upgrade folder format</button>
+      <div class="sp-title sp-gap">Roster</div>
       <p class="hint">Away keeps someone's history, pets and streaks safe while they are not playing. Their glass
         is hidden and they stop counting toward the year target until they are back.</p>
       <div id="rosterList" class="roster"></div>
