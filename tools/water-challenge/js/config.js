@@ -3,8 +3,8 @@
    contract (FORMAT_REV 21, UTF-16 LE + BOM) must stay identical while R55 runs on the
    share: R55 deletes any field it does not know on its next write. */
 
-export const REV         = "rev 1.4.0";
-export const APP_VERSION = "web 1.4.0";   /* stamped as writerVersion */
+export const REV         = "rev 1.5.0";
+export const APP_VERSION = "web 1.5.0";   /* stamped as writerVersion */
 /* A folder stays at LEGACY_FORMAT (byte-compatible with R55) until someone upgrades
    it from Settings. Format 22 adds tokensSpent and keeps unknown fields; R55 must
    not be used on a folder after that. */
@@ -14,7 +14,24 @@ export const PEER_VERSIONS = ["r55"];     /* HTA builds that share format 21 wit
 /* Every field the page understands. Anything else in a file is kept as-is at 22. */
 export const KNOWN_FIELDS = ["name", "color", "goal", "dayGoals", "away", "created", "equippedPet",
   "petRollDay", "pets", "graves", "graveDay", "lastRoll", "prevRoll", "rollKind", "rollWasNew",
-  "deadKind", "tokensSpent", "writerRev", "writerVersion", "writerUser", "writtenAt", "entries"];
+  "deadKind", "tokensSpent", "rerollDay", "rollLog", "graveLog", "spends",
+  "writerRev", "writerVersion", "writerUser", "writtenAt", "entries"];
+
+/* ---- the token shop (format 22 only) ----
+   One token is worth one daily roll, so a pet's price is 1 / (chance of rolling
+   that exact species): Common 8 share 62.5%, Uncommon 7 share 20.8%, and so on. */
+export const SHOP_PRICES  = [13, 35, 50, 80, 100];   /* by PET_BINS index */
+export const REROLL_COST  = 1;
+export const PLINKO_COST  = 1;
+export const PLINKO_ROWS  = 10;
+/* Slot -> PET_BINS index, left to right. The rarity is drawn by the bin weights
+   first; the ball is then steered to one of that rarity's slots. */
+export const PLINKO_SLOTS = [4, 3, 2, 1, 0, 0, 0, 1, 2, 3, 4];
+export const PLINKO_ROW_SECS = 0.26;
+export const LIVE_SUBDIR  = "_live";       /* drops shared with every open shop */
+export const LIVE_POLL_MS = 800;
+export const LIVE_KEEP_MS = 120000;        /* drop files older than this are cleared */
+export const LIVE_SHOW_MS = 9000;          /* a drop seen later than this shows as a result only */
 
 /* ---- files ---- */
 export const SETTINGS_FILE  = "_settings.json";

@@ -71,10 +71,10 @@ test("at 22, tokensSpent and unknown fields survive saves and merges", { skip: s
   await web.store.upgradeFolder();
   const p = S.participants[0], name = web.store.participantFileName(p.name);
 
-  /* A newer build left a field this one does not know, and spent 2 tokens. */
+  /* A newer build left a field this one does not know, and another window spent 2 tokens. */
   const disk = JSON.parse(mem.text(name));
   disk.futureThing = { a: 1, b: [2, 3] };
-  disk.tokensSpent = 2;
+  disk.spends = [{ id: "s:other", at: "2026-10-12T08:00:00", kind: "buy", cost: 2, pet: 0 }];
   mem._f.set(name, { bytes: web.store.encodeUtf16le(JSON.stringify(disk, null, 2)), mtime: Date.now() });
 
   /* This window still holds its stale copy (no futureThing, 0 spent) and saves. */
@@ -82,7 +82,8 @@ test("at 22, tokensSpent and unknown fields survive saves and merges", { skip: s
   assert.ok(await web.store.saveParticipant(p, null));
   const after = JSON.parse(mem.text(name));
   assert.deepEqual(after.futureThing, { a: 1, b: [2, 3] });
-  assert.equal(after.tokensSpent, 2);
+  assert.equal(after.tokensSpent, 2, "tokensSpent is the sum of the merged spend log");
+  assert.equal(after.spends.length, 1);
   assert.ok(after.entries.some(e => e.eid === "t:x"));
 
   await web.store.loadSettings();

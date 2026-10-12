@@ -61,7 +61,7 @@ export function penFound(p) {
   return n;
 }
 
-function grantHomunculus(p) {
+export function grantHomunculus(p) {
   if (!penComplete(p) || has(p.pets, C.HOMUNCULUS_KIND)) return false;
   if (!p.pets) p.pets = {};
   p.pets[String(C.HOMUNCULUS_KIND)] = 210;
@@ -70,7 +70,7 @@ function grantHomunculus(p) {
 }
 
 /* What a bin can still give: never a grave, preferring species not yet owned. */
-function binPool(b, p) {
+export function binPool(b, p) {
   const live = [], fresh = [];
   for (const k of b.kinds) {
     if (p && isGrave(p, k)) continue;
@@ -115,9 +115,13 @@ function rollPetKind(p, rnd) {
   return dropLast(avail[avail.length - 1].pool, last)[0];
 }
 
+/* The day's roll is seeded on the date; once someone pays for a reroll, the
+   day's pet is the rerolled one, so a later undo-and-redo gives it back. */
+export function rollSeed(p, key) { return p.rerollDay === key ? key + "#reroll" : key; }
+
 /* Read-only preview of today's roll; consumes draws in the same order. */
 export function todaysPet(p) {
-  const rnd = dayRng(p.name, todayKey());
+  const rnd = dayRng(p.name, rollSeed(p, todayKey()));
   if (rnd() < C.MYSTERY_CHANCE) return C.MYSTERY_KIND;
   return rollPetKind(p, rnd);
 }
@@ -152,6 +156,7 @@ async function undoRoll(p) {
   p.rollKind = C.PET_NO_PET;
   p.rollWasNew = false;
   p.lastRoll = (p.prevRoll === undefined) ? C.PET_NO_PET : p.prevRoll;
+  logDay(p, "rollLog", todayKey(), { k: C.PET_NO_PET, n: 0 });
   if (!(await saveParticipant(p, null, drop, null, true))) return false;
   bus.msg(p.name + " dropped back under the goal. Roll reset.", false);
   return true;
@@ -167,37 +172,36 @@ async function revivePet(p) {
   p.graveDay = "";
   p.deadKind = C.PET_NO_PET;
   if (petKindFor(p) === k || petKindFor(p) === C.PET_NO_PET) p.equippedPet = k;
+  logDay(p, "graveLog", todayKey(), C.PET_NO_PET);
   if (!(await saveParticipant(p, null, null, [String(k)]))) return false;
   bus.msg(p.name + " is back under the cap. The " + petLabel(k) + " made it after all.", true);
   return true;
 }
 
-async function maybeRollPet(p) {
-  if (p.petRollDay === todayKey()) return false;
-  const rnd = dayRng(p.name, todayKey());
+/* Per-day logs (format 22 only; dropped at 21). They let the recap name each
+   day's roll and drowning after newer days have replaced petRollDay and graveDay. */
+export function logDay(p, log, key, value) {
+  if (!p[log] || typeof p[log] !== "object") p[log] = {};
+  p[log][key] = value;
+}
+
+/* One roll, applied to p in memory: the draws, in R55's order, from rnd. Shared by
+   the daily roll and the paid reroll. Returns what happened, for announce(). */
+export function applyRoll(p, rnd, key) {
+  if (!p.pets) p.pets = {};
   if (rnd() < C.MYSTERY_CHANCE) {
-    if (!p.pets) p.pets = {};
     p.pets[String(C.MYSTERY_KIND)] = 0;
     p.equippedPet = C.MYSTERY_KIND;
     p.prevRoll = (p.lastRoll === undefined) ? C.PET_NO_PET : p.lastRoll;
     p.rollKind = C.MYSTERY_KIND;
     p.rollWasNew = true;
-    p.petRollDay = todayKey();
-    if (await saveParticipant(p, null)) {
-      bus.msg(p.name + " found something that does not live in the pen. Keep it on -- it will not wait around.", true);
-      bus.unlock({ name: p.name, kind: C.MYSTERY_KIND, hue: 0, fresh: true, equipped: true });
-    }
-    return true;
+    p.petRollDay = key;
+    logDay(p, "rollLog", key, { k: C.MYSTERY_KIND, n: 1 });
+    return { kind: C.MYSTERY_KIND, hue: 0, fresh: true, mystery: true };
   }
   const k = rollPetKind(p, rnd);
-  if (k === C.PET_NO_PET) {
-    p.petRollDay = todayKey();
-    await saveParticipant(p, null);
-    bus.msg(p.name + " has buried every pet there is. There is nothing left to find.", false);
-    return true;
-  }
+  if (k === C.PET_NO_PET) { p.petRollDay = key; return { kind: C.PET_NO_PET }; }
   const hue = (k === C.JOKE_KIND) ? 28 : Math.floor(rnd() * 360);
-  if (!p.pets) p.pets = {};
   const dup = has(p.pets, k);
   if (!dup) p.pets[String(k)] = hue;
   if (petKindFor(p) !== C.MYSTERY_KIND) p.equippedPet = k;   /* never throw off a worn dragon */
@@ -205,20 +209,35 @@ async function maybeRollPet(p) {
   p.lastRoll = k;
   p.rollKind = k;
   p.rollWasNew = !dup;
-  p.petRollDay = todayKey();
-  if (grantHomunculus(p)) {
-    await saveParticipant(p, null);
+  p.petRollDay = key;
+  logDay(p, "rollLog", key, { k, n: dup ? 0 : 1 });
+  return { kind: k, hue: Number(p.pets[String(k)]), fresh: !dup, homunculus: grantHomunculus(p) };
+}
+
+/* Status line and unlock card for a roll that has been saved. */
+export function announce(p, res, how) {
+  const k = res.kind, verb = how || "";
+  if (k === C.PET_NO_PET) {
+    bus.msg(p.name + " has buried every pet there is. There is nothing left to find.", false);
+  } else if (res.mystery) {
+    bus.msg(p.name + verb + " found something that does not live in the pen. Keep it on -- it will not wait around.", true);
+    bus.unlock({ name: p.name, kind: C.MYSTERY_KIND, hue: 0, fresh: true, equipped: true });
+  } else if (res.homunculus) {
     bus.msg(p.name + " has found all " + C.PET_COUNT + ". The pen has produced something none of them are on their own.", true);
     bus.unlock({ name: p.name, kind: C.HOMUNCULUS_KIND, hue: 210, fresh: true, rolled: k,
                  equipped: petKindFor(p) === C.HOMUNCULUS_KIND });
-    return true;
+  } else {
+    bus.unlock({ name: p.name, kind: k, hue: res.hue, fresh: res.fresh, equipped: petKindFor(p) === k });
+    bus.msg(p.name + verb + (res.fresh ? " unlocked the " : " rolled another ") + petLabel(k) +
+            " (" + petRarityOf(k).name + ")" + (res.fresh ? "!" : ", which they already had."), true);
   }
-  if (await saveParticipant(p, null)) {
-    bus.unlock({ name: p.name, kind: k, hue: has(p.pets, k) ? Number(p.pets[String(k)]) : hue, fresh: !dup,
-                 equipped: petKindFor(p) === k });
-    bus.msg(p.name + (dup ? " rolled another " : " unlocked the ") + petLabel(k) +
-            " (" + petRarityOf(k).name + ")" + (dup ? ", which they already had." : "!"), true);
-  }
+}
+
+async function maybeRollPet(p) {
+  const key = todayKey();
+  if (p.petRollDay === key) return false;
+  const res = applyRoll(p, dayRng(p.name, rollSeed(p, key)), key);
+  if (await saveParticipant(p, null)) announce(p, res);
   return true;
 }
 
@@ -237,6 +256,7 @@ async function killPet(p) {
   if (k < 0 || !has(p.pets, k)) return null;
   const hue = Number(p.pets[String(k)]);
   delete p.pets[String(k)];
+  logDay(p, "graveLog", todayKey(), k);
   if (k === C.MYSTERY_KIND) {
     p.graveDay = todayKey();
     p.deadKind = C.PET_NO_PET;

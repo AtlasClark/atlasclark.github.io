@@ -78,6 +78,7 @@
     <button type="button" id="tab-today" class="tab" role="tab" aria-selected="true">Today</button>
     <button type="button" id="tab-history" class="tab" role="tab" aria-selected="false">History</button>
     <button type="button" id="tab-pets" class="tab" role="tab" aria-selected="false">Pets</button>
+    <button type="button" id="tab-shop" class="tab" role="tab" aria-selected="false">Shop</button>
   </nav>
 
   <main>
@@ -123,6 +124,42 @@
 
     <section id="view-pets" hidden>
       <div id="pets"></div>
+    </section>
+
+    <section id="view-shop" hidden>
+      <div id="shopClosed" class="panel full">
+        <div class="panel-heading"><p class="eyebrow">Spend your gold</p><h2>Token shop</h2></div>
+        <p>The shop keeps track of spent tokens, which needs the data folder at format 22.
+          Use <b>Settings &rsaquo; Data format &rsaquo; Upgrade</b> on the web-only copy of the data.</p>
+      </div>
+      <div id="shopMain" hidden>
+        <div class="panel shop-top">
+          <div class="panel-heading"><p class="eyebrow">Spend your gold &middot; one token for every goal day</p><h2>Token shop</h2></div>
+          <div id="shopWho" class="shop-who"></div>
+          <p id="shopBalance" class="shop-balance"></p>
+        </div>
+        <div class="shop-grid">
+          <div class="panel shop-plinko">
+            <div class="panel-heading"><p class="eyebrow">1 token a drop &middot; anyone with the shop open sees it fall</p><h2>Plinko</h2></div>
+            <p class="hint">The ball lands on a rarity with the same odds as a daily roll, and wins a pet from it:
+              never a buried one, and one you don't have yet while there are any left.</p>
+            <div id="plinkoWrap" class="plinko-wrap"><canvas id="plinkoCanvas"></canvas></div>
+            <div class="plinko-go"><button type="button" id="plinkoDrop" class="btn primary">Drop a token</button>
+              <span id="plinkoNote" class="hint"></span></div>
+            <ul id="plinkoFeed" class="plinko-feed"></ul>
+          </div>
+          <div class="shop-side">
+            <div class="panel shop-reroll">
+              <div class="panel-heading"><p class="eyebrow">1 token &middot; once a day</p><h2>Reroll today's pet</h2></div>
+              <div id="rerollBox"></div>
+            </div>
+            <div class="panel shop-buy">
+              <div class="panel-heading"><p class="eyebrow">Priced at the odds of rolling it</p><h2>Buy a pet</h2></div>
+              <div id="buyGrid" class="buy-grid"></div>
+            </div>
+          </div>
+        </div>
+      </div>
     </section>
   </main>
 </div></div>
@@ -223,6 +260,7 @@
     <canvas id="bankPile" style="width:240px;height:150px"></canvas>
     <div id="bankCount" class="bank-count"></div>
     <div id="bankNote" class="bank-note"></div>
+    <button type="button" id="bankShop" class="btn primary small bank-shop" hidden>Open the shop</button>
   </div>
 </div>
 </body>

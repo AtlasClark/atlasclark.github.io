@@ -9,9 +9,10 @@ import * as store from "./store.js";
 import { reconcilePets, equipPet } from "./pets.js";
 import * as G from "./glass.js";
 import { openRadial, wireRadial } from "./radial.js";
+import { initShop, renderShop, shopTabChanged, openShopFor } from "./shopui.js";
 import { ui, render, setTab, setMsg, showBanner, tickMasks, relayout, forceRebuild,
          toggleSwatches, openBank, auditStreak, showDiag, closeOverlays, fillSettings, renderRoster,
-         renderActivityNow, showUnlock } from "./ui.js";
+         renderActivityNow, showUnlock, uiHooks } from "./ui.js";
 import { $, bus, todayKey, localStamp, fmt, fmtOz, trim, parseKey, shiftKey, clockStamp } from "./util.js";
 
 let lastSig = "", pollTimer = 0;
@@ -433,9 +434,14 @@ function closeSettings() { $("settingsPanel").hidden = true; $("cog").setAttribu
 function wire() {
   $("gatePick").onclick = pickFolder;
   $("gateReconnect").onclick = reconnect;
-  $("tab-today").onclick = () => setTab("today");
-  $("tab-history").onclick = () => setTab("history");
-  $("tab-pets").onclick = () => setTab("pets");
+  const tab = name => { setTab(name); shopTabChanged(name === "shop"); };
+  $("tab-today").onclick = () => tab("today");
+  $("tab-history").onclick = () => tab("history");
+  $("tab-pets").onclick = () => tab("pets");
+  $("tab-shop").onclick = () => tab("shop");
+  $("bankShop").onclick = () => { openShopFor($("bankShop").dataset.name); closeOverlays(); tab("shop"); };
+  uiHooks.renderShop = renderShop;
+  initShop({ settle, guard, askConfirm });
   $("cog").onclick = () => $("settingsPanel").hidden ? openSettings() : closeSettings();
   $("applySettings").onclick = applySettings;
   $("upgradeBtn").onclick = upgradeFormat;

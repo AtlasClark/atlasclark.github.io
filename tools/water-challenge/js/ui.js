@@ -8,14 +8,18 @@ import { S, personalGoal, capFor, totalOn, metGoal, pastCap, atCap, dayScoreFor,
          currentGoal, currentGoalFor, currentAnnualGoal, currentIdleMax, goalTunables, legacyFlat,
          challengeStart, challengeEnd, yearElapsed, teamYearTotal, yearTargets, seasonStats,
          recentDays, topOf, dayRec, dayLeaders, dayResult, wonDay, satOut, tokensEarned,
-         duplicateNames, isAway, openAwaySince, goalForDate, petEventTimes } from "./model.js";
+         duplicateNames, isAway, openAwaySince, goalForDate, petEventTimes, allDateKeys } from "./model.js";
 import { petKindFor, ownsEquipped, graveEquipped, petHueFor, isGrave, gravesOf, petsOwned,
          graveLine, petLabel, petName, petRarityOf, petBinIndex, petGridOrder, penFound,
          hashHue, rarityLabel, undoEffect } from "./pets.js";
 import { crownSvg, jesterSvg, hatSvg, drawPortrait, drawCritter, drawHeadstone, drawGoldPile } from "./art.js";
 import * as G from "./glass.js";
 import { diag, dir } from "./store.js";
-import { $, esc, fmt, fmtOz, fmtGal, todayKey, dateKey, prettyTime, clockStamp, has } from "./util.js";
+import { shopOpen, balance, spentTotal, spendsOn } from "./shop.js";
+import { $, esc, fmt, fmtOz, fmtGal, todayKey, dateKey, prettyTime, clockStamp, has, parseKey, shiftKey } from "./util.js";
+
+/* Set by app.js: the Shop tab renders from shopui.js, which imports this module. */
+export const uiHooks = { renderShop: null };
 
 export const ui = { tab: "today", amount: C.DEFAULT_AMOUNT, connected: false, lastSync: "",
                     armed: "" };   /* eid of the pour whose undo is waiting for a second click */
@@ -270,6 +274,7 @@ function renderActivity() {
       pets.push({ kind: "roll", p, pet: Number(p.rollKind), fresh: !!p.rollWasNew, ts: t.roll });
     }
     if (p.graveDay === key && Number(p.deadKind) >= 0) pets.push({ kind: "grave", p, pet: Number(p.deadKind), ts: t.grave });
+    for (const s of spendsOn(p, key)) pets.push({ kind: "spend", p, s, ts: s.at });
   }
   pets.sort((a, b) => atOf(b.ts) - atOf(a.ts));
   pours.sort((a, b) => b.at - a.at);
@@ -277,6 +282,7 @@ function renderActivity() {
 
   const h = pets.map(a => {
     const when = '<span class="t">' + (a.ts ? esc(prettyTime(a.ts)) : "today") + '</span>';
+    if (a.kind === "spend") return '<li class="ev-shop">' + spendLine(a.p, a.s, when) + '</li>';
     if (a.kind === "roll") {
       return '<li class="ev-pet">' + '<span class="tag">' + (a.fresh ? "new pet" : "pet") + '</span>' + when +
              '<strong>' + esc(a.p.name) + '</strong> ' + (a.fresh ? "unlocked the " : "rolled another ") + esc(petLabel(a.pet)) +
@@ -360,7 +366,7 @@ function iconUrl(draw) {
     return c.toDataURL("image/png");
   } catch { return ""; }
 }
-function ensureIcons() {
+export function ensureIcons() {
   if (iconsReady) return;
   iconsReady = true;
   const css = [];
@@ -431,6 +437,7 @@ function renderHistory() {
   const stats = seasonStats(), days = recentDays(C.CHART_DAYS), h = [];
   if (!stats.days) { $("history").innerHTML = '<p class="empty-state">Nothing logged yet. The chart fills in as people pour.</p>'; return; }
 
+  h.push(recapHtml());
   h.push('<div class="season-strip">');
   h.push(statTile(fmtOz(stats.totalOz) + '<span class="u">fl oz</span>', 'poured all together'));
   h.push(statTile(fmtGal(stats.totalOz) + '<span class="u">gal</span>', 'which is this many gallons'));
@@ -511,6 +518,84 @@ function renderStatus() {
   setEl("sbPeers", esc([peers, drift].filter(Boolean).join(" · ")), null);
 }
 
+/* ---- shop lines (activity and recap) ----------------------------------- */
+function spendLine(p, s, when) {
+  const k = Number(s.pet), name = '<strong>' + esc(p.name) + '</strong> ';
+  if (s.kind === "buy") return '<span class="tag">shop</span>' + when + name + 'bought the ' + esc(petLabel(k)) +
+                               ' <span class="rar">' + s.cost + ' tokens</span>';
+  if (s.kind === "plinko") return '<span class="tag">plinko</span>' + when + name + 'won ' + (s.fresh ? "the " : "another ") +
+                                  esc(petLabel(k)) + ' <span class="rar">' + esc(rarityLabel(k)) + '</span>';
+  if (s.kind === "reroll") return '<span class="tag">reroll</span>' + when + name + 'rerolled the ' + esc(petLabel(Number(s.from))) +
+                                  ' into ' + (k >= 0 ? (s.fresh ? "the " : "another ") + esc(petLabel(k)) : "nothing");
+  return '<span class="tag">shop</span>' + when + name + 'spent ' + s.cost;
+}
+
+/* ---- the last day, in short (top of History) ---------------------------- */
+/* Rolls and drownings come from the day logs (format 22). Before those existed,
+   petRollDay / graveDay still name the day if nothing has replaced them since. */
+function rollOn(p, day) {
+  const log = p.rollLog && p.rollLog[day];
+  if (log) return Number(log.k) >= 0 ? { k: Number(log.k), fresh: !!log.n } : null;
+  return p.petRollDay === day && Number(p.rollKind) >= 0 ? { k: Number(p.rollKind), fresh: !!p.rollWasNew } : null;
+}
+function graveOn(p, day) {
+  if (p.graveLog && has(p.graveLog, day)) return Number(p.graveLog[day]) >= 0 ? Number(p.graveLog[day]) : null;
+  return p.graveDay === day && Number(p.deadKind) >= 0 ? Number(p.deadKind) : null;
+}
+const dayTotal = d => { const r = dayRec(d); return r ? Object.values(r.by).reduce((a, b) => a + b, 0) : 0; };
+
+function recapHtml() {
+  const today = todayKey(), keys = allDateKeys(), day = keys.find(d => d < today);
+  if (!day) return "";
+  ensureIcons();
+  const yest = shiftKey(today, -1) === day, rows = standingsFor(day), played = rows.filter(r => r.total > 0);
+  const leaders = dayLeaders(day), team = dayTotal(day);
+  const before = keys.filter(d => d < day).slice(0, 7);
+  const avg = before.length ? before.reduce((a, d) => a + dayTotal(d), 0) / before.length : 0;
+  const goalers = played.filter(r => metGoal(r.total, r.goal));
+  const satOut = rows.filter(r => r.total <= 0);
+  const date = parseKey(day).toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric" });
+  const head = !leaders.length ? "Nobody poured"
+             : leaders.length > 1 ? esc(leaders.join(" & ")) + " tied for the day" : esc(leaders[0]) + " won the day";
+  const h = ['<section class="recap"><div class="recap-head"><p class="eyebrow">' + (yest ? "Yesterday" : "Last day played") +
+             ' &middot; ' + esc(date) + '</p><h3>' + (leaders.length ? hatSvg(26, 17, "rc-crown", !goalers.some(g => leaders.includes(g.name))) : "") +
+             head + '</h3><p class="recap-sub">' + played.length + ' played &middot; ' + goalers.length + ' reached their goal &middot; ' +
+             fmtOz(team) + ' fl oz together' +
+             (avg > 0 ? ' <span class="' + (team >= avg ? "up" : "down") + '">' + (team >= avg ? "&#9650; " : "&#9660; ") +
+                        Math.abs(Math.round((team / avg - 1) * 100)) + '% on the week before</span>' : '') + '</p></div>'];
+
+  h.push('<ol class="recap-podium">');
+  played.slice(0, 3).forEach((r, i) => {
+    const lead = leaders.includes(r.name), p = findParticipant(r.name), over = p && pastCap(r.total, p, day);
+    h.push('<li class="pod p' + (i + 1) + '" style="--pc:' + r.color + '"><span class="medal m' + (i + 1) + '">' + (i + 1) + '</span>' +
+           '<span class="pn">' + esc(r.name) + (lead ? ' ' + hatSvg(18, 12, "lc", !metGoal(r.total, r.goal)) : '') + '</span>' +
+           '<span class="pv">' + (over ? '&#9760; past the cap' : Math.round(r.total / r.goal * 100) + '%') + '</span>' +
+           '<span class="po">' + fmt(r.total) + ' / ' + fmt(r.goal) + ' oz</span></li>');
+  });
+  h.push('</ol><div class="recap-cols">');
+
+  h.push('<div><h4>Reached the goal</h4>' + (goalers.length ? goalers.map(r => {
+    const p = findParticipant(r.name), g = yest && p ? streaks(p).goal : 0;
+    return '<span class="rc-chip"><i class="dot" style="background:' + r.color + '"></i>' + esc(r.name) +
+           (g >= 2 ? ' <b class="pip pip-goal">' + g + 'G</b>' : '') + '</span>';
+  }).join("") : '<p class="dim">Nobody this time.</p>') + '</div>');
+
+  const ev = [];
+  for (const p of S.participants) {
+    const r = rollOn(p, day), g = graveOn(p, day);
+    if (r) ev.push('<li>' + (r.k < C.PET_COUNT ? '<i class="pi pi-' + r.k + '"></i>' : '') + '<strong>' + esc(p.name) + '</strong> ' +
+                   (r.fresh ? 'unlocked the ' : 'rolled another ') + esc(petLabel(r.k)) + '</li>');
+    if (g !== null) ev.push('<li><i class="pi pi-grave"></i><strong>' + esc(p.name) + '</strong> drowned the ' + esc(petLabel(g)) + '</li>');
+    for (const s of spendsOn(p, day)) ev.push('<li class="rc-shop">' + spendLine(p, s, "") + '</li>');
+  }
+  h.push('<div><h4>Pets</h4>' + (ev.length ? '<ul class="rc-pets">' + ev.join("") + '</ul>' : '<p class="dim">No pet news.</p>') + '</div>');
+
+  h.push('<div><h4>Sat out</h4>' + (satOut.length ? satOut.map(r => '<span class="rc-chip dim"><i class="dot" style="background:' + r.color +
+         '"></i>' + esc(r.name) + '</span>').join("") : '<p class="dim">Everyone played.</p>') + '</div>');
+  h.push('</div></section>');
+  return h.join("");
+}
+
 /* ---- the whole page ----------------------------------------------------- */
 export function render() {
   maskEls = [];
@@ -518,6 +603,7 @@ export function render() {
   if (ui.tab === "today") {
     renderGlasses(); renderLeaderboard(); renderActivity();
   } else if (ui.tab === "pets") renderPets();
+  else if (ui.tab === "shop") { if (uiHooks.renderShop) uiHooks.renderShop(); }
   else renderHistory();
   renderTeamBar();
   renderStaleWarning();
@@ -526,7 +612,7 @@ export function render() {
 
 export function setTab(name) {
   ui.tab = name;
-  for (const t of ["today", "history", "pets"]) {
+  for (const t of ["today", "history", "pets", "shop"]) {
     $("view-" + t).hidden = t !== name;
     $("tab-" + t).setAttribute("aria-selected", String(t === name));
   }
@@ -649,7 +735,9 @@ const rRow = (label, value, cls) => '<tr><td class="k">' + esc(label) + '</td><t
 export function openBank(name) {
   const p = findParticipant(name);
   if (!p) return;
-  const earned = tokensEarned(p), spent = Number(p.tokensSpent) || 0, bal = earned - spent;
+  const spent = spentTotal(p), bal = balance(p);
+  $("bankShop").hidden = !shopOpen();
+  $("bankShop").dataset.name = p.name;
   $("bankName").innerHTML = esc(p.name) + "&rsquo;s gold";
   $("bankCount").innerHTML = bal + ' <small>token' + (bal === 1 ? '' : 's') + '</small>';
   $("bankNote").innerHTML = "one for every goal day" + (spent ? " &middot; " + spent + " spent" : "") +

@@ -180,7 +180,12 @@ export function toJson(p, fmt = S.folderFormat) {
   out.push('\n  "rollWasNew": ' + (p.rollWasNew ? "true" : "false") + ',');
   out.push('\n  "deadKind": ' + n1(p.deadKind) + ',');
   if (v22) {
-    out.push('\n  "tokensSpent": ' + (Number(p.tokensSpent) || 0) + ',');
+    const spends = p.spends || [];
+    out.push('\n  "tokensSpent": ' + spends.reduce((a, s) => a + (Number(s.cost) || 0), 0) + ',');
+    out.push('\n  "rerollDay": ' + q(p.rerollDay || "") + ',');
+    out.push('\n  "rollLog": ' + JSON.stringify(p.rollLog || {}) + ',');
+    out.push('\n  "graveLog": ' + JSON.stringify(p.graveLog || {}) + ',');
+    out.push('\n  "spends": [' + spends.map(s => '\n    ' + JSON.stringify(s)).join(",") + (spends.length ? '\n  ' : '') + '],');
     for (const k of extraFields(p)) out.push('\n  ' + JSON.stringify(k) + ': ' + JSON.stringify(p[k]) + ',');
   }
   out.push('\n  "writerRev": ' + (v22 ? C.FORMAT_REV : C.LEGACY_FORMAT) + ',');
@@ -243,7 +248,19 @@ function mergeWithDisk(p, disk, removedIds, removedPets, revivedPets, clearRoll)
   out.away = mergeAway(p.away, disk ? disk.away : null);
   forceLegacyStamps(out.dayGoals);
   out.graves = mergePets(p.graves, disk ? disk.graves : null, revivedPets);
-  out.tokensSpent = Math.max(Number(p.tokensSpent) || 0, Number(disk && disk.tokensSpent) || 0);   /* spending only grows */
+  /* Spends are a log keyed by id, merged like entries, so two windows spending for
+     the same person at once both count. The day logs take this window's value for a
+     day it changed; rerollDay only moves forward. */
+  const spendSeen = {};
+  out.spends = [];
+  for (const s of [...(p.spends || []), ...((disk && disk.spends) || [])]) {
+    if (s && s.id && !spendSeen[s.id]) { spendSeen[s.id] = true; out.spends.push(s); }
+  }
+  out.spends.sort((a, b) => String(a.at) < String(b.at) ? -1 : String(a.at) > String(b.at) ? 1 : 0);
+  out.tokensSpent = out.spends.reduce((a, s) => a + (Number(s.cost) || 0), 0);
+  out.rollLog = Object.assign({}, (disk && disk.rollLog) || {}, p.rollLog || {});
+  out.graveLog = Object.assign({}, (disk && disk.graveLog) || {}, p.graveLog || {});
+  out.rerollDay = [p.rerollDay || "", (disk && disk.rerollDay) || ""].sort().pop();
   for (const k of extraFields(p)) out[k] = p[k];
   if (disk) for (const k of extraFields(disk)) if (!(k in out)) out[k] = disk[k];
   if (disk && disk.graveDay > out.graveDay) out.graveDay = disk.graveDay;
@@ -285,6 +302,10 @@ export async function saveParticipant(p, removedIds, removedPets, revivedPets, c
       p.dayGoals = merged.dayGoals;
       p.away = merged.away;
       p.tokensSpent = merged.tokensSpent;
+      p.spends = merged.spends;
+      p.rollLog = merged.rollLog;
+      p.graveLog = merged.graveLog;
+      p.rerollDay = merged.rerollDay;
       dataChanged();
     });
   } catch (e) {
@@ -400,6 +421,10 @@ export async function loadAll() {
         if (o[f] === undefined || o[f] === null) o[f] = C.PET_NO_PET;
       }
       if (o.rollWasNew === undefined) o.rollWasNew = false;
+      if (!Array.isArray(o.spends)) o.spends = [];
+      if (!o.rollLog || typeof o.rollLog !== "object") o.rollLog = {};
+      if (!o.graveLog || typeof o.graveLog !== "object") o.graveLog = {};
+      if (!o.rerollDay) o.rerollDay = "";
       if (!o.color) o.color = C.PARTICIPANT_COLORS[list.length % C.PARTICIPANT_COLORS.length];
       const seen = {};
       for (const e of o.entries) {
@@ -475,6 +500,48 @@ export async function moveToRemoved(name) {
   if (check.byteLength !== bytes.length) throw new Error("copy to " + C.REMOVED_SUBDIR + " did not verify");
   await dir.removeEntry(src);
   return destName;
+}
+
+/* ---- live shop events ---------------------------------------------------- */
+/* Plinko drops go into _live/ as small UTF-8 files. Every open shop lists the folder
+   every LIVE_POLL_MS and replays what it has not seen. The subfolder keeps these out
+   of the data folder's change signature. */
+async function liveDir() { return dir.getDirectoryHandle(C.LIVE_SUBDIR, { create: true }); }
+
+export async function writeLive(ev) {
+  if (!dir) return false;
+  try {
+    const d = await liveDir();
+    const fh = await d.getFileHandle("drop-" + ev.at + "-" + ev.id + ".json", { create: true });
+    const w = await fh.createWritable();
+    await w.write(JSON.stringify(ev));
+    await w.close();
+    pruneLive(d);
+    return true;
+  } catch (e) { note("live write failed: " + (e.message || e)); return false; }
+}
+
+async function pruneLive(d) {
+  const now = Date.now();
+  for await (const [name, h] of d.entries()) {
+    const m = /^drop-(\d+)-/.exec(name);
+    if (h.kind === "file" && m && now - Number(m[1]) > C.LIVE_KEEP_MS) { try { await d.removeEntry(name); } catch { } }
+  }
+}
+
+/* Events newer than sinceMs (writer's clock, from the file name), oldest first. */
+export async function readLive(sinceMs, seen) {
+  if (!dir) return [];
+  const out = [];
+  try {
+    const d = await liveDir();
+    for await (const [name, h] of d.entries()) {
+      const m = /^drop-(\d+)-(.+)\.json$/.exec(name);
+      if (h.kind !== "file" || !m || Number(m[1]) < sinceMs || (seen && seen.has(m[2]))) continue;
+      try { out.push(JSON.parse(await (await h.getFile()).text())); } catch { }
+    }
+  } catch (e) { note("live read failed: " + (e.message || e)); }
+  return out.sort((a, b) => a.at - b.at);
 }
 
 /* ---- connection --------------------------------------------------------- */
