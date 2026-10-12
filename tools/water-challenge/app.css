@@ -453,6 +453,48 @@ li.pour.armed .undo-x { opacity: 1; background: #c4434f; color: #fff; }
 .dlg .txt { width: 100%; margin-top: 6px; }
 .dlg-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 16px; }
 
+/* ---- pet unlock card ---- */
+.unlock { position: fixed; inset: 0; z-index: 96; display: grid; place-items: center; pointer-events: none; padding: 16px; }
+.ul-card {
+  pointer-events: auto; cursor: pointer; position: relative; overflow: hidden; text-align: center;
+  width: min(300px, 100%); padding: 20px 22px 18px; border-radius: 22px;
+  background: var(--solid); border: 1px solid var(--line-2); box-shadow: 0 30px 80px rgba(0,0,0,.35);
+  animation: ulIn .45s cubic-bezier(.2,.9,.3,1.25) both;
+}
+.ul-card.leaving { animation: ulOut .32s ease-in both; }
+@keyframes ulIn { from { opacity: 0; transform: translateY(16px) scale(.85); } to { opacity: 1; transform: none; } }
+@keyframes ulOut { to { opacity: 0; transform: translateY(40px) scale(.7); } }
+.ul-who { position: relative; margin-bottom: 10px; }
+.ul-rarity { position: relative; display: inline-block; min-width: 96px; padding: 4px 14px; border-radius: 999px;
+  font-size: 12px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: #17324d; background: var(--r0); }
+.ul-rarity.r1 { background: var(--r1); } .ul-rarity.r2 { background: var(--r2); }
+.ul-rarity.r3 { background: var(--r3); } .ul-rarity.r4 { background: var(--r4); }
+.ul-rarity.rm { background: #16504e; color: #e8fffb; } .ul-rarity.rh { background: #e6b93a; color: #3d2a00; }
+.revealed .ul-rarity { animation: chipPop .4s cubic-bezier(.2,.9,.3,1.5); }
+@keyframes chipPop { 0% { transform: scale(.7); } 100% { transform: scale(1); } }
+.ul-stage { position: relative; width: 120px; height: 120px; margin: 10px auto 4px; }
+.spinning .ul-stage { animation: shake .11s ease-in-out infinite alternate; }
+@keyframes shake { from { transform: rotate(-4deg); } to { transform: rotate(4deg); } }
+.ul-q { position: absolute; inset: 0; display: grid; place-items: center; font-size: 64px; font-weight: 900; color: var(--fainter); }
+.ul-pet { display: block; }
+.revealed .ul-pet { animation: petPop .55s cubic-bezier(.2,.9,.3,1.5) both; }
+@keyframes petPop { from { transform: scale(.2) rotate(-20deg); opacity: 0; } to { transform: none; opacity: 1; } }
+.ul-name { position: relative; margin: 2px 0 0; font-size: 17px; color: var(--ink-2); }
+.ul-name b { color: var(--title); font-size: 20px; }
+.ul-name small { display: block; font-size: 12px; color: var(--faint); margin-top: 3px; }
+.ul-new { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 11px; font-weight: 800; letter-spacing: .06em;
+  text-transform: uppercase; background: var(--gold-bg); color: var(--gold-ink-2); vertical-align: 3px; }
+.ul-rays { position: absolute; inset: -60%; opacity: 0; transition: opacity .4s;
+  background: repeating-conic-gradient(from 0deg, rgba(255,214,90,.20) 0 9deg, transparent 9deg 18deg);
+  animation: rays 9s linear infinite; }
+.revealed.r2 .ul-rays, .revealed.r3 .ul-rays, .revealed.r4 .ul-rays, .revealed.rh .ul-rays { opacity: 1; }
+.revealed.rm .ul-rays { opacity: 1; background: repeating-conic-gradient(from 0deg, rgba(46,140,128,.22) 0 9deg, transparent 9deg 18deg); }
+@keyframes rays { to { transform: rotate(360deg); } }
+.ul-burst i { position: absolute; left: 50%; top: 46%; width: 7px; height: 11px; border-radius: 2px; background: var(--c);
+  animation: confetti 1.5s cubic-bezier(.1,.7,.3,1) both; }
+@keyframes confetti { from { transform: translate(0, 0) rotate(0); opacity: 1; }
+  to { transform: translate(var(--dx), var(--dy)) rotate(var(--rot)); opacity: 0; } }
+
 /* ---- status bar ---- */
 .statusbar {
   position: fixed; left: 0; right: 0; bottom: 0; z-index: 40; display: flex; align-items: center; gap: 10px;

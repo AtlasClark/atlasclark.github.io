@@ -185,6 +185,7 @@ async function maybeRollPet(p) {
     p.petRollDay = todayKey();
     if (await saveParticipant(p, null)) {
       bus.msg(p.name + " found something that does not live in the pen. Keep it on -- it will not wait around.", true);
+      bus.unlock({ name: p.name, kind: C.MYSTERY_KIND, hue: 0, fresh: true, equipped: true });
     }
     return true;
   }
@@ -208,9 +209,13 @@ async function maybeRollPet(p) {
   if (grantHomunculus(p)) {
     await saveParticipant(p, null);
     bus.msg(p.name + " has found all " + C.PET_COUNT + ". The pen has produced something none of them are on their own.", true);
+    bus.unlock({ name: p.name, kind: C.HOMUNCULUS_KIND, hue: 210, fresh: true, rolled: k,
+                 equipped: petKindFor(p) === C.HOMUNCULUS_KIND });
     return true;
   }
   if (await saveParticipant(p, null)) {
+    bus.unlock({ name: p.name, kind: k, hue: has(p.pets, k) ? Number(p.pets[String(k)]) : hue, fresh: !dup,
+                 equipped: petKindFor(p) === k });
     bus.msg(p.name + (dup ? " rolled another " : " unlocked the ") + petLabel(k) +
             " (" + petRarityOf(k).name + ")" + (dup ? ", which they already had." : "!"), true);
   }

@@ -1,7 +1,9 @@
 /* Water animation. One state object per person, keyed by name, so a poll never
    restarts a glass. Changes from R55: canvases are sized for devicePixelRatio
    (sharp on scaled displays), and motion is time-based, so 60 fps runs at the
-   same speed as the HTA's 30 fps, only smoother. */
+   same speed as the HTA's 30 fps, only smoother.
+   Pet motion (turns, hops, dives, the drop-in) and the pour stream are applied
+   around the drawing, never inside the pet shapes, so they survive new graphics. */
 
 import * as C from "./config.js";
 import { rnd } from "./util.js";
@@ -32,6 +34,8 @@ export function pickLayout(count, avail) {
   return best;
 }
 
+export const petR = () => Math.min(dims.W * 0.26, 30);
+
 export function applyLayout(lay) {
   if (lay.card === dims.card && lay.cols === dims.cols) return false;
   dims.card = lay.card;
@@ -40,7 +44,8 @@ export function applyLayout(lay) {
   dims.gh = Math.round(lay.card * C.GLASS_H_RATIO);
   dims.W = dims.gw - 8;                    /* glass content box, minus borders */
   dims.H = dims.gh - 7;
-  dims.head = Math.round(dims.gw * 0.42);
+  /* Room above the rim for the tallest pet at the top of a jump from a full glass. */
+  dims.head = Math.ceil(petR() * (C.TALLEST_PET_R + C.BREACH_R)) + 6;
   for (const k in anim) seedBubbles(anim[k]);
   return true;
 }
@@ -67,10 +72,11 @@ function resetBubble(b) {
 export function animState(name) {
   if (!anim[name]) {
     anim[name] = { level: 0, target: 0, amp: C.AMBIENT_AMP, phase: Math.random() * 6.283,
-                   color: "#60a5fa", bubbles: [], rings: [], ctx: null, dctx: null,
+                   color: "#60a5fa", bubbles: [], rings: [], drops: [], pour: null, ctx: null, dctx: null,
                    duckState: 0, duckT: 0, critterKind: 0, critterHue: 0,
                    duckCrown: false, duckJester: false,
-                   m: { t: 0, face: 1, flip: 1, dive: -1, hop: -1, nextDive: rnd(6, 30), nextHop: rnd(3, 12), splashed: 0 } };
+                   m: { t: 0, face: 1, flip: 1, drift: 0, xs: 0, dive: -1, hop: -1, drop: -1, dropWait: 0,
+                        nextDive: rnd(6, 30), nextHop: rnd(3, 12), splashed: 0 } };
     seedBubbles(anim[name]);
   }
   return anim[name];
@@ -95,9 +101,13 @@ export function bindCanvases(name, glassCanvas, petCanvas, gw, gh) {
 export function unbindAll() { for (const k in anim) { anim[k].ctx = null; anim[k].dctx = null; } }
 
 const motionOn = () => C.PET_MOTION && !(reduceMotion && reduceMotion.matches);
-const petX = st => dims.W / 2 + Math.sin(st.phase * 0.31) * (dims.W * 0.21);
-export const petR = () => Math.min(dims.W * 0.26, 30);
 const depthAt = level => Math.min(Math.max(level, 0), 1) * (dims.H - C.SURFACE_BAND);
+const surfaceY = st => dims.H - Math.min(Math.max(st.level, 0), 1) * (dims.H - C.SURFACE_BAND);
+/* Drift across the glass, plus whatever ground a dive covered, kept inside the walls. */
+function petX(st) {
+  const r = petR(), x = dims.W / 2 + Math.sin(st.phase * 0.31) * (dims.W * 0.21) + (st.m.xs || 0);
+  return Math.max(r * 0.8, Math.min(dims.W - r * 0.8, x));
+}
 
 /* Enough water under the surface for a dive, now and where the level is heading. */
 export function canDive(st) {
@@ -120,6 +130,58 @@ export function startSink(name, kind, hue) {
   const st = animState(name);
   st.critterKind = kind; st.critterHue = hue;
   st.duckState = 2; st.duckT = 0;
+}
+
+/* A stream falls into the glass, on the side away from the pet. */
+export function pour(name, oz, color) {
+  const st = animState(name);
+  if (!motionOn()) { splash(name); return; }
+  const u = Math.min(1, Math.max(0, Number(oz) / C.POUR_OZ_FULL));
+  st.pour = { t: 0, dur: C.POUR_SECS_MIN + (C.POUR_SECS_MAX - C.POUR_SECS_MIN) * u,
+              w: Math.max(3, Math.min(11, 3 + Math.sqrt(Number(oz) || 1) * 1.3)) * (dims.W / 124),
+              color: color || st.color, x: 0, ring: 0 };
+  st.pour.x = petX(st) < dims.W / 2 ? dims.W * 0.68 : dims.W * 0.32;
+}
+
+/* The pet falls in from above. holdSecs keeps it out of sight first (while the
+   unlock card shows); releaseDrop lets it go early. */
+export function dropIn(name, holdSecs) {
+  const m = animState(name).m;
+  m.drop = 0; m.dropWait = Math.min(holdSecs || 0, 12);
+  m.dive = -1; m.hop = -1;
+}
+export function releaseDrop(name) { const m = animState(name).m; if (m.drop >= 0) m.dropWait = 0; }
+export const dropping = name => !!anim[name] && anim[name].m.drop >= 0;
+/* Seconds left on a pour, so the unlock card can wait for the water to land. */
+export const pourLeft = name => { const p = anim[name] && anim[name].pour; return p ? (1 - p.t) * p.dur : 0; };
+
+/* ---- the dive path ------------------------------------------------------ */
+function startDive(st) {
+  const m = st.m, r = petR(), g = r * C.GRAVITY_R;
+  m.dive = 0; m.splashed = 0;
+  m.depth = Math.min(depthAt(st.level) * 0.6, r * C.DIVE_DEPTH_R);
+  const rise = Math.PI * m.depth / C.DIVE_UNDER_SECS;               /* speed at the surface */
+  m.g = g;
+  m.vb = Math.max(Math.sqrt(2 * g * r * C.BREACH_MIN_R),           /* a kick for a shallow dive */
+                  Math.min(rise, Math.sqrt(2 * g * r * C.BREACH_R)));  /* a cap for a deep one */
+  m.tb = 2 * m.vb / g;
+  m.xs0 = m.xs; m.fwd = -m.face;                                    /* pets are drawn facing left */
+}
+const diveSecs = m => C.DIVE_UNDER_SECS + m.tb;
+
+/* Offset from the floating anchor s seconds into a dive: y down, x forward. */
+function divePath(m, s) {
+  const Tu = C.DIVE_UNDER_SECS, T = diveSecs(m), F = petR() * C.DIVE_FORWARD_R;
+  let y, vy;
+  if (s < Tu) {
+    const k = Math.PI / Tu;
+    y = m.depth * Math.sin(k * s); vy = m.depth * k * Math.cos(k * s);
+  } else {
+    const b = s - Tu;
+    y = -(m.vb * b - 0.5 * m.g * b * b); vy = -(m.vb - m.g * b);
+  }
+  const u = Math.min(1, s / T);
+  return { x: F * u * u * (3 - 2 * u), y, vx: F * 6 * u * (1 - u) / T, vy };
 }
 
 /* ---- drawing ------------------------------------------------------------ */
@@ -228,18 +290,71 @@ function drawSinking(ctx, st, W, H, top, offX, offY, r) {
   }
 }
 
+function rgba(hex, a) {
+  const m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex || "");
+  return m ? "rgba(" + parseInt(m[1], 16) + "," + parseInt(m[2], 16) + "," + parseInt(m[3], 16) + "," + a + ")"
+           : "rgba(96,165,250," + a + ")";
+}
+
+/* The stream runs from the top of the pet layer (above the glass) to the surface;
+   its front lands first and its tail follows it down at the end. */
+function drawPour(ctx, st, top, offX, offY) {
+  const p = st.pour;
+  if (!p) return;
+  const ease = v => 1 - (1 - v) * (1 - v);
+  const sx = offX + p.x, surf = offY + top + waveAt(st, p.x);
+  const yEnd = surf * Math.min(1, ease(Math.min(1, p.t / C.POUR_LAND)));
+  const yStart = p.t > C.POUR_TAIL ? surf * ease((p.t - C.POUR_TAIL) / (1 - C.POUR_TAIL)) : 0;
+  if (yEnd - yStart > 1) {
+    const g = ctx.createLinearGradient(0, 0, 0, surf);
+    g.addColorStop(0, rgba(p.color, 0));
+    g.addColorStop(0.22, rgba(p.color, 0.85));
+    g.addColorStop(1, rgba(p.color, 0.9));
+    const wob = y => Math.sin(y * 0.09 - st.m.t * 18) * 0.9;
+    const half = y => p.w * (0.62 - 0.22 * (y / surf)) ;          /* narrows as it falls */
+    ctx.beginPath();
+    for (let y = yStart; y <= yEnd; y += 3) ctx.lineTo(sx + wob(y) - half(y), y);
+    ctx.lineTo(sx + wob(yEnd) - half(yEnd), yEnd);
+    for (let y = yEnd; y >= yStart; y -= 3) ctx.lineTo(sx + wob(y) + half(y), y);
+    ctx.lineTo(sx + wob(yStart) + half(yStart), yStart);
+    ctx.closePath();
+    ctx.fillStyle = g;
+    ctx.fill();
+    ctx.beginPath();                                                 /* highlight */
+    for (let y = yStart; y <= yEnd; y += 3) ctx.lineTo(sx + wob(y) - half(y) * 0.35, y);
+    ctx.strokeStyle = "rgba(255,255,255,0.45)";
+    ctx.lineWidth = Math.max(1, p.w * 0.14);
+    ctx.stroke();
+    if (yEnd >= surf - 1) {                                          /* foam where it lands */
+      ctx.save();
+      ctx.translate(sx, surf);
+      ctx.scale(1, 0.32);
+      ctx.beginPath();
+      ctx.arc(0, 0, p.w * 1.1, 0, 6.2832);
+      ctx.restore();
+      ctx.fillStyle = "rgba(255,255,255,0.5)";
+      ctx.fill();
+    }
+  }
+  ctx.fillStyle = "rgba(255,255,255,0.85)";
+  for (const d of st.drops) {
+    ctx.beginPath();
+    ctx.arc(offX + d.x, offY + top + d.y, d.r, 0, 6.2832);
+    ctx.fill();
+  }
+}
+
 function drawPetLayer(st) {
   const ctx = st.dctx, W = dims.W, H = dims.H, offX = 4, offY = dims.head + 3;
   ctx.clearRect(0, 0, st.dW, st.dH);
+  const top = surfaceY(st);
+  drawPour(ctx, st, top, offX, offY);
   if (!st.duckState) return;
-  const top = H - Math.min(Math.max(st.level, 0), 1) * (H - C.SURFACE_BAND);
   const r = petR();
-  if (st.duckState === 4) { drawHeadstone(ctx, W / 2 + offX, H - 4 + offY, r, st.critterHue); return; }
-  if (st.duckState === 1) {
-    drawFloating(ctx, st, W, H, top, offX, offY, r);
-  } else if (st.duckState === 2) {
-    drawSinking(ctx, st, W, H, top, offX, offY, r);
-  } else if (st.duckState === 3) {
+  if (st.duckState === 4) drawHeadstone(ctx, W / 2 + offX, H - 4 + offY, r, st.critterHue);
+  else if (st.duckState === 1) drawFloating(ctx, st, W, H, top, offX, offY, r);
+  else if (st.duckState === 2) drawSinking(ctx, st, W, H, top, offX, offY, r);
+  else if (st.duckState === 3) {
     drawCritter(ctx, W / 2 + offX, duckRestY(H, r) + offY, r, Math.PI, st.duckCrown, true,
                 st.critterKind || 0, st.critterHue || 0, st.duckJester);
   }
@@ -247,25 +362,33 @@ function drawPetLayer(st) {
 }
 
 function drawFloating(ctx, st, W, H, top, offX, offY, r) {
-  const m = st.m, moving = motionOn(), dx = petX(st), flip = moving ? m.flip : 1;
+  const m = st.m, moving = motionOn(), flip = moving ? m.flip : 1;
+  let dx = petX(st);
   const slope = (waveAt(st, dx + 5) - waveAt(st, dx - 5)) / 10;
   let dy = top + waveAt(st, dx), ang = Math.atan(slope) * (flip < 0 ? -1 : 1);
-  if (moving) {
-    dy += Math.sin(m.t * 2.1) * r * 0.035;                      /* a slow breath */
+  if (moving && m.drop >= 0) {
+    if (m.dropWait > 0) return;                                     /* still on the unlock card */
+    const u = m.drop, from = -offY - r * 1.4;
+    dy = from + (dy - from) * u * u;                                /* falls, accelerating */
+    ang += (1 - u) * 2.4;
+  } else if (moving) {
+    dy += Math.sin(m.t * 2.1) * r * 0.035;                          /* a slow breath */
     if (m.dive >= 0) {
-      const t = m.dive, depth = Math.min((H - top) * 0.6, r * 3.2);
-      dy += depth * Math.sin(Math.PI * t);
-      ang += -0.95 * Math.sin(2 * Math.PI * t);                 /* nose down, then up */
-      for (let i = 0; i < 3 && t > 0.12 && t < 0.88; i++) {      /* air it lets go of */
-        const by = dy - r * 0.6 - ((m.t * 26 + i * 9) % (r * 1.6));
-        if (by < top + 2) continue;
-        ctx.beginPath();
-        ctx.arc(dx + offX + (i - 1) * r * 0.22, by + offY, r * (0.07 - i * 0.012), 0, 6.2832);
-        ctx.fillStyle = "rgba(255,255,255,0.55)";
-        ctx.fill();
+      const d = divePath(m, m.dive);
+      dy += d.y;
+      ang = -Math.atan2(d.vy, Math.max(d.vx, r * 0.4)) * 0.85;       /* nose follows the path */
+      if (m.dive > 0.3 && m.dive < C.DIVE_UNDER_SECS - 0.3) {       /* air it lets go of */
+        for (let i = 0; i < 3; i++) {
+          const by = dy - r * 0.6 - ((m.t * 26 + i * 9) % (r * 1.6));
+          if (by < top + 2) continue;
+          ctx.beginPath();
+          ctx.arc(dx + offX + (i - 1) * r * 0.22, by + offY, r * (0.07 - i * 0.012), 0, 6.2832);
+          ctx.fillStyle = "rgba(255,255,255,0.55)";
+          ctx.fill();
+        }
       }
     } else if (m.hop >= 0) {
-      dy -= r * 0.55 * Math.sin(Math.PI * m.hop);
+      dy -= r * C.HOP_R * Math.sin(Math.PI * m.hop);
       ang += 0.22 * Math.sin(2 * Math.PI * m.hop);
     }
   }
@@ -297,18 +420,24 @@ function tintUnderwater(ctx, st, W, H, top, offX, offY) {
 /* ---- the loop ----------------------------------------------------------- */
 function busy() {
   for (const k in anim) {
-    const st = anim[k];
+    const st = anim[k], m = st.m;
     if (!st.ctx) continue;
     if (Math.abs(st.target - st.level) > 0.0006 || st.rings.length || st.duckState === 2) return true;
-    if (st.m.dive >= 0 || st.m.hop >= 0 || Math.abs(st.m.flip - st.m.face) > 0.02) return true;
+    if (st.pour || st.drops.length || m.drop >= 0) return true;
+    if (m.dive >= 0 || m.hop >= 0 || Math.abs(m.flip - m.face) > 0.02 || Math.abs(m.xs) > 0.3) return true;
   }
   return false;
 }
 
-function step(st, f) {
+export function stepState(st, f) {
+  const dt = f / 30, p = st.pour;
+  /* The level waits for a pour's stream to land, then rises with it. */
+  if (!(p && p.t < C.POUR_LAND)) {
+    const ease = p ? C.POUR_EASE : C.LEVEL_EASE, delta = st.target - st.level;
+    st.level += delta * (1 - Math.pow(1 - ease, f));
+    if (Math.abs(delta) < 0.0004) st.level = st.target;
+  }
   const delta = st.target - st.level;
-  st.level += delta * (1 - Math.pow(1 - C.LEVEL_EASE, f));
-  if (Math.abs(delta) < 0.0004) st.level = st.target;
   st.phase += C.WAVE_SPEED * f;
   if (st.phase > 62832) st.phase = 0;
   const floorAmp = C.AMBIENT_AMP + Math.min(C.FILL_AMP, Math.abs(delta) * C.FILL_AMP * 7);
@@ -318,8 +447,9 @@ function step(st, f) {
     st.duckT += f / (30 * C.DUCK_SINK_SECS);
     if (st.duckT >= 1) { st.duckState = 3; st.duckT = 0; }
   }
+  if (p) stepPour(st, p, dt);
   stepMotion(st, f);
-  const waterH = Math.min(Math.max(st.level, 0), 1) * (dims.H - C.SURFACE_BAND);
+  const waterH = depthAt(st.level);
   for (const b of st.bubbles) { b.y += b.v * f; if (b.y > waterH - 3 || waterH < 10) resetBubble(b); }
   st.rings = st.rings.filter(g => {
     g.r += C.RING_GROWTH * f;
@@ -328,31 +458,77 @@ function step(st, f) {
   });
 }
 
-/* Facing, hops and dives for a floating pet. Everything else stays still. */
+function stepPour(st, p, dt) {
+  p.t += dt / p.dur;
+  if (p.t >= C.POUR_LAND && p.t < 1) {
+    p.ring -= dt;
+    if (p.ring <= 0) { ringAt(st, p.x, false); p.ring = 0.12; }
+    st.amp = Math.max(st.amp, 4);
+    for (let i = 0; i < 2 && st.drops.length < 40; i++) {
+      st.drops.push({ x: p.x + rnd(-p.w / 2, p.w / 2), y: -1, vx: rnd(-40, 40), vy: rnd(-95, -40), r: rnd(0.9, 1.9) });
+    }
+  }
+  if (p.t >= 1) st.pour = null;
+  /* droplets thrown up at the impact, in px from the surface */
+  st.drops = st.drops.filter(d => {
+    d.x += d.vx * dt; d.y += d.vy * dt; d.vy += 420 * dt;
+    return d.y < 0;
+  });
+}
+
+/* Facing, hops, dives and the drop-in for a floating pet. */
 export function stepMotion(st, f) {
-  const m = st.m, dt = f / 30;
+  const m = st.m, dt = f / 30, r = petR();
   m.t += dt;
-  if (st.duckState !== 1 || !motionOn()) { m.dive = -1; m.hop = -1; return; }
-  const vel = Math.cos(st.phase * 0.31);               /* the drift's direction */
-  if (vel > 0.05) m.face = -1; else if (vel < -0.05) m.face = 1;
+  if (!st.pour && st.drops.length) st.drops = st.drops.filter(d => { d.x += d.vx * dt; d.y += d.vy * dt; d.vy += 420 * dt; return d.y < 0; });
+  if (st.duckState !== 1 || !motionOn()) { m.dive = -1; m.hop = -1; m.drop = -1; return; }
+
+  if (m.drop >= 0) {
+    if (m.dropWait > 0) { m.dropWait -= dt; return; }
+    m.drop += dt / C.DROP_SECS;
+    if (m.drop >= 1) { m.drop = -1; ringAt(st, petX(st), true); st.amp = Math.max(st.amp, 10); m.nextHop = m.t + 0.15; }
+    return;
+  }
+
+  if (m.dive < 0) {
+    /* Turn to face the drift at each side, except now and then. */
+    const vel = Math.cos(st.phase * 0.31);
+    const dir = vel > 0.05 ? -1 : vel < -0.05 ? 1 : 0;
+    if (dir && dir !== m.drift) {
+      m.drift = dir;
+      if (m.face !== dir && Math.random() >= C.TURN_SKIP_CHANCE) m.face = dir;
+    }
+    m.xs *= Math.pow(0.985, f);                         /* ease back from where a dive left it */
+  }
   m.flip += (m.face - m.flip) * (1 - Math.pow(1 - C.TURN_EASE, f));
+
   if (m.dive >= 0) {
+    const Tu = C.DIVE_UNDER_SECS;
     /* The water dropped under it (an undo): turn round and come up from here. */
-    if (m.dive < 0.5 && depthAt(Math.min(st.level, st.target)) < petR() * C.SURFACE_DEPTH_R) m.dive = 1 - m.dive;
-    m.dive += dt / C.DIVE_SECS;
-    if (m.splashed === 0 && m.dive > 0.06) { m.splashed = 1; ringAt(st, petX(st), true); }
-    if (m.splashed === 1 && m.dive > 0.92) { m.splashed = 2; ringAt(st, petX(st), true); }
-    if (m.dive >= 1) { m.dive = -1; m.nextDive = m.t + rnd(C.DIVE_EVERY[0], C.DIVE_EVERY[1]); }
+    if (m.dive < Tu / 2 && depthAt(Math.min(st.level, st.target)) < r * C.SURFACE_DEPTH_R) m.dive = Tu - m.dive;
+    m.dive += dt;
+    m.xs = m.xs0 + m.fwd * divePath(m, Math.min(m.dive, diveSecs(m))).x;
+    if (m.splashed === 0 && m.dive > 0.12) { m.splashed = 1; ringAt(st, petX(st), true); }
+    if (m.splashed === 1 && m.dive >= Tu) { m.splashed = 2; ringAt(st, petX(st), true); }
+    if (m.dive >= diveSecs(m)) {
+      m.dive = -1;
+      ringAt(st, petX(st), true);
+      st.amp = Math.max(st.amp, 8);
+      m.nextDive = m.t + rnd(C.DIVE_EVERY[0], C.DIVE_EVERY[1]);
+    }
   } else if (m.hop >= 0) {
     m.hop += dt / C.HOP_SECS;
     if (m.hop >= 1) { m.hop = -1; ringAt(st, petX(st), false); m.nextHop = m.t + rnd(C.HOP_EVERY[0], C.HOP_EVERY[1]); }
   } else if (m.t > m.nextDive) {
-    if (canDive(st)) { m.dive = 0; m.splashed = 0; }
+    if (canDive(st)) startDive(st);
     else m.nextDive = m.t + rnd(C.DIVE_EVERY[0], C.DIVE_EVERY[1]);
   } else if (m.t > m.nextHop && st.level > 0.04) {
     m.hop = 0;
   }
 }
+
+/* For tests: where a dive puts the pet s seconds in, and how long it lasts. */
+export const diveProbe = { start: startDive, path: divePath, secs: diveSecs };
 
 let last = 0, lastDrawn = 0, frames = 0, fpsT = 0, running = false;
 
@@ -369,7 +545,7 @@ function frame(now) {
     const st = anim[k];
     if (!st.ctx) continue;
     try {
-      step(st, f);
+      stepState(st, f);
       drawGlass(st);
       if (st.dctx) drawPetLayer(st);
     } catch (e) {

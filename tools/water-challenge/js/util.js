@@ -84,5 +84,6 @@ export const has = (o, k) => !!o && Object.prototype.hasOwnProperty.call(o, Stri
 export const bus = {
   msg(text, good) { /* replaced at boot */ },
   drown(name, kind, hue) { /* replaced at boot */ },
-  petReset(name) { /* replaced at boot */ }
+  petReset(name) { /* replaced at boot */ },
+  unlock(info) { /* replaced at boot: { name, kind, hue, fresh, equipped, rolled } */ }
 };

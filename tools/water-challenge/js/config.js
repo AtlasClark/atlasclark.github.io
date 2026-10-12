@@ -3,8 +3,8 @@
    contract (FORMAT_REV 21, UTF-16 LE + BOM) must stay identical while R55 runs on the
    share: R55 deletes any field it does not know on its next write. */
 
-export const REV         = "rev 1.2.0";
-export const APP_VERSION = "web 1.2.0";   /* stamped as writerVersion */
+export const REV         = "rev 1.3.0";
+export const APP_VERSION = "web 1.3.0";   /* stamped as writerVersion */
 /* A folder stays at LEGACY_FORMAT (byte-compatible with R55) until someone upgrades
    it from Settings. Format 22 adds tokensSpent and keeps unknown fields; R55 must
    not be used on a folder after that. */
@@ -136,14 +136,38 @@ export const BUBBLE_WOBBLE  = 2.4;
 export const PET_MOTION     = true;
 export const DIVE_EVERY     = [25, 60];   /* random gap between dives */
 export const HOP_EVERY      = [9, 24];    /* random gap between small hops */
-export const DIVE_SECS      = 2.6;
+/* A dive is one continuous path: down and forward, back up, out of the water on a
+   gravity arc at the speed it rose, and a splash on landing. */
+export const DIVE_UNDER_SECS = 2.3;       /* time under the surface */
+export const DIVE_DEPTH_R   = 3.2;        /* deepest a dive goes, in pet radii (and 60% of the water) */
+export const DIVE_FORWARD_R = 1.6;        /* how far it swims forward over a dive, in pet radii */
+export const GRAVITY_R      = 14;         /* pet radii per second squared, for jumps */
+export const BREACH_R       = 1.15;       /* highest a jump out of the water goes, in pet radii */
+export const BREACH_MIN_R   = 0.5;        /* a shallow dive still kicks out at least this high */
+export const HOP_R          = 0.55;       /* small hop height, in pet radii */
+export const TALLEST_PET_R  = 2.1;        /* highest point of any pet above its waterline (dragon horns) */
 export const HOP_SECS       = 0.7;
 /* A dive needs this much water under the surface, in pet radii, both now and where
    the level is heading. Below SURFACE_DEPTH_R mid-dive, the pet turns back up. */
 export const DIVE_MIN_DEPTH_R = 2.4;
 export const SURFACE_DEPTH_R  = 1.2;
 export const TURN_EASE      = 0.16;       /* how fast a pet turns to face its drift */
+export const TURN_SKIP_CHANCE = 0.10;     /* at a side, the chance it keeps facing the way it was */
 export const UNDERWATER_TINT = 0.42;      /* water colour over anything below the surface */
+
+/* Pour: a stream falls into the glass when someone logs water. The level waits for
+   the stream to land, then rises at POUR_EASE while it flows. */
+export const POUR_SECS_MIN  = 0.8;
+export const POUR_SECS_MAX  = 1.7;        /* reached at POUR_OZ_FULL or more */
+export const POUR_OZ_FULL   = 48;
+export const POUR_LAND      = 0.15;       /* share of the pour before the stream reaches the water */
+export const POUR_TAIL      = 0.80;       /* share after which the stream's tail falls */
+export const POUR_EASE      = 0.05;
+
+/* Unlock: a reveal card on the machine that made the roll, then the pet drops in. */
+export const DROP_SECS      = 0.9;
+export const REVEAL_SPIN    = [70, 70, 80, 90, 110, 140, 180, 240, 330];   /* ms between rarity flashes */
+export const REVEAL_HOLD_MS = 3200;       /* how long the revealed card stays */
 export const SPLASH_RINGS   = 3;
 export const RING_GROWTH    = 2.3;
 export const RING_FADE      = 0.915;

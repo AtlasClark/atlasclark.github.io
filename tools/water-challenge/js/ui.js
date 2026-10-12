@@ -174,6 +174,7 @@ export function forceRebuild() { renderedSig = ""; }
 function petVisual(p, st, danger, key) {
   let ds = st.duckState;
   if (st.shownKind !== petKindFor(p)) {
+    if (st.shownKind !== undefined && petKindFor(p) >= 0) st.wantDrop = true;   /* not on first load */
     st.shownKind = petKindFor(p);
     if (ds === 4) ds = 0;
   }
@@ -190,6 +191,10 @@ function petVisual(p, st, danger, key) {
   else ds = 0;
   if (ds === 1 || ds === 4) { st.critterKind = petKindFor(p); st.critterHue = petHueFor(p); }
   st.duckState = ds;
+  if (st.wantDrop) {                                 /* a newly worn pet falls into the glass */
+    st.wantDrop = false;
+    if (ds === 1 && !G.dropping(p.name)) G.dropIn(p.name, 0);
+  }
 }
 
 function updateGlasses() {
@@ -540,6 +545,107 @@ export function setTab(name) {
   }
   if (name === "pets") htmlCache.pets = "";
   render();
+}
+
+/* ---- the unlock card ---------------------------------------------------- */
+/* Shown on the machine that made the roll. The rarity chip flashes through the
+   tiers, slowing, lands on the real one, and the pet appears. The pet stays out of
+   its glass until the card closes, then drops in. */
+const unlockQueue = [];
+let unlockBusy = false;
+
+export function showUnlock(info) {
+  unlockQueue.push(info);
+  if (!unlockBusy) nextUnlock();
+}
+
+async function nextUnlock() {
+  const info = unlockQueue.shift();
+  if (!info) { unlockBusy = false; return; }
+  unlockBusy = true;
+  try { await playUnlock(info); } catch { $("unlock").hidden = true; }
+  G.releaseDrop(info.name);
+  nextUnlock();
+}
+
+function tierOf(kind) {
+  if (kind === C.MYSTERY_KIND) return "rm";
+  if (kind === C.HOMUNCULUS_KIND) return "rh";
+  return "r" + petBinIndex(kind);
+}
+
+function drawRevealPet(info) {
+  const cv = $("ulPet"), dpr = Math.min(window.devicePixelRatio || 1, 3), size = 120;
+  cv.width = size * dpr; cv.height = size * dpr;
+  const ctx = cv.getContext("2d");
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, size, size);
+  if (info.kind === C.MYSTERY_KIND) drawCritter(ctx, 66, 104, 28, 0, false, false, info.kind, 0);
+  else if (info.kind === C.HOMUNCULUS_KIND) drawCritter(ctx, 60, 98, 34, 0, false, false, info.kind, info.hue);
+  else drawPortrait(ctx, 60, 84, 40, info.kind, info.hue);
+}
+
+function confetti(n) {
+  const cols = ["#facc15", "#38bdf8", "#f472b6", "#4ade80", "#c084fc", "#fb923c"], h = [];
+  for (let i = 0; i < n; i++) {
+    const a = Math.random() * Math.PI * 2, d = 90 + Math.random() * 110;
+    h.push('<i style="--dx:' + Math.round(Math.cos(a) * d) + 'px;--dy:' + Math.round(Math.sin(a) * d - 40) +
+           'px;--rot:' + Math.round(Math.random() * 720 - 360) + 'deg;--c:' + cols[i % cols.length] +
+           ';animation-delay:' + Math.round(Math.random() * 120) + 'ms"></i>');
+  }
+  return h.join("");
+}
+
+function playUnlock(info) {
+  return new Promise(resolve => {
+    const box = $("unlock"), card = $("ulCard"), chip = $("ulRarity");
+    const reduce = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const tier = tierOf(info.kind), label = petLabel(info.kind);
+    $("ulWho").textContent = info.kind === C.MYSTERY_KIND ? info.name + " found something" : info.name + " reached the goal";
+    $("ulName").innerHTML = "";
+    $("ulBurst").innerHTML = "";
+    $("ulQ").hidden = false;
+    $("ulPet").getContext("2d").clearRect(0, 0, 9999, 9999);
+    card.className = "ul-card spinning";
+    box.hidden = false;
+
+    let done = false, hold = 0;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      clearTimeout(hold);
+      card.classList.add("leaving");
+      setTimeout(() => { box.hidden = true; resolve(); }, 320);
+    };
+    card.onclick = finish;
+
+    const spins = reduce ? [] : C.REVEAL_SPIN, target = tier === "rm" || tier === "rh" ? 4 : petBinIndex(info.kind);
+    let i = 0;
+    const flash = () => {
+      if (done) return;
+      if (i < spins.length) {
+        const b = ((target - (spins.length - i)) % C.PET_BINS.length + C.PET_BINS.length) % C.PET_BINS.length;
+        chip.className = "ul-rarity r" + b;
+        chip.textContent = C.PET_BINS[b].name;
+        setTimeout(flash, spins[i++]);
+        return;
+      }
+      chip.className = "ul-rarity " + tier;
+      chip.textContent = rarityLabel(info.kind);
+      $("ulQ").hidden = true;
+      drawRevealPet(info);
+      $("ulName").innerHTML = info.kind === C.HOMUNCULUS_KIND
+        ? 'All ' + C.PET_COUNT + ' found. The pen made the <b>' + esc(label) + '</b>'
+        : info.kind === C.MYSTERY_KIND
+          ? '<b>' + esc(label) + '</b><small>It is not from the pen. Keep it on.</small>'
+          : info.fresh ? '<span class="ul-new">New</span> <b>' + esc(label) + '</b>'
+                       : 'Another <b>' + esc(label) + '</b>';
+      card.className = "ul-card revealed " + tier + (info.fresh ? " fresh" : "");
+      if (info.fresh && !reduce) $("ulBurst").innerHTML = confetti(30);
+      hold = setTimeout(finish, C.REVEAL_HOLD_MS);
+    };
+    flash();
+  });
 }
 
 /* ---- overlays ----------------------------------------------------------- */

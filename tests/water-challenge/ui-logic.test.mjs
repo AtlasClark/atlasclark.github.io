@@ -65,10 +65,80 @@ test("dives: the water dropping mid-dive turns the pet back up", () => {
   const st = pet(0.9, 0.9);
   G.stepMotion(st, 1);
   run(st, 0.5);
-  assert.ok(st.m.dive > 0 && st.m.dive < 0.5, "on the way down");
+  const half = C.DIVE_UNDER_SECS / 2;
+  assert.ok(st.m.dive > 0 && st.m.dive < half, "on the way down");
   st.level = st.target = 0.02;
   G.stepMotion(st, 1);
-  assert.ok(st.m.dive > 0.5, "now on the way up");
+  assert.ok(st.m.dive > half, "now on the way up");
+});
+
+test("dives: leave the water on an arc at the speed they rose, never a dead stop", () => {
+  for (const level of [0.45, 0.7, 1]) {
+    const st = pet(level, level);
+    G.diveProbe.start(st);
+    const m = st.m, r = G.petR(), Tu = C.DIVE_UNDER_SECS, T = G.diveProbe.secs(m), eps = 1e-4;
+    const at = s => G.diveProbe.path(m, s);
+    assert.ok(Math.abs(at(Tu).y) < 1e-6, "surfaces at the end of the under phase");
+    assert.ok(at(Tu - eps).vy < 0 && at(Tu + eps).vy < 0, "still rising as it breaks the surface");
+    assert.ok(-at(Tu + eps).vy >= -at(Tu - eps).vy * 0.4, "the jump carries on the rise instead of stopping");
+    let peak = 0;
+    for (let s = Tu; s <= T; s += 0.005) peak = Math.max(peak, -at(s).y);
+    assert.ok(peak >= r * C.BREACH_MIN_R * 0.98, "it clears the water: " + (peak / r).toFixed(2) + "r at level " + level);
+    assert.ok(peak <= r * C.BREACH_R + 1e-6, "the jump is capped");
+    assert.ok(Math.abs(at(T).y) < 1e-6, "lands back on the surface");
+    assert.ok(at(T / 2).x > 0 && at(T).x > at(T / 2).x, "moves forward along the way");
+  }
+});
+
+test("headroom: the tallest pet at the top of a jump from a full glass stays on the pet layer", () => {
+  for (let card = C.CARD_MIN; card <= C.CARD_MAX; card += C.CARD_STEP) {
+    G.applyLayout({ card, cols: 1 + (card % 3) });
+    const r = G.petR(), anchorFromTop = G.dims.head + 3 + C.SURFACE_BAND;   /* full glass, canvas px */
+    assert.ok(anchorFromTop - r * C.BREACH_R - r * C.TALLEST_PET_R >= 0, "card " + card);
+  }
+});
+
+test("turns: at a side the pet turns about 90% of the time", () => {
+  const st = pet(0.5, 0.5);
+  st.m.nextDive = st.m.nextHop = 1e12;
+  let reversals = 0, kept = 0, lastDrift = 0;
+  for (let i = 0; i < 400000; i++) {
+    st.phase += C.WAVE_SPEED;
+    const before = st.m.face;
+    G.stepMotion(st, 1);
+    if (st.m.drift !== lastDrift && lastDrift !== 0) {
+      reversals++;
+      if (st.m.face === before && before !== st.m.drift) kept++;
+    }
+    lastDrift = st.m.drift;
+  }
+  const share = kept / reversals;
+  assert.ok(reversals > 1500, reversals + " reversals");
+  assert.ok(share > 0.07 && share < 0.13, "kept facing on " + (share * 100).toFixed(1) + "% of reversals");
+});
+
+test("pour: the level waits for the stream to land, then rises with it", () => {
+  const st = pet(0.2, 0.2);
+  G.pour(Object.keys(G.anim).find(k => G.anim[k] === st), 24, "#60a5fa");
+  st.target = 0.6;
+  const dur = st.pour.dur;
+  for (let i = 0; i < Math.floor(dur * C.POUR_LAND * 30) - 1; i++) G.stepState(st, 1);
+  assert.equal(st.level, 0.2, "held while the stream falls");
+  for (let i = 0; i < 10; i++) G.stepState(st, 1);
+  assert.ok(st.level > 0.2 && st.level < 0.6, "rising while it pours");
+  for (let i = 0; i < 30 * 8; i++) G.stepState(st, 1);
+  assert.equal(st.pour, null);
+  assert.ok(Math.abs(st.level - 0.6) < 0.001, "settles on the new level");
+});
+
+test("drop-in: a held pet waits, then falls in and floats", () => {
+  const st = pet(0.5, 0.5), name = Object.keys(G.anim).find(k => G.anim[k] === st);
+  G.dropIn(name, 12);
+  run(st, 3);
+  assert.ok(G.dropping(name), "still held");
+  G.releaseDrop(name);
+  run(st, C.DROP_SECS + 0.2);
+  assert.equal(G.dropping(name), false, "landed");
 });
 
 test("pet events carry the time of the pour that caused them; undo says what it costs", { skip: skipReason }, async () => {

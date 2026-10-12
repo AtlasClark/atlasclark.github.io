@@ -10,7 +10,7 @@ import { reconcilePets, equipPet } from "./pets.js";
 import * as G from "./glass.js";
 import { ui, render, setTab, setMsg, showBanner, renderChips, tickMasks, relayout, forceRebuild,
          toggleSwatches, openBank, auditStreak, showDiag, closeOverlays, fillSettings, renderRoster,
-         renderActivityNow } from "./ui.js";
+         renderActivityNow, showUnlock } from "./ui.js";
 import { $, bus, todayKey, localStamp, fmt, fmtOz, trim, parseKey, shiftKey, clockStamp } from "./util.js";
 
 let lastSig = "", pollTimer = 0;
@@ -19,6 +19,10 @@ let lastSig = "", pollTimer = 0;
 bus.msg = setMsg;
 bus.drown = (name, kind, hue) => G.startSink(name, kind, hue);
 bus.petReset = name => { const st = G.animState(name); st.duckState = 0; st.shownKind = -99; };
+bus.unlock = info => {
+  if (info.equipped) G.dropIn(info.name, 12);       /* held off-screen until the card closes */
+  setTimeout(() => showUnlock(info), G.pourLeft(info.name) * 1000 + 150);
+};
 
 /* ---- theme -------------------------------------------------------------- */
 const THEMES = ["auto", "light", "dark"];
@@ -261,7 +265,7 @@ async function addWater(name) {
     } else {
       setMsg(p.name + "  +" + fmt(ui.amount) + " oz     today " + fmt(after) + " / " + fmt(goal) + " oz", true);
     }
-    G.splash(p.name);
+    G.pour(p.name, ui.amount, p.color);
     await settle();
   });
 }
