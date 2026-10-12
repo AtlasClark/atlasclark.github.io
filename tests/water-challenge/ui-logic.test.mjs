@@ -176,3 +176,13 @@ test("pet events carry the time of the pour that caused them; undo says what it 
   assert.notEqual(p.graveDay, day);
   assert.equal(M.petEventTimes(p, day).grave, "");
 });
+
+test("turns: a pet seen for the first time already faces its drift (no turn on load)", () => {
+  for (let i = 0; i < 200; i++) {
+    const st = pet(0.5, 0.5);
+    st.m.nextDive = st.m.nextHop = 1e12;
+    st.phase = Math.random() * 6.283;
+    G.stepMotion(st, 1);
+    if (st.m.drift) assert.equal(st.m.flip, st.m.face, "no turn animation on first sight");
+  }
+});

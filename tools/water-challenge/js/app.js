@@ -8,7 +8,8 @@ import { S, dataChanged, findParticipant, totalOn, metGoal, currentGoalFor, stre
 import * as store from "./store.js";
 import { reconcilePets, equipPet } from "./pets.js";
 import * as G from "./glass.js";
-import { ui, render, setTab, setMsg, showBanner, renderChips, tickMasks, relayout, forceRebuild,
+import { openRadial, wireRadial } from "./radial.js";
+import { ui, render, setTab, setMsg, showBanner, tickMasks, relayout, forceRebuild,
          toggleSwatches, openBank, auditStreak, showDiag, closeOverlays, fillSettings, renderRoster,
          renderActivityNow, showUnlock } from "./ui.js";
 import { $, bus, todayKey, localStamp, fmt, fmtOz, trim, parseKey, shiftKey, clockStamp } from "./util.js";
@@ -223,12 +224,18 @@ function askConfirm(title, text, okLabel) {
 }
 
 /* ---- actions ------------------------------------------------------------ */
-function commitAmount() {
-  const v = Number($("amount").value);
-  if (!isFinite(v) || v <= 0) { setMsg("Enter a quantity greater than zero.", false); return false; }
-  ui.amount = v;
-  renderChips();
-  return true;
+/* The last amount picked is offered first next time, in this browser only. */
+function rememberAmount(oz) {
+  ui.amount = oz;
+  try { localStorage.setItem("awc-amount", String(oz)); } catch { }
+}
+
+function openPour(name, x, y) {
+  const p = findParticipant(name);
+  if (!p) return;
+  const key = todayKey();
+  openRadial({ name: p.name, color: p.color, total: totalOn(p, key), goal: currentGoalFor(p), amount: ui.amount, x, y },
+             (who, oz) => { rememberAmount(oz); addWater(who, oz); });
 }
 
 function guard() {
@@ -244,15 +251,16 @@ async function setAwayNow(p, away) {
   return store.saveParticipant(p, null);
 }
 
-async function addWater(name) {
-  if (!commitAmount() || !guard()) return;
+async function addWater(name, oz) {
+  if (!guard()) return;
+  if (!(Number(oz) > 0)) { setMsg("Enter a quantity greater than zero.", false); return; }
   await store.serial(async () => {
     const p = findParticipant(name);
     if (!p) { setMsg(name + " is no longer on the roster.", false); return; }
     if (!isActive(p)) await setAwayNow(p, false);
     const key = todayKey(), before = totalOn(p, key), now = new Date(), stamp = localStamp(now);
     const eid = "m:" + stamp + ":" + Math.floor(Math.random() * 1000000000);
-    p.entries.push({ eid, ts: stamp, date: key, oz: ui.amount, by: S.me || "unknown" });
+    p.entries.push({ eid, ts: stamp, date: key, oz, by: S.me || "unknown" });
     if (!(await store.saveParticipant(p, null))) {
       p.entries = p.entries.filter(e => e.eid !== eid);
       setMsg("Someone else is writing to " + p.name + "'s file. Try again in a second.", false);
@@ -263,9 +271,9 @@ async function addWater(name) {
       const g = streaks(p).goal;
       setMsg(p.name + " hit the goal - " + fmt(after) + " fl oz." + (g > 0 ? "  " + g + " goal streak." : ""), true);
     } else {
-      setMsg(p.name + "  +" + fmt(ui.amount) + " oz     today " + fmt(after) + " / " + fmt(goal) + " oz", true);
+      setMsg(p.name + "  +" + fmt(oz) + " oz     today " + fmt(after) + " / " + fmt(goal) + " oz", true);
     }
-    G.pour(p.name, ui.amount, p.color);
+    G.pour(p.name, oz, p.color);
     await settle();
   });
 }
@@ -432,8 +440,6 @@ function wire() {
   $("applySettings").onclick = applySettings;
   $("upgradeBtn").onclick = upgradeFormat;
   $("settingsPanel").addEventListener("keydown", e => { if (e.key === "Enter" && e.target.tagName === "INPUT") applySettings(); });
-  $("amount").addEventListener("keydown", e => { if (e.key === "Enter" && commitAmount()) setMsg("", true); });
-  $("amount").addEventListener("change", () => commitAmount());
   $("pname").addEventListener("keydown", e => { if (e.key === "Enter") addParticipant(); });
   $("addP").onclick = addParticipant;
   $("sbMe").onclick = () => askIdentity(false);
@@ -441,19 +447,25 @@ function wire() {
   $("sbFolder").onclick = () => { if (ui.connected) showGate("reconnect"); else showGate(store.dir ? "reconnect" : "pick"); $("gateClose").hidden = !ui.connected; };
   $("gateClose").onclick = () => { $("gate").hidden = true; };
 
-  $("chips").onclick = e => {
-    const b = e.target.closest(".chip");
-    if (!b) return;
-    ui.amount = Number(b.dataset.oz);
-    $("amount").value = ui.amount;
-    renderChips();
-    setMsg("", true);
-  };
-  $("addButtons").onclick = e => {
-    const b = e.target.closest("[data-act]");
-    if (!b) return;
-    if (b.dataset.act === "add") addWater(b.dataset.name);
-  };
+  wireRadial();
+  $("glasses").addEventListener("contextmenu", e => {
+    const card = e.target.closest(".participant-card");
+    if (!card || e.target.closest(".swatches")) return;
+    e.preventDefault();
+    let x = e.clientX, y = e.clientY;
+    if (!x && !y) {                                   /* the context-menu key: no pointer position */
+      const r = card.querySelector(".gwrap").getBoundingClientRect();
+      x = r.left + r.width / 2; y = r.top + r.height / 2;
+    }
+    openPour(card.dataset.name, x, y);
+  });
+  $("glasses").addEventListener("keydown", e => {
+    const g = e.target.closest(".gwrap"), card = e.target.closest(".participant-card");
+    if (!g || !card || (e.key !== "Enter" && e.key !== " ")) return;
+    e.preventDefault();
+    const r = g.getBoundingClientRect();
+    openPour(card.dataset.name, r.left + r.width / 2, r.top + r.height / 2);
+  });
   $("activity").onclick = e => {
     const b = e.target.closest("[data-act=undo]"), row = e.target.closest("li.pour");
     if (!b || !row) return;
@@ -504,8 +516,7 @@ function wire() {
 async function boot() {
   initTheme();
   wire();
-  renderChips();
-  $("amount").value = C.DEFAULT_AMOUNT;
+  try { const a = Number(localStorage.getItem("awc-amount")); if (a > 0) ui.amount = a; } catch { }
   $("revLabel").textContent = C.REV;
   setInterval(tickMasks, C.MASK_MS);
   render();

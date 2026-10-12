@@ -92,12 +92,6 @@ function streakPips(s, brief) {
   return bits.join(brief ? "" : "<br>");
 }
 
-/* ---- chips -------------------------------------------------------------- */
-export function renderChips() {
-  setHtml("chips", C.QUICK_SIZES.map(oz =>
-    '<button type="button" class="chip' + (oz === ui.amount ? " active" : "") + '" data-oz="' + oz + '">' +
-    fmt(oz) + '</button>').join(""));
-}
 
 /* ---- glasses ------------------------------------------------------------ */
 let ordered = [], renderedSig = "";
@@ -126,7 +120,8 @@ function buildGlasses() {
     h.push('<div class="participant-card' + (compact ? " compact" : "") + '" style="width:' + T.card + 'px" data-name="' + n + '">');
     h.push('<button type="button" class="trash-button" title="Remove ' + n + '" data-act="remove">&times;</button>');
     h.push('<div class="crown-wrap" id="cr_' + i + '">' + crownSvg(26, 17, "crown") + '</div>');
-    h.push('<div class="gwrap" style="width:' + T.gw + 'px;height:' + T.gh + 'px" title="' + n + '&rsquo;s gold" data-act="bank">');
+    h.push('<div class="gwrap" style="width:' + T.gw + 'px;height:' + T.gh + 'px" data-act="bank" tabindex="0" role="button"' +
+           ' aria-label="' + n + ': Enter to log water, click for gold" title="Right-click to log water &middot; click for ' + n + '&rsquo;s gold">');
     h.push('<div class="halo" id="ha_' + i + '" style="border-radius:' + radius + '"></div>');
     h.push('<div class="glass" id="gl_' + i + '" style="width:' + T.gw + 'px;height:' + T.gh + 'px;border-radius:' + radius + '">');
     h.push('<canvas id="cv_' + i + '"></canvas>');
@@ -236,14 +231,6 @@ export function toggleSwatches(card) {
 }
 
 /* ---- buttons, leaderboard, activity ------------------------------------- */
-function renderAddButtons() {
-  setHtml("addButtons", orderedBy(C.BUTTON_ORDER).map(p => {
-    const n = ja(p.name);
-    return '<button type="button" class="participant-button" style="--pc:' + p.color + '" data-act="add" data-name="' + n + '">' +
-      'Add for ' + esc(p.name) + '</button>';
-  }).join(""));
-}
-
 function renderLeaderboard() {
   const key = todayKey(), rows = standingsFor(key);
   let capBest = 0;
@@ -529,7 +516,7 @@ export function render() {
   maskEls = [];
   G.setActive(ui.tab === "today");
   if (ui.tab === "today") {
-    renderGlasses(); renderAddButtons(); renderLeaderboard(); renderActivity();
+    renderGlasses(); renderLeaderboard(); renderActivity();
   } else if (ui.tab === "pets") renderPets();
   else renderHistory();
   renderTeamBar();

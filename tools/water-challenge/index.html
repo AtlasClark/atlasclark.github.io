@@ -84,24 +84,16 @@
     <section id="view-today">
       <div id="glasses" class="glasses-grid"></div>
 
-      <div class="control-panel">
-        <div class="field-block">
-          <label class="field-label" for="amount">Quantity</label>
-          <input id="amount" class="txt amount" type="text" inputmode="decimal" value="8"><span class="unit">fl oz</span>
-        </div>
-        <div class="field-block grow">
-          <span class="field-label">Common sizes</span>
-          <div id="chips" class="chips"></div>
-        </div>
-        <div class="field-block newp">
+      <p id="msg" class="status-message" role="status" aria-live="polite"></p>
+
+      <div class="control-panel slim">
+        <p class="pour-hint"><b>Right-click a glass</b> to log water <span class="dim">&middot; press and hold on touch &middot; Enter on a focused glass</span></p>
+        <div class="newp">
           <label class="field-label" for="pname">New participant</label>
           <input id="pname" class="txt pname" type="text" placeholder="Enter a name" autocomplete="off">
           <button type="button" id="addP" class="btn primary">Add</button>
         </div>
       </div>
-
-      <p id="msg" class="status-message" role="status" aria-live="polite"></p>
-      <div id="addButtons" class="participant-actions"></div>
 
       <div class="dashboard-grid">
         <div class="panel">
@@ -196,6 +188,19 @@
       <button type="button" class="report-x" title="Close (Esc)">&times;</button></div>
     <div id="reportBody" class="report-body"></div>
   </div>
+</div>
+
+<!-- radial pour menu -->
+<div id="radial" class="radial" hidden>
+  <div class="rad-disc"></div>
+  <div id="radRing"></div>
+  <form id="radCore" class="rad-core" autocomplete="off">
+    <span id="radWho" class="rad-who"></span>
+    <input id="radAmt" type="text" inputmode="decimal" aria-label="Custom amount in fl oz">
+    <span class="rad-unit">fl oz</span>
+    <span id="radTotal" class="rad-total"></span>
+    <button type="submit" class="rad-go">Add</button>
+  </form>
 </div>
 
 <!-- pet unlock -->

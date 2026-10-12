@@ -494,7 +494,9 @@ export function stepMotion(st, f) {
     /* Turn to face the drift at each side, except now and then. */
     const vel = Math.cos(st.phase * 0.31);
     const dir = vel > 0.05 ? -1 : vel < -0.05 ? 1 : 0;
-    if (dir && dir !== m.drift) {
+    if (dir && !m.drift) {                              /* first sight: already facing its way */
+      m.drift = m.face = m.flip = dir;
+    } else if (dir && dir !== m.drift) {
       m.drift = dir;
       if (m.face !== dir && Math.random() >= C.TURN_SKIP_CHANCE) m.face = dir;
     }
