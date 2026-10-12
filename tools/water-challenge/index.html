@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<!--
+  Atlas Water Challenge (web) - Atlas Devices tools
+  Scope: browser port of the team water-tracking game (Atlas_Water_Challenge_R55.hta).
+  Each person's glass fills toward a personal daily goal set from their own history;
+  reaching it rolls a pet, passing twice the goal drowns one. Leaderboard, streaks,
+  time away, a team year target, a season history and pet collections.
+  Data lives only in the shared fileshare folder (one UTF-16 JSON per person plus
+  _settings.json). The page reaches it through the File System Access API (Chrome/Edge)
+  and remembers the folder handle in this browser. Nothing is stored on this site,
+  and the CSP below blocks every network request from scripts.
+  Runs side by side with R55: same files, same format (21), same locks.
+  Bump REV in js/config.js on each change.
+-->
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; worker-src 'none'; frame-src 'none'; form-action 'none'; base-uri 'none'">
+<meta name="referrer" content="no-referrer">
+<meta name="robots" content="noindex">
+<title>Atlas Water Challenge</title>
+<meta name="theme-color" content="#dff3ff" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#07131f" media="(prefers-color-scheme: dark)">
+<link rel="icon" href="img/app-icon.ico">
+<link rel="stylesheet" href="app.css">
+<script type="module" src="js/app.js"></script>
+</head>
+<body>
+<div class="shell"><div class="wrap">
+
+  <header class="page-header">
+    <div class="hdr-left">
+      <button type="button" id="cog" class="icon-btn" title="Challenge settings" aria-expanded="false" aria-controls="settingsPanel">&#9881;</button>
+      <button type="button" id="themeBtn" class="icon-btn theme-btn" title="Theme"><span aria-hidden="true"></span></button>
+    </div>
+    <div class="hdr-mid">
+      <p class="eyebrow">Drink responsibly. Brag irresponsibly.</p>
+      <h1>Atlas Water Challenge</h1>
+    </div>
+    <div class="hdr-right"><span id="syncPill" class="sync-pill bad">offline</span></div>
+
+    <div id="settingsPanel" class="settings-panel" hidden>
+      <div class="sp-title">Challenge settings</div>
+      <label class="field-label" for="goalVal">Default goal (new people, or too little history)</label>
+      <input id="goalVal" class="txt amount" type="text" inputmode="decimal"><span class="unit">fl oz</span>
+      <label class="field-label" for="annualVal">Yearly goal, per person</label>
+      <input id="annualVal" class="txt amount wide" type="text" inputmode="numeric"><span class="unit">fl oz</span>
+      <label class="field-label" for="startVal">Challenge started</label>
+      <input id="startVal" class="txt date" type="text" placeholder="YYYY-MM-DD">
+      <label class="field-label" for="idleVal">Streak survives missing</label>
+      <input id="idleVal" class="txt amount narrow" type="text" inputmode="numeric"><span class="unit">days</span>
+      <p class="hint">Everyone's cap is twice their own goal: reach it and the day is won; go past it and the water turns red.</p>
+      <button type="button" id="applySettings" class="btn primary">Set</button>
+      <p class="sp-note">Everyone's goal is set from their own last 30 days. The default only applies to someone
+        without enough history yet. Stored in _settings.json on the share. Finished days keep the goal they were
+        played under, so changing anything here never rewrites past wins, goals or streaks.</p>
+      <div class="sp-title">Roster</div>
+      <p class="hint">Away keeps someone's history, pets and streaks safe while they are not playing. Their glass
+        is hidden and they stop counting toward the year target until they are back.</p>
+      <div id="rosterList" class="roster"></div>
+    </div>
+  </header>
+
+  <div id="banner" class="banner" hidden></div>
+  <div id="staleBanner" class="banner warn" hidden></div>
+
+  <div class="tb-track" id="teamBar" role="img">
+    <span class="tb-fill" id="tbFill"></span>
+    <span class="tb-pace" id="tbPace"></span>
+  </div>
+
+  <nav class="tabs" role="tablist">
+    <button type="button" id="tab-today" class="tab" role="tab" aria-selected="true">Today</button>
+    <button type="button" id="tab-history" class="tab" role="tab" aria-selected="false">History</button>
+    <button type="button" id="tab-pets" class="tab" role="tab" aria-selected="false">Pets</button>
+  </nav>
+
+  <main>
+    <section id="view-today">
+      <div id="glasses" class="glasses-grid"></div>
+
+      <div class="control-panel">
+        <div class="field-block">
+          <label class="field-label" for="amount">Quantity</label>
+          <input id="amount" class="txt amount" type="text" inputmode="decimal" value="8"><span class="unit">fl oz</span>
+        </div>
+        <div class="field-block grow">
+          <span class="field-label">Common sizes</span>
+          <div id="chips" class="chips"></div>
+        </div>
+        <div class="field-block newp">
+          <label class="field-label" for="pname">New participant</label>
+          <input id="pname" class="txt pname" type="text" placeholder="Enter a name" autocomplete="off">
+          <button type="button" id="addP" class="btn primary">Add</button>
+        </div>
+      </div>
+
+      <p id="msg" class="status-message" role="status" aria-live="polite"></p>
+      <div id="addButtons" class="participant-actions"></div>
+
+      <div class="dashboard-grid">
+        <div class="panel">
+          <div class="panel-heading">
+            <strong id="leaderBadge" class="leader-badge">&nbsp;</strong>
+            <p class="eyebrow">Current standings</p>
+            <h2>Leaderboard</h2>
+          </div>
+          <ol id="leaderboard" class="lb-list"></ol>
+        </div>
+        <div class="panel">
+          <div class="panel-heading">
+            <p class="eyebrow">Latest pours</p>
+            <h2>Recent activity</h2>
+          </div>
+          <ul id="activity" class="activity-list"></ul>
+        </div>
+      </div>
+    </section>
+
+    <section id="view-history" hidden>
+      <div class="panel full">
+        <div class="panel-heading"><p class="eyebrow">Previous results</p><h2>History</h2></div>
+        <div id="history" class="history-wrap"></div>
+      </div>
+    </section>
+
+    <section id="view-pets" hidden>
+      <div id="pets"></div>
+    </section>
+  </main>
+</div></div>
+
+<footer class="statusbar">
+  <span class="rev" id="revLabel"></span>
+  <button type="button" class="sb-link" id="sbFolder" title="Data folder (click to reconnect or change)">not connected</button>
+  <span class="sb-sep">signed in as</span>
+  <button type="button" class="sb-link" id="sbMe" title="Name stamped on what you log (click to change)">set your name</button>
+  <span class="sb-peers" id="sbPeers"></span>
+  <span class="sb-grow"></span>
+  <button type="button" class="sb-link" id="sbDiag">diagnostics</button>
+</footer>
+
+<!-- connect gate -->
+<div id="gate" class="gate" hidden>
+  <div class="gate-box">
+    <button type="button" id="gateClose" class="report-x" title="Close" hidden>&times;</button>
+    <p class="eyebrow">Shared data folder</p>
+    <h2>Connect to the challenge</h2>
+    <p id="gateMsg"></p>
+    <div class="gate-actions">
+      <button type="button" id="gateReconnect" class="btn primary" hidden>Reconnect</button>
+      <button type="button" id="gatePick" class="btn primary">Choose data folder</button>
+    </div>
+    <p id="gateWarn" class="gate-warn" hidden></p>
+    <p class="hint">Chrome or Edge only. Your water data stays on the share; this page only holds a link to the
+      folder in your browser. If Chrome offers <b>Allow on every visit</b>, choose it so the page connects on its own.</p>
+    <details id="gateDetails" hidden><summary>What happened</summary><pre id="gateTrail" class="trail"></pre></details>
+  </div>
+</div>
+
+<!-- identity -->
+<dialog id="whoDialog" class="dlg">
+  <form method="dialog">
+    <h3>Who is logging?</h3>
+    <p class="hint">This name is stamped on every pour you log, so others can see who logged what.
+      Use your Windows username (for example <code>rclark</code>), as the HTA does.</p>
+    <input id="whoInput" class="txt" type="text" autocomplete="username" spellcheck="false" required>
+    <div class="dlg-actions">
+      <button value="cancel" id="whoCancel" class="btn muted" formnovalidate>Cancel</button>
+      <button value="ok" class="btn primary">Save</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- confirm -->
+<dialog id="confirmDialog" class="dlg">
+  <form method="dialog">
+    <h3 id="confirmTitle"></h3>
+    <p id="confirmText" class="hint"></p>
+    <div class="dlg-actions">
+      <button value="cancel" class="btn muted">Cancel</button>
+      <button value="ok" id="confirmOk" class="btn danger">OK</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- reports: diagnostics and streak audit -->
+<div id="report" class="report" hidden>
+  <div class="report-box" role="dialog" aria-modal="true" aria-labelledby="reportTitle">
+    <div class="report-head"><span id="reportTitle"></span>
+      <button type="button" class="report-x" title="Close (Esc)">&times;</button></div>
+    <div id="reportBody" class="report-body"></div>
+  </div>
+</div>
+
+<!-- gold -->
+<div id="bank" class="bank" hidden>
+  <div class="bank-box" role="dialog" aria-modal="true" aria-labelledby="bankName">
+    <button type="button" class="report-x" title="Close (Esc)">&times;</button>
+    <div id="bankName" class="bank-name"></div>
+    <canvas id="bankPile" style="width:240px;height:150px"></canvas>
+    <div id="bankCount" class="bank-count"></div>
+    <div id="bankNote" class="bank-note"></div>
+  </div>
+</div>
+</body>
+</html>

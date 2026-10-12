@@ -11,3 +11,6 @@ Reference Project Folder/
 # Ops Dashboard data is local only. Never commit it.
 Daily_Dashboard/
 atlas-ops-*.json
+
+# Water Challenge source HTA and team data live on the fileshare. Never commit them.
+AtlasWaterTracker/

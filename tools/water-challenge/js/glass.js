@@ -1,0 +1,285 @@
+/* Water animation. One state object per person, keyed by name, so a poll never
+   restarts a glass. Changes from R55: canvases are sized for devicePixelRatio
+   (sharp on scaled displays), and motion is time-based, so 60 fps runs at the
+   same speed as the HTA's 30 fps, only smoother. */
+
+import * as C from "./config.js";
+import { rnd } from "./util.js";
+import { drawCritter, drawHeadstone } from "./art.js";
+
+export const anim = {};
+export const dims = { tier: -1, W: 124, H: 239, head: 34 };
+export const stats = { errors: 0, lastError: "", fps: 0 };
+
+let active = true;              /* false while another tab is showing */
+export function setActive(on) { active = on; }
+
+/* ---- layout tiers ------------------------------------------------------- */
+export function pickTier(count, avail) {
+  const want = Math.min(count || 1, C.MAX_COLS);
+  for (let i = 0; i < C.CARD_TIERS.length; i++) {
+    if (Math.floor(avail / (C.CARD_TIERS[i].card + C.CARD_GAP * 2)) >= want) return i;
+  }
+  return C.CARD_TIERS.length - 1;
+}
+
+export function applyTier(i) {
+  if (i === dims.tier) return false;
+  dims.tier = i;
+  dims.W = C.CARD_TIERS[i].gw - 8;          /* glass content box, minus borders */
+  dims.H = C.CARD_TIERS[i].gh - 7;
+  dims.head = Math.round(C.CARD_TIERS[i].gw * 0.42);
+  for (const k in anim) seedBubbles(anim[k]);
+  return true;
+}
+
+export function bubbleCount() {
+  return Math.max(3, Math.min(C.BUBBLES_PER_GLASS, Math.round(C.BUBBLES_PER_GLASS * (dims.W / 124))));
+}
+
+function seedBubbles(st) {
+  st.bubbles = [];
+  for (let i = 0; i < bubbleCount(); i++) {
+    st.bubbles.push({ x: rnd(8, dims.W - 8), y: rnd(0, dims.H),
+                      r: rnd(C.BUBBLE_MIN_R, C.BUBBLE_MAX_R),
+                      v: rnd(C.BUBBLE_SPEED_MIN, C.BUBBLE_SPEED_MAX), seed: rnd(0, 6.283) });
+  }
+}
+function resetBubble(b) {
+  b.x = rnd(8, dims.W - 8); b.y = 0;
+  b.r = rnd(C.BUBBLE_MIN_R, C.BUBBLE_MAX_R);
+  b.v = rnd(C.BUBBLE_SPEED_MIN, C.BUBBLE_SPEED_MAX);
+}
+
+/* duckState: 0 none, 1 floating, 2 sinking, 3 on the bottom, 4 headstone */
+export function animState(name) {
+  if (!anim[name]) {
+    anim[name] = { level: 0, target: 0, amp: C.AMBIENT_AMP, phase: Math.random() * 6.283,
+                   color: "#60a5fa", bubbles: [], rings: [], ctx: null, dctx: null,
+                   duckState: 0, duckT: 0, critterKind: 0, critterHue: 0,
+                   duckCrown: false, duckJester: false };
+    seedBubbles(anim[name]);
+  }
+  return anim[name];
+}
+
+function sizeCanvas(cv, w, h) {
+  const dpr = Math.min(window.devicePixelRatio || 1, 3);
+  cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr);
+  cv.style.width = w + "px"; cv.style.height = h + "px";
+  const ctx = cv.getContext("2d");
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  return ctx;
+}
+
+export function bindCanvases(name, glassCanvas, petCanvas, gw, gh) {
+  const st = animState(name);
+  st.ctx = glassCanvas ? sizeCanvas(glassCanvas, dims.W, dims.H) : null;
+  st.dctx = petCanvas ? sizeCanvas(petCanvas, gw, gh + dims.head) : null;
+  st.dW = gw; st.dH = gh + dims.head;
+}
+
+export function unbindAll() { for (const k in anim) { anim[k].ctx = null; anim[k].dctx = null; } }
+
+export function splash(name) {
+  const st = animState(name);
+  st.amp = C.SPLASH_AMP;
+  for (let i = 0; i < C.SPLASH_RINGS; i++) st.rings.push({ r: 1 + i * 7, a: 0.5 - i * 0.13 });
+}
+
+export function startSink(name, kind, hue) {
+  const st = animState(name);
+  st.critterKind = kind; st.critterHue = hue;
+  st.duckState = 2; st.duckT = 0;
+}
+
+/* ---- drawing ------------------------------------------------------------ */
+const waveBuf = [];
+let waveN = 0;
+
+function waveAt(st, x) {
+  return st.amp * (Math.sin(x * C.WAVE_K1 + st.phase) * 0.62 +
+                   Math.sin(x * C.WAVE_K2 - st.phase * 1.35) * 0.38);
+}
+function buildWave(st, W, step) {
+  let i = 0;
+  for (let x = 0; x <= W; x += step) waveBuf[i++] = waveAt(st, x);
+  waveN = i;
+}
+
+function drawGlass(st) {
+  const ctx = st.ctx, W = dims.W, H = dims.H;
+  ctx.clearRect(0, 0, W, H);
+  const lvl = Math.min(Math.max(st.level, 0), 1);
+  if (lvl <= 0.002) return;
+  const top = H - lvl * (H - C.SURFACE_BAND);
+  const step = W >= C.GHOST_MIN_W ? C.WAVE_STEP_BIG : C.WAVE_STEP_SMALL;
+  buildWave(st, W, step);
+
+  const surface = () => {
+    ctx.lineTo(0, top + waveBuf[0]);
+    for (let i = 0; i < waveN; i++) ctx.lineTo(Math.min(i * step, W), top + waveBuf[i]);
+    ctx.lineTo(W, top + waveBuf[waveN - 1]);
+  };
+
+  /* body, with a soft depth gradient over the person's colour */
+  ctx.beginPath();
+  ctx.moveTo(0, H);
+  surface();
+  ctx.lineTo(W, H);
+  ctx.closePath();
+  ctx.fillStyle = st.color;
+  ctx.fill();
+  const g = ctx.createLinearGradient(0, top, 0, H);
+  g.addColorStop(0, "rgba(255,255,255,0.10)");
+  g.addColorStop(1, "rgba(0,20,40,0.16)");
+  ctx.fillStyle = g;
+  ctx.fill();
+
+  ctx.save();
+  ctx.clip();
+  ctx.fillStyle = "rgba(255,255,255,0.42)";
+  for (const b of st.bubbles) {
+    const wob = Math.sin(b.y * 0.055 + b.seed) * C.BUBBLE_WOBBLE;
+    ctx.beginPath();
+    ctx.arc(b.x + wob, H - b.y, b.r, 0, 6.2832);
+    ctx.fill();
+  }
+  ctx.restore();
+
+  ctx.beginPath();
+  ctx.moveTo(0, top + waveBuf[0]);
+  surface();
+  ctx.strokeStyle = "rgba(255,255,255,0.55)";
+  ctx.lineWidth = 2.5;
+  ctx.stroke();
+
+  if (W >= C.GHOST_MIN_W) {
+    ctx.beginPath();
+    ctx.moveTo(0, top + waveBuf[0] + 5);
+    for (let i = 0; i < waveN; i++) {
+      const x = Math.min(i * step, W);
+      ctx.lineTo(x, top + st.amp * Math.sin(x * C.WAVE_K1 - st.phase * 0.7) * 0.5 + 6);
+    }
+    ctx.strokeStyle = "rgba(255,255,255,0.18)";
+    ctx.lineWidth = 4;
+    ctx.stroke();
+  }
+
+  for (const r of st.rings) {
+    ctx.save();
+    ctx.translate(W / 2, top + 2);
+    ctx.scale(1, 0.26);
+    ctx.beginPath();
+    ctx.arc(0, 0, r.r, 0, 6.2832);
+    ctx.restore();
+    ctx.strokeStyle = "rgba(255,255,255," + r.a.toFixed(3) + ")";
+    ctx.lineWidth = 2;
+    ctx.stroke();
+  }
+}
+
+const duckRestY = (H, r) => H - 4 - r * 1.62;
+
+function drawSinking(ctx, st, W, H, top, offX, offY, r) {
+  const t = st.duckT, restY = duckRestY(H, r);
+  const dx = W / 2 + Math.sin(st.phase * 0.31) * (W * 0.21) * (1 - t);
+  const surf = top + waveAt(st, dx);
+  const dy = surf + (restY - surf) * (t * t);
+  const ang = Math.PI * (t < 0.55 ? t / 0.55 : 1);
+  drawCritter(ctx, dx + offX, dy + offY, r, ang, st.duckCrown, true, st.critterKind || 0, st.critterHue || 0, st.duckJester);
+  for (let i = 0; i < 3; i++) {
+    const bt = t - i * 0.12;
+    if (bt <= 0) continue;
+    const by = dy - bt * (dy - top) * 0.9;
+    ctx.beginPath();
+    ctx.arc(dx + offX + (i - 1) * r * 0.28, by + offY, r * (0.10 - i * 0.02), 0, 6.2832);
+    ctx.fillStyle = "rgba(255,255,255,0.5)";
+    ctx.fill();
+  }
+}
+
+function drawPetLayer(st) {
+  const ctx = st.dctx, W = dims.W, H = dims.H, offX = 4, offY = dims.head + 3;
+  ctx.clearRect(0, 0, st.dW, st.dH);
+  if (!st.duckState) return;
+  const top = H - Math.min(Math.max(st.level, 0), 1) * (H - C.SURFACE_BAND);
+  const r = Math.min(W * 0.26, 30);
+  if (st.duckState === 4) { drawHeadstone(ctx, W / 2 + offX, H - 4 + offY, r, st.critterHue); return; }
+  if (st.duckState === 1) {
+    const dx = W / 2 + Math.sin(st.phase * 0.31) * (W * 0.21);
+    const dy = top + waveAt(st, dx);
+    const slope = (waveAt(st, dx + 5) - waveAt(st, dx - 5)) / 10;
+    drawCritter(ctx, dx + offX, dy + offY, r, Math.atan(slope), st.duckCrown, false,
+                st.critterKind || 0, st.critterHue || 0, st.duckJester);
+  } else if (st.duckState === 2) {
+    drawSinking(ctx, st, W, H, top, offX, offY, r);
+  } else if (st.duckState === 3) {
+    drawCritter(ctx, W / 2 + offX, duckRestY(H, r) + offY, r, Math.PI, st.duckCrown, true,
+                st.critterKind || 0, st.critterHue || 0, st.duckJester);
+  }
+}
+
+/* ---- the loop ----------------------------------------------------------- */
+function busy() {
+  for (const k in anim) {
+    const st = anim[k];
+    if (!st.ctx) continue;
+    if (Math.abs(st.target - st.level) > 0.0006 || st.rings.length || st.duckState === 2) return true;
+  }
+  return false;
+}
+
+function step(st, f) {
+  const delta = st.target - st.level;
+  st.level += delta * (1 - Math.pow(1 - C.LEVEL_EASE, f));
+  if (Math.abs(delta) < 0.0004) st.level = st.target;
+  st.phase += C.WAVE_SPEED * f;
+  if (st.phase > 62832) st.phase = 0;
+  const floorAmp = C.AMBIENT_AMP + Math.min(C.FILL_AMP, Math.abs(delta) * C.FILL_AMP * 7);
+  if (st.amp > floorAmp) st.amp *= Math.pow(C.AMP_DECAY, f);
+  if (st.amp < floorAmp) st.amp = floorAmp;
+  if (st.duckState === 2) {
+    st.duckT += f / (30 * C.DUCK_SINK_SECS);
+    if (st.duckT >= 1) { st.duckState = 3; st.duckT = 0; }
+  }
+  const waterH = Math.min(Math.max(st.level, 0), 1) * (dims.H - C.SURFACE_BAND);
+  for (const b of st.bubbles) { b.y += b.v * f; if (b.y > waterH - 3 || waterH < 10) resetBubble(b); }
+  st.rings = st.rings.filter(g => {
+    g.r += C.RING_GROWTH * f;
+    g.a *= Math.pow(C.RING_FADE, f);
+    return g.a > 0.03 && g.r < dims.W;
+  });
+}
+
+let last = 0, lastDrawn = 0, frames = 0, fpsT = 0, running = false;
+const reduceMotion = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)");
+
+function frame(now) {
+  requestAnimationFrame(frame);
+  if (!active) { last = now; return; }
+  const gap = busy() ? 1000 / C.ANIM_FPS : 1000 / (reduceMotion && reduceMotion.matches ? 8 : C.IDLE_FPS);
+  if (now - lastDrawn < gap - 2) return;
+  const f = Math.min(4, (now - (last || now)) / (1000 / 30)) || 1;
+  last = now; lastDrawn = now;
+  frames++;
+  if (now - fpsT > 1000) { stats.fps = frames; frames = 0; fpsT = now; }
+  for (const k in anim) {
+    const st = anim[k];
+    if (!st.ctx) continue;
+    try {
+      step(st, f);
+      drawGlass(st);
+      if (st.dctx) drawPetLayer(st);
+    } catch (e) {
+      stats.errors++;
+      stats.lastError = k + ": " + (e.message || e);
+    }
+  }
+}
+
+export function startAnim() {
+  if (running) return;
+  running = true;
+  requestAnimationFrame(frame);
+}
