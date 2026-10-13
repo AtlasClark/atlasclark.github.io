@@ -3,7 +3,7 @@
    reconcile pass (stamp finished days, settle today's pet events) before render. */
 
 import * as C from "./config.js";
-import { S, dataChanged, findParticipant, totalOn, metGoal, currentGoalFor, streaks, isActive,
+import { S, dataChanged, findParticipant, knownUsers, matchUser, totalOn, metGoal, currentGoalFor, streaks, isActive,
          stampDayGoals, currentGoal, currentAnnualGoal, currentIdleMax, challengeStart, challengeEnd } from "./model.js";
 import * as store from "./store.js";
 import { reconcilePets, equipPet } from "./pets.js";
@@ -14,7 +14,7 @@ import { initShop, renderShop, shopTabChanged, openShopFor } from "./shopui.js";
 import { ui, render, setTab, setMsg, showBanner, tickMasks, relayout, forceRebuild,
          toggleSwatches, openBank, auditStreak, showDiag, closeOverlays, fillSettings, renderRoster,
          renderActivityNow, showUnlock, uiHooks } from "./ui.js";
-import { $, bus, todayKey, localStamp, fmt, fmtOz, trim, parseKey, shiftKey, clockStamp } from "./util.js";
+import { $, esc, bus, todayKey, localStamp, fmt, fmtOz, trim, parseKey, shiftKey, clockStamp } from "./util.js";
 
 let lastSig = "", pollTimer = 0;
 
@@ -172,8 +172,8 @@ async function connect(h) {
   $("gate").hidden = true;
   ui.connected = true;
   forceRebuild();
-  if (!S.me) await askIdentity(true);
   await store.serial(refresh);
+  if (!S.me || S.mine === null) await askIdentity(true);   /* asked once; the roster is loaded by now */
   store.diagNote("connected to " + h.name + " (" + S.participants.length + " files)");
   schedulePoll();
   startLive();
@@ -221,20 +221,57 @@ async function reconnect() {
 }
 
 /* ---- identity ----------------------------------------------------------- */
+/* Username from the ones already in the data (typed only when new, with a check
+   for near-misses), and which glass is this browser's own. */
 function askIdentity(first) {
   return new Promise(res => {
-    const d = $("whoDialog");
-    $("whoInput").value = S.me || "";
+    const d = $("whoDialog"), inp = $("whoInput"), warn = $("whoWarn");
+    const users = knownUsers();
+    const mark = () => {
+      for (const b of $("whoList").children) b.classList.toggle("on", b.dataset.user.toLowerCase() === trim(inp.value).toLowerCase());
+      warn.hidden = true;
+    };
+    $("whoList").innerHTML = users.map(u => '<button type="button" class="who-user" data-user="' + esc(u.user) + '">' + esc(u.user) + '</button>').join("");
+    $("whoList").onclick = e => {
+      const b = e.target.closest("[data-user]");
+      if (b) { inp.value = b.dataset.user; mark(); }
+    };
+    inp.value = S.me && S.me !== "unknown" ? S.me : "";
+    inp.oninput = mark;
+    mark();
+    const mine = S.mine || "";
+    $("whoMine").innerHTML = '<option value="">Not on the roster</option>' + S.participants.map(p =>
+      '<option value="' + esc(p.name) + '"' + (p.name === mine ? " selected" : "") + '>' + esc(p.name) + '</option>').join("");
+    if (S.mine === null) $("whoMine").value = "";
     $("whoCancel").hidden = !!first && !S.me;
+    let warned = "";
+    d.querySelector("form").onsubmit = e => {
+      if (e.submitter && e.submitter.value !== "ok") return;
+      const v = trim(inp.value), m = matchUser(v);
+      if (m.same) { inp.value = m.same; return; }
+      if (m.near && warned !== v) {                    /* stop once, so a typo can't split someone's pours */
+        e.preventDefault();
+        warned = v;
+        warn.innerHTML = '<b>' + esc(v) + '</b> is new. Did you mean <button type="button" class="link" data-user="' + esc(m.near) + '">' +
+                         esc(m.near) + '</button>? Save again to keep it.';
+        warn.querySelector("button").onclick = () => { inp.value = m.near; mark(); };
+        warn.hidden = false;
+      }
+    };
+    d.returnValue = "";
     d.showModal();
-    $("whoInput").focus();
+    (users.length ? $("whoList").querySelector(".on") || $("whoList").firstChild : inp).focus();
     d.onclose = async () => {
-      const v = trim($("whoInput").value);
+      const v = trim(inp.value);
       if (d.returnValue === "ok" && v) {
         S.me = v;
-        try { await store.kvSet("me", v); } catch { }
+        S.mine = $("whoMine").value;
+        try { await store.kvSet("me", v); await store.kvSet("mine", S.mine); } catch { }
+        if (S.mine) openShopFor(S.mine);
       }
+      if (first && S.mine === null) { S.mine = ""; try { await store.kvSet("mine", ""); } catch { } }   /* asked once */
       if (!S.me) S.me = "unknown";
+      forceRebuild();
       render();
       res();
     };
@@ -476,6 +513,7 @@ function wire() {
   $("settingsPanel").addEventListener("keydown", e => { if (e.key === "Enter" && e.target.tagName === "INPUT") applySettings(); });
   $("pname").addEventListener("keydown", e => { if (e.key === "Enter") addParticipant(); });
   $("addP").onclick = addParticipant;
+  $("quickPour").onclick = () => { if (S.mine) addWater(S.mine, ui.amount); };
   $("sbMe").onclick = () => askIdentity(false);
   $("sbDiag").onclick = showDiag;
   $("sbFolder").onclick = () => { if (ui.connected) showGate("reconnect"); else showGate(store.dir ? "reconnect" : "pick"); $("gateClose").hidden = !ui.connected; };
@@ -594,7 +632,7 @@ async function boot() {
   if (await checkVersion(true)) return;
   setInterval(() => { if (!document.hidden) checkVersion(false); }, C.VERSION_CHECK_MS);
   if (typeof window.showDirectoryPicker !== "function") { showGate("noapi"); return; }
-  try { S.me = (await store.kvGet("me")) || ""; } catch { }
+  try { S.me = (await store.kvGet("me")) || ""; const m = await store.kvGet("mine"); S.mine = typeof m === "string" ? m : null; } catch { }
   let stored = null;
   try { stored = await store.kvGet("dir"); } catch (e) { store.diagNote("stored folder unreadable: " + e.message); }
   if (!stored) { showGate("pick"); return; }

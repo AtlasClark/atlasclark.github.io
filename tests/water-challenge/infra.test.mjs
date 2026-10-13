@@ -49,4 +49,8 @@ test("update check: SITE_FILES lists every file the page is made of", () => {
   assert.match(html, /connect-src 'self'/, "same-site fetch is allowed for the check");
   assert.match(fs.readFileSync(path.join(TOOL, "js/config.js"), "utf8"), /export const REV\s*=\s*"rev [\d.]+"/,
                "the check reads REV with this pattern");
+  const cfg = fs.readFileSync(path.join(TOOL, "js/config.js"), "utf8");
+  const m = /SITE_FILES\s*=\s*\[([^\]]*)\]/.exec(cfg);
+  assert.deepEqual(m[1].match(/"[^"]+"/g).map(s => s.slice(1, -1)), C.SITE_FILES, "guard.js reads the same list");
+  assert.ok(html.indexOf('src="js/guard.js"') < html.indexOf('src="js/app.js"'), "the guard loads before the modules");
 });

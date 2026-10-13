@@ -3,8 +3,8 @@
    contract (FORMAT_REV 21, UTF-16 LE + BOM) must stay identical while R55 runs on the
    share: R55 deletes any field it does not know on its next write. */
 
-export const REV         = "rev 1.7.0";
-export const APP_VERSION = "web 1.7.0";   /* stamped as writerVersion */
+export const REV         = "rev 1.8.0";
+export const APP_VERSION = "web 1.8.0";   /* stamped as writerVersion */
 /* A folder stays at LEGACY_FORMAT (byte-compatible with R55) until someone upgrades
    it from Settings. Format 22 adds tokensSpent and keeps unknown fields; R55 must
    not be used on a folder after that. */
@@ -50,7 +50,7 @@ export const BACKUP_KEEP_DAYS = 14;
    Every file the page is made of. When a new version is out, these are re-fetched
    past the browser cache before reloading, so old and new modules never mix. */
 export const SITE_FILES = ["./", "app.css",
-  "js/app.js", "js/art.js", "js/config.js", "js/glass.js", "js/live.js", "js/model.js", "js/pets.js",
+  "js/app.js", "js/art.js", "js/config.js", "js/glass.js", "js/guard.js", "js/live.js", "js/model.js", "js/pets.js",
   "js/plinko.js", "js/radial.js", "js/shop.js", "js/shopui.js", "js/store.js", "js/ui.js", "js/util.js"];
 export const VERSION_CHECK_MS = 300000;
 
@@ -66,6 +66,8 @@ export const TIE_EPSILON       = 0.05;
 
 export const QUICK_SIZES    = [8, 12, 16.9, 20, 24, 32, 40, 64];
 export const DEFAULT_AMOUNT = 8;
+/* "by" values that are not people, so never offered as a username */
+export const NOT_USERS = ["", "?", "unknown", "hidrate", "test"];
 
 export const POLL_MS        = 6000;
 export const POLL_HIDDEN_MS = 30000;

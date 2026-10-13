@@ -9,6 +9,7 @@ export const S = {
   participants: [],
   settings: defaultSettings(),
   me: "",                 /* identity stamped on entries (the HTA used %USERNAME%) */
+  mine: null,             /* the participant this browser belongs to; "" = none, null = not asked yet */
   folderFormat: 21,       /* format the connected folder is at; files are written at it */
   dataVer: 0,             /* bumps on every data change; cheap cache key */
   staleWriters: [], driftWriters: [], peerWriters: [],
@@ -146,6 +147,52 @@ export function stampDayGoals(p) {
 export function findParticipant(name) {
   const n = String(name).toLowerCase();
   return S.participants.find(p => p.name.toLowerCase() === n) || null;
+}
+
+/* ---- usernames ---------------------------------------------------------- */
+/* Every username seen on a pour or a purchase, with how often, A to Z. */
+export function knownUsers() {
+  const n = {};
+  const add = u => {
+    const k = String(u || "").trim();
+    if (C.NOT_USERS.includes(k.toLowerCase())) return;
+    const hit = Object.keys(n).find(x => x.toLowerCase() === k.toLowerCase()) || k;
+    n[hit] = (n[hit] || 0) + 1;
+  };
+  for (const p of S.participants) {
+    for (const e of p.entries) add(e.by);
+    for (const s of p.spends || []) add(s.by);
+  }
+  return Object.keys(n).sort((a, b) => a.localeCompare(b)).map(user => ({ user, n: n[user] }));
+}
+
+function editDistance(a, b) {
+  const d = Array.from({ length: b.length + 1 }, (_, j) => j);
+  for (let i = 1; i <= a.length; i++) {
+    let prev = d[0];
+    d[0] = i;
+    for (let j = 1; j <= b.length; j++) {
+      const t = d[j];
+      d[j] = Math.min(d[j] + 1, d[j - 1] + 1, prev + (a[i - 1] === b[j - 1] ? 0 : 1));
+      prev = t;
+    }
+  }
+  return d[b.length];
+}
+
+/* For a typed name: { same } when it is a known username in other case,
+   { near } when it is one or two letters off one, else {}. */
+export function matchUser(v) {
+  const k = String(v || "").trim().toLowerCase();
+  const users = knownUsers().map(x => x.user);
+  const same = users.find(u => u.toLowerCase() === k);
+  if (same) return { same };
+  let near = "", best = 3;
+  for (const u of users) {
+    const dist = editDistance(k, u.toLowerCase());
+    if (dist < best) { best = dist; near = u; }
+  }
+  return near ? { near } : {};
 }
 
 export function duplicateNames() {

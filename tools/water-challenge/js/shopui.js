@@ -46,7 +46,7 @@ export function initShop(h) {
 
 export function shopFor() {
   let p = ui.shopFor && findParticipant(ui.shopFor);
-  if (!p) p = activeParticipants()[0] || S.participants[0] || null;
+  if (!p) p = (S.mine && findParticipant(S.mine)) || activeParticipants()[0] || S.participants[0] || null;
   return p;
 }
 

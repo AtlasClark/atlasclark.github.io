@@ -25,6 +25,7 @@
 <meta name="theme-color" content="#07131f" media="(prefers-color-scheme: dark)">
 <link rel="icon" href="img/app-icon.ico">
 <link rel="stylesheet" href="app.css">
+<script src="js/guard.js"></script>
 <script type="module" src="js/app.js"></script>
 </head>
 <body>
@@ -89,6 +90,7 @@
 
       <div class="control-panel slim">
         <p class="pour-hint"><b>Right-click a glass</b> to log water <span class="dim">(press and hold on touch)</span></p>
+        <button type="button" id="quickPour" class="btn primary quick" hidden></button>
         <div class="newp">
           <label class="field-label" for="pname">New participant</label>
           <input id="pname" class="txt pname" type="text" placeholder="Enter a name" autocomplete="off">
@@ -193,9 +195,14 @@
 <!-- identity -->
 <dialog id="whoDialog" class="dlg">
   <form method="dialog">
-    <h3>Who is logging?</h3>
-    <p class="hint">Shown on every pour you log. Use your Windows username, e.g. <code>rclark</code>.</p>
-    <input id="whoInput" class="txt" type="text" autocomplete="username" spellcheck="false" required>
+    <h3>Who are you?</h3>
+    <p class="hint">Your Windows username goes on every pour you log.</p>
+    <div id="whoList" class="who-list"></div>
+    <input id="whoInput" class="txt" type="text" autocomplete="username" spellcheck="false" placeholder="Not listed? Type it" required>
+    <p id="whoWarn" class="who-warn" hidden></p>
+    <label class="field-label who-mine" for="whoMine">Your glass</label>
+    <select id="whoMine" class="txt"></select>
+    <p class="hint">Adds a one-click pour for you and opens the shop on you.</p>
     <div class="dlg-actions">
       <button value="cancel" id="whoCancel" class="btn muted" formnovalidate>Cancel</button>
       <button value="ok" class="btn primary">Save</button>

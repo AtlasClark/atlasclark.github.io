@@ -475,6 +475,18 @@ li.pour.armed .undo-x { opacity: 1; background: #c4434f; color: #fff; }
 .dlg::backdrop { background: var(--scrim); }
 .dlg h3 { margin: 0 0 6px; color: var(--title); }
 .dlg .txt { width: 100%; margin-top: 6px; }
+.who-list { display: flex; flex-wrap: wrap; gap: 6px; margin: 12px 0 10px; max-height: 168px; overflow-y: auto; }
+.who-user { padding: 5px 11px; border-radius: 999px; border: 1px solid var(--chip-line); background: var(--input); color: var(--ink-2);
+  font: inherit; font-size: 13px; cursor: pointer; }
+.who-user:hover { border-color: var(--accent); }
+.who-user.on { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 700; }
+.who-warn { margin: 8px 0 0; font-size: 13px; color: var(--ink-2); }
+.who-warn .link { border: 0; padding: 0; background: none; font: inherit; font-weight: 700; color: var(--accent); text-decoration: underline; cursor: pointer; }
+.dlg .who-mine { margin-top: 16px; }
+.dlg select.txt { width: 100%; margin-top: 0; }
+.participant-card h2 .you { margin-left: 6px; padding: 1px 7px; border-radius: 999px; background: var(--accent-soft); color: var(--accent-ink);
+  font-size: 10px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; vertical-align: 3px; }
+.btn.quick { background: var(--pc, var(--accent)); border-color: var(--pc, var(--accent)); }
 .dlg-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 16px; }
 
 /* ---- recap (top of History) ---- */

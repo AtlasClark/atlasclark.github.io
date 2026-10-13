@@ -136,7 +136,8 @@ function buildGlasses() {
     h.push('<div class="shine"></div></div>');
     h.push('<canvas class="duckc" id="dc_' + i + '" style="top:-' + G.dims.head + 'px"></canvas>');
     h.push('</div>');
-    h.push('<h2 class="pick" title="Click to change colour" data-act="swatches">' + esc(p.name) + '</h2>');
+    h.push('<h2 class="pick" title="Click to change colour" data-act="swatches">' + esc(p.name) +
+           (p.name === S.mine ? '<span class="you" title="This browser&rsquo;s glass">you</span>' : '') + '</h2>');
     h.push('<p class="sub" id="sb_' + i + '">&nbsp;</p>');
     h.push('<p class="streak pick" id="sk_' + i + '" title="Click for a day-by-day breakdown" data-act="audit">&nbsp;</p>');
     h.push('<div class="swatches" id="sw_' + i + '" hidden>');
@@ -163,7 +164,7 @@ function renderGlasses() {
     renderedSig = "";
     return;
   }
-  const sig = G.dims.card + "x" + G.dims.cols + "\u0002" + ordered.map(p => p.name + "\u0003" + p.color).join("\u0001");
+  const sig = G.dims.card + "x" + G.dims.cols + "\u0002" + S.mine + "\u0002" + ordered.map(p => p.name + "\u0003" + p.color).join("\u0001");
   if (sig !== renderedSig) { buildGlasses(); renderedSig = sig; }
   updateGlasses();
 }
@@ -511,7 +512,13 @@ function renderStatus() {
   if (ui.connected) { pill.className = "sync-pill"; pill.textContent = "synced " + (ui.lastSync || clockStamp()); }
   else { pill.className = "sync-pill bad"; pill.textContent = "offline"; }
   setEl("sbFolder", dir ? esc(dir.name) : "not connected", null);
-  setEl("sbMe", S.me ? esc(S.me) : "set your name", null);
+  setEl("sbMe", S.me ? esc(S.me) + (S.mine ? ' &middot; ' + esc(S.mine) : '') : "set your name", null);
+  const mine = S.mine && findParticipant(S.mine), q = $("quickPour");
+  q.hidden = !mine || !ui.connected;
+  if (mine) {
+    setEl("quickPour", '+ ' + fmtOz(ui.amount) + ' oz for ' + esc(mine.name), null);
+    q.style.setProperty("--pc", mine.color);
+  }
   const peers = S.peerWriters.length ? "HTA r55 also writing" : "";
   const drift = S.driftWriters.length ? "other builds: " + [...new Set(S.driftWriters.map(w => w.ver))].join(", ") : "";
   setEl("sbPeers", esc([peers, drift].filter(Boolean).join(" · ")), null);
@@ -884,7 +891,7 @@ export function showDiag() {
   h.push(rRow("Origin", esc(location.origin) + (window.isSecureContext ? '' : ' <span class="bad">not a secure context</span>')));
   h.push(rRow("Folder API", typeof window.showDirectoryPicker === "function" ? '<span class="ok">available</span>' : '<span class="bad">missing &mdash; use Chrome or Edge</span>'));
   h.push(rRow("Permission", esc(diag.permission || "(not checked)")));
-  h.push(rRow("Signed in as", esc(S.me || "(not set)")));
+  h.push(rRow("Signed in as", esc(S.me || "(not set)") + (S.mine ? ' &middot; glass: ' + esc(S.mine) : '')));
   h.push(rRow("Writes", diag.writes + ' this session' + (diag.lockSteals ? ' &middot; ' + diag.lockSteals + ' stale lock(s) cleared' : '')));
   h.push(rRow("Backup", diag.lastBackup ? esc(C.BACKUP_SUBDIR + '/' + diag.lastBackup) + ' <span class="dim">&middot; ' + C.BACKUP_KEEP_DAYS + ' days kept</span>'
                                         : '<span class="bad">none yet this session</span>'));
