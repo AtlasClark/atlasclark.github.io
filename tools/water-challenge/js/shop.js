@@ -31,13 +31,13 @@ const newHue = k => k === C.JOKE_KIND ? 28 : Math.floor(Math.random() * 360);
 /* "" when allowed, otherwise why not. */
 export function rerollBlock(p) {
   const key = todayKey();
-  if (!shopOpen()) return "The shop needs the folder at format " + C.FORMAT_REV + " (Settings > Data format).";
-  if (p.petRollDay !== key || !(Number(p.rollKind) >= 0)) return "Reach today's goal first: a reroll replaces today's roll.";
+  if (!shopOpen()) return "Needs format " + C.FORMAT_REV + " (Settings › Data format).";
+  if (p.petRollDay !== key || !(Number(p.rollKind) >= 0)) return "Reach today's goal first.";
   if (p.rerollDay === key) return "Already rerolled today.";
   /* A new pen species today plus the full-pen reward means today's roll completed
      the pen; taking it back would leave the reward unearned. */
   if (p.rollWasNew && Number(p.rollKind) < C.PET_COUNT && has(p.pets, C.HOMUNCULUS_KIND)) {
-    return "Today's roll completed the pen; it cannot be rerolled.";
+    return "Today's roll completed the pen.";
   }
   if (balance(p) < C.REROLL_COST) return "Needs " + C.REROLL_COST + " token.";
   return "";
@@ -65,7 +65,7 @@ export async function reroll(p) {
 
 /* ---- Plinko ---------------------------------------------------------------- */
 export function plinkoBlock(p) {
-  if (!shopOpen()) return "The shop needs the folder at format " + C.FORMAT_REV + " (Settings > Data format).";
+  if (!shopOpen()) return "Needs format " + C.FORMAT_REV + " (Settings › Data format).";
   if (balance(p) < C.PLINKO_COST) return "Needs " + C.PLINKO_COST + " token.";
   return "";
 }
@@ -120,7 +120,7 @@ function give(p, k, hue) {
 
 /* ---- buying ---------------------------------------------------------------- */
 export function buyBlock(p, k) {
-  if (!shopOpen()) return "The shop needs the folder at format " + C.FORMAT_REV + " (Settings > Data format).";
+  if (!shopOpen()) return "Needs format " + C.FORMAT_REV + " (Settings › Data format).";
   if (!(k >= 0 && k < C.PET_COUNT)) return "Not for sale.";
   if (has(p.pets, k)) return "Already owned.";
   if (balance(p) < priceOf(k)) return "Needs " + priceOf(k) + " tokens.";

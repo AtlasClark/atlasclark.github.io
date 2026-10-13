@@ -225,10 +225,10 @@ export function announce(p, res, how) {
   if (k === C.PET_NO_PET) {
     bus.msg(p.name + " has buried every pet there is. There is nothing left to find.", false);
   } else if (res.mystery) {
-    bus.msg(p.name + verb + " found something that does not live in the pen. Keep it on -- it will not wait around.", true);
+    bus.msg(p.name + verb + " found something that doesn't live in the pen. Keep it on; it won't wait around.", true);
     bus.unlock({ name: p.name, kind: C.MYSTERY_KIND, hue: 0, fresh: true, equipped: true });
   } else if (res.homunculus) {
-    bus.msg(p.name + " has found all " + C.PET_COUNT + ". The pen has produced something none of them are on their own.", true);
+    bus.msg(p.name + " has all " + C.PET_COUNT + ". The pen made something new.", true);
     bus.unlock({ name: p.name, kind: C.HOMUNCULUS_KIND, hue: 210, fresh: true, rolled: k,
                  equipped: petKindFor(p) === C.HOMUNCULUS_KIND });
   } else {
@@ -290,7 +290,7 @@ export async function syncHomunculus(p) {
     delete p.pets[H];
     if (petKindFor(p) === C.HOMUNCULUS_KIND) p.equippedPet = C.PET_NO_PET;
     if (!(await saveParticipant(p, null, [H]))) return false;
-    bus.msg(p.name + " lost the " + C.PET_NAMES[C.HOMUNCULUS_KIND] + ": it needs all " + C.PET_COUNT + " alive.", false);
+    bus.msg(p.name + " lost the " + C.PET_NAMES[C.HOMUNCULUS_KIND] + ". It needs all " + C.PET_COUNT + " alive.", false);
     return true;
   }
   if (!holds && whole) {

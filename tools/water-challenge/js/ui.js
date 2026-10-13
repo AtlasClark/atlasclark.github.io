@@ -297,8 +297,8 @@ function renderActivity() {
     let note = "";
     if (armed) {
       const fx = undoEffect(p, e.eid);
-      note = '<div class="undo-note">Removes ' + fmt(e.oz) + ' oz from ' + esc(p.name) + (fx ? ': ' + esc(fx) : '') +
-             '. Click <b>remove</b> again to confirm.</div>';
+      note = '<div class="undo-note">Remove ' + fmt(e.oz) + ' oz from ' + esc(p.name) + '?' + (fx ? ' ' + esc(fx[0].toUpperCase() + fx.slice(1)) + '.' : '') +
+             ' Click again to confirm.</div>';
     }
     h.push('<li class="pour' + (armed ? " armed" : "") + '" data-name="' + ja(p.name) + '" data-eid="' + esc(e.eid) + '">' +
            '<button type="button" class="undo-x" data-act="undo" title="Remove this pour">' + (armed ? "remove" : "undo") + '</button>' +
@@ -331,23 +331,21 @@ function renderStaleWarning() {
   const el = $("staleBanner"), dup = duplicateNames();
   let html = "";
   if (dup.length) {
-    html = "<b>Duplicate participant names:</b> " + esc(dup.join(", ")) + ". Two files claim the same name, so their " +
-      "water is combined for streaks but scored separately in History. Rename or remove one of each pair in the data folder.";
+    html = "<b>Duplicate names:</b> " + esc(dup.join(", ")) + ". Streaks will be wrong until one of each is renamed or removed.";
   } else if (S.newerRevSeen) {
-    html = "This page writes up to format r" + C.FORMAT_REV + " but the folder has been written in a newer format. " +
-      "Reload the page to pick up the current build before logging anything else.";
+    html = "The folder was written by a newer version. Reload before logging.";
   } else if (S.staleWriters.length && S.folderFormat >= C.FORMAT_REV) {
     const bits = S.staleWriters.slice(0, 4).map(w => esc(w.name) + " (" + esc(w.label) + ", " + esc(w.user) +
       (w.at ? " at " + esc(String(w.at).replace("T", " ")) : "") + ")");
-    html = "<b>An HTA or an old copy wrote to this folder</b> after it moved to format " + S.folderFormat + ": " + bits.join(", ") +
+    html = "<b>An HTA or old copy wrote here:</b> " + bits.join(", ") +
       (S.staleWriters.length > 4 ? " and " + (S.staleWriters.length - 4) + " more" : "") +
-      ". Older copies drop fields they do not know, such as spent tokens. Stop using them on this folder.";
+      ". It drops newer data such as spent tokens. Stop using it on this folder.";
   } else if (S.staleWriters.length) {
     const bits = S.staleWriters.slice(0, 4).map(w => esc(w.name) + " (" + esc(w.label) + ", " + esc(w.user) +
       (w.at ? " at " + esc(String(w.at).replace("T", " ")) : "") + ")");
-    html = "Stale copies are writing to this folder: " + bits.join(", ") +
+    html = "<b>Old copies are writing here:</b> " + bits.join(", ") +
       (S.staleWriters.length > 4 ? " and " + (S.staleWriters.length - 4) + " more" : "") +
-      ". Old revisions can delete entries they do not recognise - replace them with R55 or use this page.";
+      ". Replace them with R55 or use this page.";
   }
   if (html) { if (el.innerHTML !== html) el.innerHTML = html; el.hidden = false; }
   else el.hidden = true;
@@ -389,7 +387,7 @@ function renderPets() {
   h.push('<div class="pet-legend">');
   C.PET_BINS.forEach((b, i) => h.push('<span><i class="pl r' + i + '"></i>' + esc(b.name) + ' &middot; ' + b.weight + '%</span>'));
   h.push('<span><i class="pl grave"></i>Buried &middot; ' + (shopOpen() ? 'buy it back or win it on Plinko' : 'gone for good') + '</span>');
-  h.push('<span class="pl-note">Reach your goal to roll one. Click to equip, click again to put it away.</span></div>');
+  h.push('<span class="pl-note">Reach your goal to roll. Click a pet to wear it; click again to take it off.</span></div>');
   h.push('<div class="pet-cards">');
   for (const p of S.participants) {
     const mine = petKindFor(p), n = ja(p.name);
@@ -436,7 +434,7 @@ function renderHistory() {
   if (k === historyKey) return;
   historyKey = k;
   const stats = seasonStats(), days = recentDays(C.CHART_DAYS), h = [];
-  if (!stats.days) { $("history").innerHTML = '<p class="empty-state">Nothing logged yet. The chart fills in as people pour.</p>'; return; }
+  if (!stats.days) { $("history").innerHTML = '<p class="empty-state">Nothing logged yet.</p>'; return; }
 
   h.push(recapHtml());
   h.push('<div class="season-strip">');
@@ -904,9 +902,8 @@ export function fillSettings() {
   $("idleVal").value = currentIdleMax();
   const v22 = S.folderFormat >= C.FORMAT_REV;
   $("fmtNote").innerHTML = v22
-    ? "Format " + S.folderFormat + " (web only)" + (S.settings.upgradedAt ? " since " + esc(S.settings.upgradedAt.replace("T", " ")) +
-      (S.settings.upgradedBy ? " by " + esc(S.settings.upgradedBy) : "") : "") + ". Do not use the HTA on this folder."
-    : "Format " + S.folderFormat + ", shared with the HTA (R55). Upgrade only the web-only copy of the data.";
+    ? "Format " + S.folderFormat + ", web only" + (S.settings.upgradedAt ? " since " + esc(S.settings.upgradedAt.slice(0, 10)) : "") + ". Keep the HTA off this folder."
+    : "Format " + S.folderFormat + ", shared with the HTA. Upgrade the web-only copy only.";
   $("upgradeBtn").hidden = v22;
   renderRoster();
 }

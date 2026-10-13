@@ -86,7 +86,7 @@ export function renderShop() {
         (p.rerollDay === todayKey() ? ' <span class="pill">rerolled</span>' : '') + '</div></div>'
       : '') +
     '<button type="button" id="rerollBtn" class="btn primary"' + (rb ? ' disabled' : '') + '>Reroll &middot; ' + C.REROLL_COST + ' token</button>' +
-    (rb ? '<p class="hint">' + esc(rb) + '</p>' : '<p class="hint">Same odds as any day. Once a day. The new roll replaces this one.</p>');
+    (rb ? '<p class="hint">' + esc(rb) + '</p>' : '<p class="hint">Normal odds. Replaces today\'s pet.</p>');
 
   const h = [];
   for (const kind of petGridOrder()) {
@@ -111,7 +111,7 @@ function renderFeed() {
         (f.kind < 0 ? '<span class="dim">nothing left there, token returned</span>'
                     : esc(petLabel(f.kind)) + (f.revived ? ' <span class="pill good">back from the grave</span>'
                                               : f.fresh ? ' <span class="pill good">new</span>' : ' <span class="dim">(had it)</span>')) + '</li>').join("")
-    : '<li class="dim">No drops yet. Drops from anyone with the shop open show here as they happen.</li>';
+    : '<li class="dim">No drops yet.</li>';
 }
 
 function addFeed(ev) {
@@ -124,12 +124,12 @@ function addFeed(ev) {
 function landed(ev) {
   addFeed(ev);
   if (ev.mine && ev.kind < 0) {
-    setMsg("The ball landed on " + C.PET_BINS[ev.bin].name + ", where every species is buried. Token returned.", false);
+    setMsg("Nothing left in " + C.PET_BINS[ev.bin].name + ". Token returned.", false);
     renderShop();
   } else if (ev.mine) {
     setMsg(ev.name + " won " + (ev.fresh ? "the " : "another ") + petLabel(ev.kind) + " (" + C.PET_BINS[ev.bin].name + ") on Plinko" +
            (ev.revived ? ", back from the grave!" : ev.fresh ? "!" : ", which they already had."), true);
-    if (ev.homunculus) setMsg(ev.name + " has found all " + C.PET_COUNT + ". The pen has produced something none of them are on their own.", true);
+    if (ev.homunculus) setMsg(ev.name + " has all " + C.PET_COUNT + " alive. The pen made something new.", true);
     renderShop();
   }
 }
@@ -145,7 +145,7 @@ async function dropToken() {
     res = await plinkoPlay(p);
     if (res) await hooks.settle();
   });
-  if (!res) { setMsg("The drop did not go through: " + (plinkoBlock(p) || "the file could not be saved") + ".", false); renderShop(); return; }
+  if (!res) { setMsg("Drop failed: " + (plinkoBlock(p) || "couldn't save") + ".", false); renderShop(); return; }
   const ev = emit("drop", Object.assign({}, res, { label: res.kind < 0 ? "nothing left" : (res.fresh ? "+" : "") + petLabel(res.kind) }));
   board.drop(Object.assign({ mine: true }, ev));
   renderShop();                    /* the balance drops at once; the result shows on landing */
@@ -155,13 +155,12 @@ async function doReroll() {
   if (!hooks.guard()) return;
   const p = shopFor();
   if (!p || rerollBlock(p)) return;
-  const ok = await hooks.askConfirm("Reroll " + p.name + "'s pet?", "Spends " + C.REROLL_COST + " token. Today's " +
-    petLabel(Number(p.rollKind)) + " is replaced by a fresh roll with the usual odds" +
-    (p.rollWasNew ? ", and it leaves the collection" : "") + ". Once a day.", "Reroll");
+  const ok = await hooks.askConfirm("Reroll " + p.name + "'s pet?", C.REROLL_COST + " token. Rolls again at normal odds" +
+    (p.rollWasNew ? "; the " + petLabel(Number(p.rollKind)) + " leaves the collection" : "") + ".", "Reroll");
   if (!ok) return;
   await store.serial(async () => {
     const r = await reroll(p);
-    if (!r) { setMsg("The reroll did not go through.", false); return; }
+    if (!r) { setMsg("Reroll failed.", false); return; }
     announce(p, r.res, " rerolled and");
     await hooks.settle();
   });
@@ -173,12 +172,12 @@ async function doBuy(kind) {
   const p = shopFor();
   if (!p || buyBlock(p, kind)) return;
   const ok = await hooks.askConfirm("Buy the " + petLabel(kind) + " for " + p.name + "?",
-    "Costs " + priceOf(kind) + " tokens (" + rarityLabel(kind) + "). " + (isGrave(p, kind) ? "It comes back from the grave. " : "") +
-    (store.petKindFor(p) === C.MYSTERY_KIND ? p.name + " keeps wearing what they found outside the pen." : p.name + " will wear it."), "Buy");
+    priceOf(kind) + " tokens." + (isGrave(p, kind) ? " It comes back from the grave." : "") +
+    (store.petKindFor(p) === C.MYSTERY_KIND ? "" : " " + p.name + " will wear it."), "Buy");
   if (!ok) return;
   await store.serial(async () => {
     const r = await buy(p, kind);
-    if (!r) { setMsg("The purchase did not go through.", false); return; }
+    if (!r) { setMsg("Purchase failed.", false); return; }
     setMsg(p.name + (r.revived ? " bought the " + petLabel(kind) + " back from the grave." : " bought the " + petLabel(kind) + "."), true);
     const shown = r.homunculus ? C.HOMUNCULUS_KIND : kind;
     bus.unlock({ name: p.name, kind: shown, hue: r.homunculus ? 210 : r.hue, fresh: true,

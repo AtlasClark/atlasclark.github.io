@@ -138,21 +138,20 @@ function showGate(mode, err) {
   $("gateReconnect").hidden = true;
   $("gatePick").hidden = false;
   if (mode === "noapi") {
-    $("gateMsg").innerHTML = "This browser cannot open a shared folder. Open this page in <b>Chrome</b> or <b>Edge</b>.";
+    $("gateMsg").innerHTML = "This browser can't open shared folders. Use <b>Chrome</b> or <b>Edge</b>.";
     $("gatePick").hidden = true;
   } else if (mode === "reconnect") {
-    $("gateMsg").innerHTML = "The browser needs you to confirm access to the shared <b>" + name + "</b> folder again. One click.";
+    $("gateMsg").innerHTML = "Confirm access to the <b>" + name + "</b> folder.";
     $("gateReconnect").textContent = "Reconnect to " + name;
     $("gateReconnect").hidden = false;
     $("gatePick").textContent = "Choose a different folder";
   } else if (mode === "lost") {
-    $("gateMsg").innerHTML = "Lost contact with the <b>" + name + "</b> folder. The share may be offline, or the browser withdrew access.";
+    $("gateMsg").innerHTML = "Lost the <b>" + name + "</b> folder. The share may be offline.";
     $("gateReconnect").textContent = "Reconnect to " + name;
     $("gateReconnect").hidden = false;
     $("gatePick").textContent = "Choose a different folder";
   } else {
-    $("gateMsg").innerHTML = "Choose the challenge's shared <b>data</b> folder: the one beside the HTA that holds " +
-      "<code>_settings.json</code> and everyone's <code>Name.json</code>. The page remembers it.";
+    $("gateMsg").innerHTML = "Pick the challenge's <b>data</b> folder (the one with <code>_settings.json</code>).";
     $("gatePick").textContent = "Choose data folder";
   }
   if (err) { $("gateWarn").textContent = (err.name ? err.name + ": " : "") + (err.message || err); $("gateWarn").hidden = false; }
@@ -264,7 +263,7 @@ function openPour(name, x, y) {
 }
 
 function guard() {
-  if (!ui.connected) { setMsg("No connection to the data folder - nothing was saved.", false); return false; }
+  if (!ui.connected) { setMsg("Not connected. Nothing saved.", false); return false; }
   return true;
 }
 
@@ -288,15 +287,15 @@ async function addWater(name, oz) {
     p.entries.push({ eid, ts: stamp, date: key, oz, by: S.me || "unknown" });
     if (!(await store.saveParticipant(p, null))) {
       p.entries = p.entries.filter(e => e.eid !== eid);
-      setMsg("Someone else is writing to " + p.name + "'s file. Try again in a second.", false);
+      setMsg(p.name + "'s file is busy. Try again.", false);
       return;
     }
     const after = totalOn(p, key), goal = currentGoalFor(p);
     if (!metGoal(before, goal) && metGoal(after, goal)) {
       const g = streaks(p).goal;
-      setMsg(p.name + " hit the goal - " + fmt(after) + " fl oz." + (g > 0 ? "  " + g + " goal streak." : ""), true);
+      setMsg(p.name + " hit the goal: " + fmt(after) + " oz" + (g > 1 ? " · " + g + "-day streak" : ""), true);
     } else {
-      setMsg(p.name + "  +" + fmt(oz) + " oz     today " + fmt(after) + " / " + fmt(goal) + " oz", true);
+      setMsg(p.name + " +" + fmt(oz) + " oz · " + fmt(after) + " / " + fmt(goal) + " today", true);
     }
     G.pour(p.name, oz, p.color);
     emit("pour", { name: p.name, oz, color: p.color });
@@ -327,7 +326,7 @@ async function undoEntry(name, eid) {
     p.entries.splice(idx, 1);
     if (!(await store.saveParticipant(p, [removed.eid]))) {
       p.entries.splice(idx, 0, removed);
-      setMsg("Someone else is writing to " + p.name + "'s file. Try again in a second.", false);
+      setMsg(p.name + "'s file is busy. Try again.", false);
       return;
     }
     setMsg("Removed " + fmt(removed.oz) + " oz from " + p.name + (removed.by ? " (logged by " + removed.by + ")" : "") +
@@ -345,7 +344,7 @@ async function setColor(name, hex) {
     const old = p.color;
     p.color = hex;
     if (!(await store.saveParticipant(p, null))) { p.color = old; setMsg("Could not save " + name + "'s colour.", false); return; }
-    setMsg(name + "'s colour updated.", true);
+    setMsg(name + "'s colour changed.", true);
     await settle();
   });
 }
@@ -356,7 +355,7 @@ async function setAway(name, away) {
     const p = findParticipant(name);
     if (!p) return;
     if (!(await setAwayNow(p, away))) { setMsg("Could not save the change.", false); return; }
-    setMsg(away ? p.name + " is away. Their streaks are safe until they come back." : p.name + " is back.", true);
+    setMsg(away ? p.name + " is away. Streaks paused." : p.name + " is back.", true);
     await settle();
   });
   renderRoster();
@@ -366,9 +365,9 @@ async function addParticipant() {
   const name = trim($("pname").value);
   if (!name) { setMsg("Enter a participant name.", false); return; }
   if (!guard()) return;
-  if (findParticipant(name)) { setMsg("That participant already exists.", false); return; }
+  if (findParticipant(name)) { setMsg(name + " is already on the roster.", false); return; }
   await store.serial(async () => {
-    if (await store.participantExists(name)) { setMsg("A file for " + name + " already exists in the folder.", false); return; }
+    if (await store.participantExists(name)) { setMsg(name + " already has a file in the folder.", false); return; }
     const used = new Set(S.participants.map(p => String(p.color).toLowerCase()));
     const color = C.PARTICIPANT_COLORS.find(c => !used.has(c)) || C.PARTICIPANT_COLORS[S.participants.length % C.PARTICIPANT_COLORS.length];
     const p = { name, color, goal: currentGoal(), created: todayKey(), entries: [] };
@@ -382,7 +381,7 @@ async function addParticipant() {
 async function removeParticipant(name) {
   if (!guard()) return;
   const ok = await askConfirm("Remove " + name + "?",
-    "Their file is moved to the " + C.REMOVED_SUBDIR + " folder, not deleted, so this can be undone by hand.", "Remove");
+    "Their file moves to " + C.REMOVED_SUBDIR + " and can be restored by hand.", "Remove");
   if (!ok) return;
   await store.serial(async () => {
     try {
@@ -400,11 +399,11 @@ async function applySettings() {
   if (!guard()) return;
   const g = Number($("goalVal").value), a = Number($("annualVal").value);
   const sd = trim($("startVal").value), iv = trim($("idleVal").value);
-  if (!isFinite(g) || g <= 0) { setMsg("The daily goal has to be a number above zero.", false); return; }
-  if (!isFinite(a) || a <= 0) { setMsg("The yearly goal has to be a number above zero.", false); return; }
-  if (sd && !parseKey(sd)) { setMsg("The start date must look like 2026-08-04.", false); return; }
+  if (!isFinite(g) || g <= 0) { setMsg("Default goal must be above zero.", false); return; }
+  if (!isFinite(a) || a <= 0) { setMsg("Yearly goal must be above zero.", false); return; }
+  if (sd && !parseKey(sd)) { setMsg("Start date must be YYYY-MM-DD.", false); return; }
   if (iv !== "" && (!isFinite(Number(iv)) || Number(iv) < 0 || Math.floor(Number(iv)) !== Number(iv))) {
-    setMsg("The idle allowance has to be a whole number of days.", false); return;
+    setMsg("Streak grace must be a whole number of days.", false); return;
   }
   const dailyChanged = g !== currentGoal(), annualChanged = a !== currentAnnualGoal();
   const startChanged = sd !== "" && sd !== challengeStart(), idleChanged = iv !== "" && Number(iv) !== currentIdleMax();
@@ -417,16 +416,16 @@ async function applySettings() {
     if (dailyChanged) S.settings.dailyGoalOz = g;
     if (!(await store.saveSettings())) {
       S.settings = old;
-      setMsg("Could not write " + C.SETTINGS_FILE + ". Someone may have it locked.", false);
+      setMsg("Couldn't save settings. Try again.", false);
       return;
     }
     dataChanged();
     closeSettings();
     const bits = [];
-    if (dailyChanged) bits.push("Default goal is now " + fmt(g) + " fl oz. It applies to anyone without a personal goal this month.");
-    if (annualChanged) bits.push("Yearly goal is now " + fmtOz(a) + " fl oz per person.");
-    if (startChanged) bits.push("The challenge year now runs " + sd + " to " + challengeEnd() + ".");
-    if (idleChanged) bits.push("Streaks now survive missing up to " + currentIdleMax() + " day" + (currentIdleMax() === 1 ? "" : "s") + " in a row.");
+    if (dailyChanged) bits.push("Default goal: " + fmt(g) + " oz.");
+    if (annualChanged) bits.push("Yearly goal: " + fmtOz(a) + " oz.");
+    if (startChanged) bits.push("Year: " + sd + " to " + challengeEnd() + ".");
+    if (idleChanged) bits.push("Streak grace: " + currentIdleMax() + " day" + (currentIdleMax() === 1 ? "" : "s") + ".");
     setMsg(bits.join("  "), true);
     await refresh();
   });
@@ -436,16 +435,14 @@ async function upgradeFormat() {
   if (!guard()) return;
   if (S.folderFormat >= C.FORMAT_REV) return;
   const ok = await askConfirm("Upgrade this folder to format " + C.FORMAT_REV + "?",
-    "Do this only on the web-only copy of the data. Every file is rewritten in the new format. " +
-    "After this, the HTA must not be used on this folder: it would drop the new fields. " +
-    "The page will name anyone whose HTA writes here.", "Upgrade");
+    "Only do this on the web-only copy. Every file is rewritten, and the HTA must not touch this folder afterwards.", "Upgrade");
   if (!ok) return;
   await store.serial(async () => {
     try {
       const n = await store.upgradeFolder();
       setMsg("Folder upgraded to format " + C.FORMAT_REV + ". " + n + " files rewritten.", true);
     } catch (e) {
-      setMsg("Upgrade stopped: " + (e.message || e) + ". Reload and try again.", false);
+      setMsg("Upgrade stopped: " + (e.message || e) + ". Reload and retry.", false);
     }
     await refresh();
   });

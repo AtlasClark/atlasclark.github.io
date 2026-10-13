@@ -43,25 +43,23 @@
 
     <div id="settingsPanel" class="settings-panel" hidden>
       <div class="sp-title">Challenge settings</div>
-      <label class="field-label" for="goalVal">Default goal (new people, or too little history)</label>
+      <label class="field-label" for="goalVal">Default goal</label>
       <input id="goalVal" class="txt amount" type="text" inputmode="decimal"><span class="unit">fl oz</span>
-      <label class="field-label" for="annualVal">Yearly goal, per person</label>
+      <label class="field-label" for="annualVal">Yearly goal per person</label>
       <input id="annualVal" class="txt amount wide" type="text" inputmode="numeric"><span class="unit">fl oz</span>
       <label class="field-label" for="startVal">Challenge started</label>
       <input id="startVal" class="txt date" type="text" placeholder="YYYY-MM-DD">
-      <label class="field-label" for="idleVal">Streak survives missing</label>
+      <label class="field-label" for="idleVal">Streak grace</label>
       <input id="idleVal" class="txt amount narrow" type="text" inputmode="numeric"><span class="unit">days</span>
-      <p class="hint">Everyone's cap is twice their own goal: reach it and the day is won; go past it and the water turns red.</p>
+      <p class="hint">Cap is 2&times; goal. Reach it to win the day; pass it and a pet drowns.</p>
       <button type="button" id="applySettings" class="btn primary">Set</button>
-      <p class="sp-note">Everyone's goal is set from their own last 30 days. The default only applies to someone
-        without enough history yet. Stored in _settings.json on the share. Finished days keep the goal they were
-        played under, so changing anything here never rewrites past wins, goals or streaks.</p>
+      <p class="sp-note">Goals come from each person's last 30 days; the default covers new people.
+        Changes never alter past days.</p>
       <div class="sp-title">Data format</div>
       <p class="hint" id="fmtNote"></p>
       <button type="button" id="upgradeBtn" class="btn muted small-gap">Upgrade folder format</button>
       <div class="sp-title sp-gap">Roster</div>
-      <p class="hint">Away keeps someone's history, pets and streaks safe while they are not playing. Their glass
-        is hidden and they stop counting toward the year target until they are back.</p>
+      <p class="hint">Away hides a glass and pauses streaks and the year target.</p>
       <div id="rosterList" class="roster"></div>
     </div>
   </header>
@@ -88,7 +86,7 @@
       <p id="msg" class="status-message" role="status" aria-live="polite"></p>
 
       <div class="control-panel slim">
-        <p class="pour-hint"><b>Right-click a glass</b> to log water <span class="dim">&middot; press and hold on touch &middot; Enter on a focused glass</span></p>
+        <p class="pour-hint"><b>Right-click a glass</b> to log water <span class="dim">(press and hold on touch)</span></p>
         <div class="newp">
           <label class="field-label" for="pname">New participant</label>
           <input id="pname" class="txt pname" type="text" placeholder="Enter a name" autocomplete="off">
@@ -129,20 +127,18 @@
     <section id="view-shop" hidden>
       <div id="shopClosed" class="panel full">
         <div class="panel-heading"><p class="eyebrow">Spend your gold</p><h2>Token shop</h2></div>
-        <p>The shop keeps track of spent tokens, which needs the data folder at format 22.
-          Use <b>Settings &rsaquo; Data format &rsaquo; Upgrade</b> on the web-only copy of the data.</p>
+        <p>The shop needs the data folder at format 22: <b>Settings &rsaquo; Data format &rsaquo; Upgrade</b>.</p>
       </div>
       <div id="shopMain" hidden>
         <div class="panel shop-top">
-          <div class="panel-heading"><p class="eyebrow">Spend your gold &middot; one token for every goal day, five for every day over the cap</p><h2>Token shop</h2></div>
+          <div class="panel-heading"><p class="eyebrow">1 token per goal day &middot; 5 per day over the cap</p><h2>Token shop</h2></div>
           <div id="shopWho" class="shop-who"></div>
           <p id="shopBalance" class="shop-balance"></p>
         </div>
         <div class="shop-grid">
           <div class="panel shop-plinko">
-            <div class="panel-heading"><p class="eyebrow">1 token a drop &middot; anyone with the shop open sees it fall</p><h2>Plinko</h2></div>
-            <p class="hint">Every peg is a fair 50/50 bounce, so the slot the ball reaches decides the rarity.
-              It wins a pet of that rarity that you don't have alive while there are any left; a buried one comes back to life.</p>
+            <div class="panel-heading"><p class="eyebrow">1 token per drop &middot; live for everyone</p><h2>Plinko</h2></div>
+            <p class="hint">Each peg is a 50/50 bounce. The slot sets the rarity, and you win a pet from it you don't have alive.</p>
             <p id="plinkoOdds" class="plinko-odds"></p>
             <div id="plinkoWrap" class="plinko-wrap"><canvas id="plinkoCanvas"></canvas></div>
             <div class="plinko-go"><button type="button" id="plinkoDrop" class="btn primary">Drop a token</button>
@@ -155,7 +151,7 @@
               <div id="rerollBox"></div>
             </div>
             <div class="panel shop-buy">
-              <div class="panel-heading"><p class="eyebrow">Priced at the odds of rolling it &middot; buried ones can be bought back</p><h2>Buy a pet</h2></div>
+              <div class="panel-heading"><p class="eyebrow">Priced by rarity &middot; buried pets can be bought back</p><h2>Buy a pet</h2></div>
               <div id="buyGrid" class="buy-grid"></div>
             </div>
           </div>
@@ -187,8 +183,7 @@
       <button type="button" id="gatePick" class="btn primary">Choose data folder</button>
     </div>
     <p id="gateWarn" class="gate-warn" hidden></p>
-    <p class="hint">Chrome or Edge only. Your water data stays on the share; this page only holds a link to the
-      folder in your browser. If Chrome offers <b>Allow on every visit</b>, choose it so the page connects on its own.</p>
+    <p class="hint">Chrome or Edge only. Your data stays on the share. If asked, choose <b>Allow on every visit</b>.</p>
     <details id="gateDetails" hidden><summary>What happened</summary><pre id="gateTrail" class="trail"></pre></details>
   </div>
 </div>
@@ -197,8 +192,7 @@
 <dialog id="whoDialog" class="dlg">
   <form method="dialog">
     <h3>Who is logging?</h3>
-    <p class="hint">This name is stamped on every pour you log, so others can see who logged what.
-      Use your Windows username (for example <code>rclark</code>), as the HTA does.</p>
+    <p class="hint">Shown on every pour you log. Use your Windows username, e.g. <code>rclark</code>.</p>
     <input id="whoInput" class="txt" type="text" autocomplete="username" spellcheck="false" required>
     <div class="dlg-actions">
       <button value="cancel" id="whoCancel" class="btn muted" formnovalidate>Cancel</button>
