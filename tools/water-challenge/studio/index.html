@@ -1,0 +1,95 @@
+<!doctype html>
+<!--
+  Pet Studio (unlisted, like the Water Challenge itself). Draws the pets, crown and
+  jester hat as vector shapes with colour roles, previews them as the page draws
+  them, and saves tools/water-challenge/pets/pets.json into a local copy of the repo
+  (Chrome or Edge). Commit and push that file to publish. Stores nothing on the site.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; worker-src 'none'; frame-src 'none'; form-action 'none'; base-uri 'none'">
+<meta name="referrer" content="no-referrer">
+<meta name="robots" content="noindex">
+<title>Pet Studio</title>
+<link rel="stylesheet" href="studio.css">
+<script type="module" src="studio.js"></script>
+</head>
+<body>
+<header class="top">
+  <div class="brand"><span class="logo"></span><b>Pet Studio</b><span class="dim">Water Challenge</span></div>
+  <div class="pet-title" id="petTitle"></div>
+  <div class="top-actions">
+    <span id="saveState" class="save-state"></span>
+    <button type="button" id="openBtn" class="btn ghost" title="Load a pets.json file">Open&hellip;</button>
+    <button type="button" id="exportBtn" class="btn ghost" title="Download pets.json">Export</button>
+    <button type="button" id="saveBtn" class="btn primary" title="Write tools/water-challenge/pets/pets.json (Ctrl+S)">Save to repo</button>
+    <button type="button" id="themeBtn" class="btn icon" title="Light / dark">&#9680;</button>
+    <input type="file" id="openFile" accept=".json,application/json" hidden>
+  </div>
+</header>
+
+<main class="studio">
+  <aside class="pets">
+    <div class="pane-head">Pets <span class="dim" id="editedCount"></span></div>
+    <div id="petList" class="pet-list"></div>
+  </aside>
+
+  <section class="stage">
+    <div class="toolbar" id="toolbar">
+      <div class="tools" role="toolbar" aria-label="Tools">
+        <button type="button" data-tool="select" title="Select and move (V)">&#10146;<small>V</small></button>
+        <button type="button" data-tool="ellipse" title="Ellipse (O) &middot; Shift circle &middot; Alt from centre">&#9711;<small>O</small></button>
+        <button type="button" data-tool="poly" title="Polygon (P) &middot; click points, click the first to close">&#11040;<small>P</small></button>
+        <button type="button" data-tool="pen" title="Pen (C) &middot; click for corners, drag for curves">&#10002;<small>C</small></button>
+        <button type="button" data-tool="free" title="Freehand (F) &middot; end near the start to make a filled shape">&#9998;<small>F</small></button>
+        <button type="button" data-tool="line" title="Line (L)">&#9585;<small>L</small></button>
+        <button type="button" data-tool="eye" title="Eye (Y) &middot; a dot alive, an X when drowned">&#9673;<small>Y</small></button>
+      </div>
+      <label class="brush" title="Width for new lines and strokes">Width <input type="range" id="brush" min="1" max="30" value="7"><span id="brushVal"></span></label>
+      <div class="seg" id="poseSeg">
+        <button type="button" data-pose="swim" title="How it looks in the glass">Swim</button>
+        <button type="button" data-pose="portrait" title="Full body, for the Pets tab and unlock cards">Portrait</button>
+      </div>
+      <div class="toggles">
+        <label title="Water below the waterline"><input type="checkbox" id="tWater" checked> Water</label>
+        <label title="Show the drowned version"><input type="checkbox" id="tDead"> Drowned</label>
+        <label title="Show the crown; drag it to move"><input type="checkbox" id="tCrown"> Crown</label>
+        <label title="Snap to a 0.02 grid (Alt inverts)"><input type="checkbox" id="tSnap"> Snap</label>
+      </div>
+      <div class="tb-right">
+        <button type="button" id="undoBtn" class="btn icon" title="Undo (Ctrl+Z)">&#8630;</button>
+        <button type="button" id="redoBtn" class="btn icon" title="Redo (Ctrl+Shift+Z)">&#8631;</button>
+        <button type="button" id="fitBtn" class="btn icon" title="Fit (0)">&#9974;</button>
+      </div>
+    </div>
+    <div class="canvas-wrap" id="canvasWrap">
+      <canvas id="editor"></canvas>
+      <div id="poseNote" class="pose-note" hidden></div>
+    </div>
+    <div class="preview-wrap">
+      <canvas id="preview"></canvas>
+    </div>
+  </section>
+
+  <aside class="side">
+    <div class="tabs" id="sideTabs">
+      <button type="button" data-tab="shape">Shape</button>
+      <button type="button" data-tab="colours">Colours</button>
+      <button type="button" data-tab="pet">Pet</button>
+      <button type="button" data-tab="ref">Reference</button>
+    </div>
+    <div class="tab-body" id="tabBody"></div>
+    <div class="pane-head">Layers <span class="dim">top first</span></div>
+    <div id="layers" class="layers"></div>
+  </aside>
+</main>
+
+<footer class="statusbar">
+  <span id="rev"></span>
+  <span id="hint" class="hint"></span>
+  <span id="coords" class="coords"></span>
+</footer>
+</body>
+</html>

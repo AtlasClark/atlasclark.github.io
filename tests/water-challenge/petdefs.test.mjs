@@ -13,7 +13,7 @@ const JS = path.join(ROOT, "tools/water-challenge/js/");
 const C = await import(pathToFileURL(JS + "config.js"));
 const P = await import(pathToFileURL(JS + "petdefs.js"));
 const A = await import(pathToFileURL(JS + "art.js"));
-const IMPORTER = path.join(ROOT, ".dev/pet-studio/importer.js");
+const IMPORTER = path.join(ROOT, "tools/water-challenge/studio/importer.js");
 
 const rec = draw => { const c = new FlatRec(); draw(c); return c.out; };
 
@@ -47,8 +47,8 @@ test("hue: a colourable part follows the pet's hue, a fixed part does not", () =
   assert.equal(P.colourOf(pal, "b", 300), "#123456");
 });
 
-const GEOM = path.join(ROOT, ".dev/pet-studio/geom.js");
-test("studio geometry: loops, splits, mirrors", { skip: fs.existsSync(GEOM) ? false : "Pet Studio not present (.dev/pet-studio)" }, async () => {
+const GEOM = path.join(ROOT, "tools/water-challenge/studio/geom.js");
+test("studio geometry: loops, splits, mirrors", { skip: fs.existsSync(GEOM) ? false : "Pet Studio not present" }, async () => {
   const G = await import(pathToFileURL(GEOM));
   const loop = [];
   for (let i = 0; i <= 40; i++) { const t = i / 40 * Math.PI * 2; loop.push([Math.sin(t), Math.cos(t)]); }
@@ -74,7 +74,7 @@ test("studio geometry: loops, splits, mirrors", { skip: fs.existsSync(GEOM) ? fa
 });
 
 test("studio import: every built-in pet draws the same from its shapes",
-     { skip: fs.existsSync(IMPORTER) ? false : "Pet Studio not present (.dev/pet-studio)" }, async () => {
+     { skip: fs.existsSync(IMPORTER) ? false : "Pet Studio not present" }, async () => {
   const I = await import(pathToFileURL(IMPORTER));
   const r = 100, same = (draw, def, k, what) => {
     const before = rec(draw);
@@ -99,7 +99,7 @@ test("studio import: every built-in pet draws the same from its shapes",
 });
 
 test("studio import: the crown and jester hat draw the same from their shapes",
-     { skip: fs.existsSync(IMPORTER) ? false : "Pet Studio not present (.dev/pet-studio)" }, async () => {
+     { skip: fs.existsSync(IMPORTER) ? false : "Pet Studio not present" }, async () => {
   const I = await import(pathToFileURL(IMPORTER));
   for (const key of P.HAT_KEYS) {
     const hat = I.importHat(key);
