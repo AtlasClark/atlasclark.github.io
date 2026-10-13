@@ -52,6 +52,9 @@ export class PlinkoBoard {
     this.start();
   }
 
+  /* Events whose ball is still falling. */
+  inFlight() { return this.balls.filter(b => !b.landed).map(b => b.ev); }
+
   start() {
     if (this.running) return;
     this.running = true;

@@ -294,3 +294,21 @@ test("cap bonus: 5 tokens a day past the cap, from the start date on, taken back
   p.entries = p.entries.filter(x => x !== at); M.dataChanged();
   assert.equal(M.capBonus(p), 0, "undone");
 });
+
+test("plinko: a win stays hidden until its ball lands on this page", () => {
+  const t0 = new Date("2026-10-13T12:00:00").getTime(), stamp = "2026-10-13T12:00:00";
+  const p = { name: "Kirby", spends: [
+    { id: "s:a", kind: "plinko", at: stamp, pet: 7, fresh: true },
+    { id: "s:b", kind: "plinko", at: stamp, pet: 3, fresh: true, revived: true },
+    { id: "s:c", kind: "plinko", at: stamp, pet: 9, fresh: false },          /* a duplicate: nothing to hide */
+    { id: "s:d", kind: "buy", at: stamp, pet: 12 } ] };
+  const hold = 12000;
+  let h = shop.pendingWins(p, [], new Set(), t0 + 2000, hold);
+  assert.deepEqual([...h], [[7, false], [3, true]], "fresh wins hidden, the revived one shown buried");
+  h = shop.pendingWins(p, [], new Set(["s:a"]), t0 + 2000, hold);
+  assert.deepEqual([...h.keys()], [3], "landed here: shown");
+  assert.equal(shop.pendingWins(p, [], new Set(), t0 + hold + 1, hold).size, 0, "the wait runs out");
+  const ball = { name: "Kirby", kind: 15, fresh: true };
+  assert.ok(shop.pendingWins(p, [ball], new Set(["s:a", "s:b"]), t0 + hold * 5, hold).has(15), "a ball still falling is hidden");
+  assert.equal(shop.pendingWins({ name: "Rob" }, [ball], new Set(), t0, hold).size, 0, "someone else's ball");
+});

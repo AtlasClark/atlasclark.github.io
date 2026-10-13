@@ -4,7 +4,7 @@
 import * as C from "./config.js";
 import { S, findParticipant, activeParticipants, tokensEarned, capBonus } from "./model.js";
 import * as store from "./store.js";
-import { shopOpen, balance, spentTotal, priceOf, rerollBlock, reroll, plinkoBlock, plinkoPlay, plinkoOdds, buyBlock, buy } from "./shop.js";
+import { shopOpen, balance, spentTotal, priceOf, rerollBlock, reroll, plinkoBlock, plinkoPlay, plinkoOdds, buyBlock, buy, pendingWins } from "./shop.js";
 import { onLive, emit } from "./live.js";
 import { petLabel, petGridOrder, rarityLabel, petBinIndex, isGrave, announce } from "./pets.js";
 import { PlinkoBoard } from "./plinko.js";
@@ -12,8 +12,9 @@ import { $, esc, has, todayKey, prettyTime, localStamp, bus } from "./util.js";
 import { setMsg, ensureIcons, ui } from "./ui.js";
 
 let hooks = null;            /* { settle, guard, askConfirm, pollSoon } from app.js */
-let board = null;
-const feed = [];
+let board = null, holdTimer = 0;
+const feed = [], landedIds = new Set();
+const HOLD_MS = C.LIVE_SHOW_MS + 3000;      /* longest a win stays hidden without its ball landing here */
 
 export function initShop(h) {
   hooks = h;
@@ -88,9 +89,14 @@ export function renderShop() {
     '<button type="button" id="rerollBtn" class="btn primary"' + (rb ? ' disabled' : '') + '>Reroll &middot; ' + C.REROLL_COST + ' token</button>' +
     (rb ? '<p class="hint">' + esc(rb) + '</p>' : '<p class="hint">Normal odds. Replaces today\'s pet.</p>');
 
+  /* A win still falling on the board is shown as it was before the drop. */
+  const hidden = pendingWins(p, board ? board.inFlight() : [], landedIds, Date.now(), HOLD_MS);
+  clearTimeout(holdTimer);
+  if (hidden.size) holdTimer = setTimeout(() => { if (ui.tab === "shop") renderShop(); }, HOLD_MS);
   const h = [];
   for (const kind of petGridOrder()) {
-    const owned = has(p.pets, kind), buried = isGrave(p, kind), why = buyBlock(p, kind), price = priceOf(kind);
+    const held = hidden.has(kind), owned = has(p.pets, kind) && !held, buried = isGrave(p, kind) || (held && hidden.get(kind));
+    const why = held ? (balance(p) < priceOf(kind) ? "Needs " + priceOf(kind) + " tokens." : "") : buyBlock(p, kind), price = priceOf(kind);
     const state = owned ? "owned" : why ? "short" : "can";
     h.push('<button type="button" class="buy-cell r' + petBinIndex(kind) + ' ' + state + (buried ? ' buried' : '') + '"' +
            (state === "can" ? ' data-buy="' + kind + '"' : ' disabled') +
@@ -122,7 +128,9 @@ function addFeed(ev) {
 }
 
 function landed(ev) {
+  landedIds.add(ev.id);
   addFeed(ev);
+  if (!ev.mine && ui.tab === "shop") renderShop();
   if (ev.mine && ev.kind < 0) {
     setMsg("Nothing left in " + C.PET_BINS[ev.bin].name + ". Token returned.", false);
     renderShop();
@@ -143,11 +151,13 @@ async function dropToken() {
   let res = null;
   await store.serial(async () => {
     res = await plinkoPlay(p);
-    if (res) await hooks.settle();
+    if (!res) return;
+    /* the ball is in the air before anything redraws, so the win stays hidden until it lands */
+    const ev = emit("drop", Object.assign({}, res, { label: res.kind < 0 ? "nothing left" : (res.fresh ? "+" : "") + petLabel(res.kind) }));
+    board.drop(Object.assign({ mine: true }, ev));
+    await hooks.settle();
   });
   if (!res) { setMsg("Drop failed: " + (plinkoBlock(p) || "couldn't save") + ".", false); renderShop(); return; }
-  const ev = emit("drop", Object.assign({}, res, { label: res.kind < 0 ? "nothing left" : (res.fresh ? "+" : "") + petLabel(res.kind) }));
-  board.drop(Object.assign({ mine: true }, ev));
   renderShop();                    /* the balance drops at once; the result shows on landing */
 }
 

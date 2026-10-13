@@ -138,5 +138,19 @@ export async function buy(p, k) {
   return { kind: k, hue, homunculus, revived };
 }
 
+/* Plinko wins this page must not show yet: pet kind -> revived. The result is saved
+   before the ball falls, so a win stays hidden until its ball lands here (landed ids),
+   or for holdMs after the drop when this page never shows the ball. */
+export function pendingWins(p, inFlight, landed, now, holdMs) {
+  const out = new Map();
+  for (const ev of inFlight) if (ev.name === p.name && ev.fresh) out.set(ev.kind, !!ev.revived);
+  for (const s of p.spends || []) {
+    if (s.kind !== "plinko" || !s.fresh || landed.has(s.id)) continue;
+    const age = now - new Date(s.at).getTime();
+    if (age > -5000 && age < holdMs) out.set(s.pet, !!s.revived);     /* a few seconds of clock skew between PCs */
+  }
+  return out;
+}
+
 /* Today's and a given day's shop events, for the activity feed and the recap. */
 export function spendsOn(p, key) { return (p.spends || []).filter(s => String(s.at).slice(0, 10) === key); }
