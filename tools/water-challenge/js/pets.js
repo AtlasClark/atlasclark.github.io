@@ -51,15 +51,20 @@ export function petGridOrder() {
 }
 
 /* Every one of the 25 accounted for; a grave counts as found. */
+/* The full-pen reward. At format 21 (shared with R55) a buried pet counts as found,
+   as in R55. At format 22 it needs all 25 alive, and syncHomunculus takes it away
+   when one is lost and gives it back when all 25 are alive again. */
+const aliveRule = () => S.folderFormat >= C.FORMAT_REV;
 export function penComplete(p) {
-  for (let k = 0; k < C.PET_COUNT; k++) if (!has(p.pets, k) && !isGrave(p, k)) return false;
+  for (let k = 0; k < C.PET_COUNT; k++) if (!has(p.pets, k) && (aliveRule() || !isGrave(p, k))) return false;
   return true;
 }
 export function penFound(p) {
   let n = 0;
-  for (let k = 0; k < C.PET_COUNT; k++) if (has(p.pets, k) || isGrave(p, k)) n++;
+  for (let k = 0; k < C.PET_COUNT; k++) if (has(p.pets, k) || (!aliveRule() && isGrave(p, k))) n++;
   return n;
 }
+export const penWord = () => aliveRule() ? "alive" : "found";
 
 export function grantHomunculus(p) {
   if (!penComplete(p) || has(p.pets, C.HOMUNCULUS_KIND)) return false;
@@ -248,11 +253,12 @@ function releaseMystery(p) {
 
 /* One drowning a day. R55 only blocked a second one when deadKind was set, so a
    drowned dragon (deadKind -1) let another machine drown a second pet; any
-   drowning today now blocks the next. */
+   drowning today now blocks the next. At format 22 the full-pen reward is not
+   drowned itself: the water takes a pen pet, which breaks the set instead. */
 async function killPet(p) {
   if (p.graveDay === todayKey()) return null;
   let k = petKindFor(p), byLot = false;
-  if (k < 0 || !has(p.pets, k)) { k = pickVictim(p); byLot = true; }
+  if (k < 0 || !has(p.pets, k) || (aliveRule() && k === C.HOMUNCULUS_KIND)) { k = pickVictim(p); byLot = true; }
   if (k < 0 || !has(p.pets, k)) return null;
   const hue = Number(p.pets[String(k)]);
   delete p.pets[String(k)];
@@ -276,9 +282,32 @@ async function killPet(p) {
 
 /* Today's pet events are a function of today's totals, not a ratchet. Runs for
    every active person after each load and each action. */
+/* Format 22: the full-pen reward follows the pen. Returns true when it changed. */
+export async function syncHomunculus(p) {
+  if (!aliveRule()) return false;
+  const H = String(C.HOMUNCULUS_KIND), holds = has(p.pets, H), whole = penComplete(p);
+  if (holds && !whole) {
+    delete p.pets[H];
+    if (petKindFor(p) === C.HOMUNCULUS_KIND) p.equippedPet = C.PET_NO_PET;
+    if (!(await saveParticipant(p, null, [H]))) return false;
+    bus.msg(p.name + " lost the " + C.PET_NAMES[C.HOMUNCULUS_KIND] + ": it needs all " + C.PET_COUNT + " alive.", false);
+    return true;
+  }
+  if (!holds && whole) {
+    const revived = isGrave(p, H) ? [H] : null;              /* an old grave of it, from R55 days */
+    if (revived) delete p.graves[H];
+    grantHomunculus(p);
+    if (!(await saveParticipant(p, null, null, revived))) return false;
+    announce(p, { kind: C.HOMUNCULUS_KIND, homunculus: true, hue: 210 });
+    return true;
+  }
+  return false;
+}
+
 export async function reconcilePets() {
   if (!C.EGG_ENABLED) return;
   const key = todayKey();
+  for (const p of S.participants) if (await syncHomunculus(p)) bus.petReset(p.name);
   for (const p of S.participants) {
     if (!isActive(p)) continue;
     const total = totalOn(p, key), goal = personalGoal(p, key);
@@ -294,6 +323,7 @@ export async function reconcilePets() {
       const dead = await killPet(p);
       if (dead) bus.drown(p.name, dead.kind, dead.hue);
     }
+    if (await syncHomunculus(p)) bus.petReset(p.name);
   }
 }
 

@@ -68,15 +68,21 @@ test("plinko: every bounce is a fair coin, independent of the last", () => {
   assert.ok(Math.abs(same / pairs - 0.5) < 0.003);
 });
 
-test("plinko: never a buried species, unowned first, an all-buried rarity gives nothing", () => {
-  const p = { name: "x", pets: { 0: 1, 1: 1, 2: 1, 6: 1, 7: 1, 8: 1, 9: 1 }, graves: { 3: 1, 4: 1, 11: 1, 12: 1, 13: 1, 14: 1, 15: 1 } };
-  let empties = 0;
+test("plinko: a pet they don't have alive first (buried ones included); duplicates only once all are alive", () => {
+  const p = { name: "x", pets: { 0: 1, 1: 1, 2: 1, 6: 1, 7: 1, 8: 1, 9: 1, 3: 1, 4: 1, 11: 1, 12: 1, 13: 1, 14: 1 },
+              graves: { 15: 1, 10: 1 } };
+  const seenUnc = new Set();
   for (let i = 0; i < 20000; i++) {
     const d = shop.plinkoDrop(p);
-    if (d.bin === 1) { assert.equal(d.kind, -1, "every Uncommon is buried"); empties++; }
-    if (d.bin === 0) assert.equal(d.kind, 10, "the one Common they lack");
+    assert.ok(d.kind >= 0, "every rarity always has something to give");
+    if (d.bin === 0) assert.equal(d.kind, 10, "the one Common not alive (it is buried)");
+    if (d.bin === 1) seenUnc.add(d.kind);
   }
-  assert.ok(empties > 0);
+  assert.deepEqual([...seenUnc], [15], "the buried Uncommon is the only one not alive");
+  const full = { name: "y", pets: Object.fromEntries(C.PET_BINS[0].kinds.map(k => [k, 1])), graves: {} };
+  const commons = new Set();
+  for (let i = 0; i < 5000; i++) { const d = shop.plinkoDrop(full); if (d.bin === 0) commons.add(d.kind); }
+  assert.equal(commons.size, C.PET_BINS[0].kinds.length, "all alive: any Common, as a duplicate");
 });
 
 test("the shop stays shut on a format 21 folder", { skip: skipReason }, async () => {
@@ -86,7 +92,7 @@ test("the shop stays shut on a format 21 folder", { skip: skipReason }, async ()
   assert.match(shop.buyBlock(rich, 0), /format 22/);
 });
 
-test("buy: unowned and unburied only, costs its price, is worn and logged", { skip: skipReason }, async () => {
+test("buy: anything not alive in the pen, costs its price, is worn and logged", { skip: skipReason }, async () => {
   const { rich, mem } = await fresh();
   const owned = Object.keys(rich.pets).map(Number).find(k => k < C.PET_COUNT);
   if (owned !== undefined) assert.equal(shop.buyBlock(rich, owned), "Already owned.");
@@ -103,7 +109,23 @@ test("buy: unowned and unburied only, costs its price, is worn and logged", { sk
   assert.ok(file.spends.some(s => s.kind === "buy" && s.pet === target && s.cost === shop.priceOf(target)));
   assert.equal(file.tokensSpent, shop.spentTotal(rich));
   const poor = { ...rich, spends: [...rich.spends, { id: "s:big", at: "x", kind: "buy", cost: 9999 }] };
-  assert.match(shop.buyBlock(poor, web.pets.petGridOrder().find(k => !own(rich, k) && !web.pets.isGrave(rich, k)) ?? 0), /Needs|owned|Buried/);
+  assert.match(shop.buyBlock(poor, web.pets.petGridOrder().find(k => !own(rich, k)) ?? 0), /Needs|owned/);
+});
+
+test("buy: a buried pet comes back from the grave with its colour", { skip: skipReason }, async () => {
+  const { rich, mem } = await fresh();
+  const k = web.pets.petGridOrder().find(x => own(rich, x) && x < C.PET_COUNT && shop.priceOf(x) <= shop.balance(rich));
+  if (k === undefined) return;
+  const hue = rich.pets[String(k)];
+  delete rich.pets[String(k)]; rich.graves[String(k)] = hue;          /* as if it drowned */
+  await web.store.saveParticipant(rich, null, [String(k)]);
+  assert.equal(shop.buyBlock(rich, k), "");
+  const r = await shop.buy(rich, k);
+  assert.ok(r && r.revived);
+  assert.ok(own(rich, k) && !web.pets.isGrave(rich, k));
+  assert.equal(rich.pets[String(k)], hue, "keeps the colour it had");
+  const file = JSON.parse(mem.text(web.store.participantFileName(rich.name)));
+  assert.ok(!(String(k) in file.graves), "the grave is gone from the file too");
 });
 
 test("reroll: after today's roll, once, for a token; it sticks through undo and redo", { skip: skipReason }, async () => {
@@ -135,17 +157,16 @@ test("reroll: after today's roll, once, for a token; it sticks through undo and 
   assert.ok(M.totalOn(rich, day) > 0);
 });
 
-test("plinko play: an all-buried rarity refunds the token", { skip: skipReason }, async () => {
-  const { rich } = await fresh();
-  for (const k of C.PET_BINS[1].kinds) { delete rich.pets[String(k)]; rich.graves[String(k)] = 1; }   /* bury every Uncommon */
+test("plinko play: winning a buried species brings it back", { skip: skipReason }, async () => {
+  const { rich, mem } = await fresh();
+  for (const k of C.PET_BINS[0].kinds) { const h = rich.pets[String(k)] ?? 7; delete rich.pets[String(k)]; rich.graves[String(k)] = h; }
+  await web.store.saveParticipant(rich, null, C.PET_BINS[0].kinds.map(String));
   let r = null, guard = 0;
-  while ((!r || r.bin !== 1) && guard++ < 400) {
-    const before = shop.balance(rich);
-    r = await shop.plinkoPlay(rich);
-    if (r.bin !== 1) assert.equal(shop.balance(rich), before - C.PLINKO_COST);
-    else { assert.equal(r.kind, -1); assert.equal(shop.balance(rich), before, "refunded"); }
-    if (shop.balance(rich) < 1) break;
-  }
+  while ((!r || r.bin !== 0) && guard++ < 40 && shop.balance(rich) >= 1) r = await shop.plinkoPlay(rich);
+  assert.equal(r.bin, 0);
+  assert.ok(r.revived && own(rich, r.kind) && !web.pets.isGrave(rich, r.kind));
+  const file = JSON.parse(mem.text(web.store.participantFileName(rich.name)));
+  assert.ok(!(String(r.kind) in file.graves));
 });
 
 test("plinko play: one token, the pet is awarded and logged before the ball lands", { skip: skipReason }, async () => {
@@ -198,5 +219,78 @@ test("live drops: written to _live, read back once, old ones cleared", { skip: s
   assert.deepEqual(await web.store.readLive(now - 1000, new Set(["e1"])), []);
   const live = web.store.dir._d.get(C.LIVE_SUBDIR);
   assert.ok(![...live._f.keys()].some(n => n.includes("-old")), "stale drop file removed");
-  assert.ok(![...web.store.dir._f.keys()].some(n => n.startsWith("drop-")), "nothing in the data folder itself");
+  assert.ok(![...web.store.dir._f.keys()].some(n => /^(ev|drop)-/.test(n)), "nothing in the data folder itself");
+});
+
+test("live: ids with a colon still make Windows-safe file names, and every event type round-trips", { skip: skipReason }, async () => {
+  await fresh();
+  const now = Date.now();
+  const evs = [{ type: "drop", id: "s:abc:def", at: now, slot: 3 }, { type: "pour", id: "l:x", at: now + 1, name: "a", oz: 8 },
+               { type: "unlock", id: "l:y", at: now + 2, info: { name: "a", kind: 3 } }];
+  for (const ev of evs) await web.store.writeLive(ev);
+  const names = [...web.store.dir._d.get(C.LIVE_SUBDIR)._f.keys()];
+  assert.ok(names.every(n => !/[\\/:*?"<>|]/.test(n)), names.join(" "));
+  const got = await web.store.readLive(now - 1000, new Set());
+  assert.deepEqual(got.map(e => e.type), ["drop", "pour", "unlock"]);
+  assert.deepEqual(got[2].info, { name: "a", kind: 3 });
+  const seen = new Set(evs.map(e => web.store.liveFileId(e.id)));
+  assert.deepEqual(await web.store.readLive(now - 1000, seen), [], "handled events are skipped");
+});
+
+/* ---- the full-pen reward -------------------------------------------------- */
+function wholePen(p) { for (let k = 0; k < C.PET_COUNT; k++) { p.pets[String(k)] = p.pets[String(k)] ?? 100; delete p.graves[String(k)]; } }
+
+test("full-pen reward at format 22: needs all 25 alive, goes when one drowns, comes back with it", { skip: skipReason }, async () => {
+  const { S, day, M } = await fresh();
+  const p = S.participants.find(x => M.isActive(x));
+  wholePen(p);
+  p.graves["5"] = 1; delete p.pets["5"];                                /* 24 alive, one buried */
+  await web.store.saveParticipant(p, null, ["5"]);
+  await web.pets.reconcilePets();
+  assert.ok(!own(p, C.HOMUNCULUS_KIND), "a buried pet does not count at format 22");
+  delete p.graves["5"]; p.pets["5"] = 28;                               /* bought back, say */
+  await web.store.saveParticipant(p, null, null, ["5"]);
+  await web.pets.reconcilePets();
+  assert.ok(own(p, C.HOMUNCULUS_KIND), "all 25 alive: granted");
+
+  p.equippedPet = C.HOMUNCULUS_KIND;                                    /* wearing it past the cap */
+  const e = { eid: "c:h", ts: day + "T13:00:00", date: day, oz: M.capFor(p, day) + 10, by: "test" };
+  p.entries.push(e);
+  await web.store.saveParticipant(p, null);
+  await web.pets.reconcilePets();
+  const dead = Number(p.deadKind);
+  assert.ok(dead >= 0 && dead < C.PET_COUNT, "a pen pet drowned, not the reward itself");
+  assert.ok(!own(p, C.HOMUNCULUS_KIND), "and the reward went with it");
+
+  p.entries = p.entries.filter(x => x.eid !== e.eid);                   /* undo: the pet is revived */
+  await web.store.saveParticipant(p, [e.eid]);
+  await web.pets.reconcilePets();
+  assert.ok(own(p, dead));
+  assert.ok(own(p, C.HOMUNCULUS_KIND), "all 25 alive again: it comes back");
+});
+
+test("full-pen reward at format 21 keeps R55's rule: a buried pet counts as found", { skip: skipReason }, async () => {
+  const { S, M } = await fresh(false);
+  const p = S.participants.find(x => M.isActive(x));
+  wholePen(p);
+  delete p.pets["5"]; p.graves["5"] = 1;
+  assert.ok(web.pets.penComplete(p));
+});
+
+/* ---- the cap bonus ---------------------------------------------------------- */
+test("cap bonus: 5 tokens a day past the cap, from the start date on, taken back on undo", { skip: skipReason }, async () => {
+  const { S, day, M } = await fresh();
+  assert.ok(day >= C.CAP_BONUS_SINCE);
+  const p = S.participants.find(x => M.isActive(x));
+  const before = M.capBonus(p);
+  assert.equal(before, 0, "no back pay for days before " + C.CAP_BONUS_SINCE);
+  const bal = shop.balance(p);
+  const at = { eid: "b:1", ts: day + "T13:00:00", date: day, oz: M.capFor(p, day), by: "test" };
+  p.entries.push(at); M.dataChanged();
+  assert.equal(M.capBonus(p), 0, "reaching the cap exactly pays nothing");
+  at.oz = M.capFor(p, day) + 5; M.dataChanged();
+  assert.equal(M.capBonus(p), C.CAP_BONUS, "passing it pays");
+  assert.equal(shop.balance(p), bal + C.CAP_BONUS + 1, "plus the goal-day token");
+  p.entries = p.entries.filter(x => x !== at); M.dataChanged();
+  assert.equal(M.capBonus(p), 0, "undone");
 });

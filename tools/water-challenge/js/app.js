@@ -8,6 +8,7 @@ import { S, dataChanged, findParticipant, totalOn, metGoal, currentGoalFor, stre
 import * as store from "./store.js";
 import { reconcilePets, equipPet } from "./pets.js";
 import * as G from "./glass.js";
+import { startLive, onLive, emit } from "./live.js";
 import { openRadial, wireRadial } from "./radial.js";
 import { initShop, renderShop, shopTabChanged, openShopFor } from "./shopui.js";
 import { ui, render, setTab, setMsg, showBanner, tickMasks, relayout, forceRebuild,
@@ -21,10 +22,21 @@ let lastSig = "", pollTimer = 0;
 bus.msg = setMsg;
 bus.drown = (name, kind, hue) => G.startSink(name, kind, hue);
 bus.petReset = name => { const st = G.animState(name); st.duckState = 0; st.shownKind = -99; };
-bus.unlock = info => {
+/* Unlock cards play here and on every other open page (through the live channel).
+   One card per person, pet and day: if two machines both notice the same goal, it
+   still shows once. */
+const cardsShown = new Set();
+function playUnlock(info) {
+  const key = info.name + "|" + info.kind + "|" + (info.bought ? "buy" : "roll") + "|" + todayKey();
+  if (cardsShown.has(key)) return;
+  cardsShown.add(key);
   if (info.equipped) G.dropIn(info.name, 12);       /* held off-screen until the card closes */
   setTimeout(() => showUnlock(info), G.pourLeft(info.name) * 1000 + 150);
-};
+}
+bus.unlock = info => { emit("unlock", { info }); playUnlock(info); };
+onLive("unlock", (ev, late) => { if (late < C.LIVE_SHOW_MS && ev.info) playUnlock(ev.info); pollSoon(); });
+/* Someone else poured: play the stream now and fetch the new level straight away. */
+onLive("pour", (ev, late) => { if (late < C.LIVE_SHOW_MS) G.pour(ev.name, ev.oz, ev.color); pollSoon(); });
 
 /* ---- theme -------------------------------------------------------------- */
 const THEMES = ["auto", "light", "dark"];
@@ -77,9 +89,20 @@ async function settle() {
   render();
 }
 
+/* A live event means the files just changed: read them now instead of waiting. */
+let soonWanted = false;          /* survives a refresh that was already running */
+function pollSoon() {
+  if (!ui.connected) return;
+  soonWanted = true;
+  clearTimeout(pollTimer);
+  pollTimer = setTimeout(poll, 250);
+}
+
 function schedulePoll() {
   clearTimeout(pollTimer);
-  pollTimer = setTimeout(poll, document.hidden ? C.POLL_HIDDEN_MS : C.POLL_MS);
+  const ms = soonWanted ? 250 : document.hidden ? C.POLL_HIDDEN_MS : C.POLL_MS;
+  soonWanted = false;
+  pollTimer = setTimeout(poll, ms);
 }
 
 async function poll() {
@@ -148,6 +171,7 @@ async function connect(h) {
   await store.serial(refresh);
   store.diagNote("connected to " + h.name + " (" + S.participants.length + " files)");
   schedulePoll();
+  startLive();
 }
 
 async function pickFolder() {
@@ -275,6 +299,7 @@ async function addWater(name, oz) {
       setMsg(p.name + "  +" + fmt(oz) + " oz     today " + fmt(after) + " / " + fmt(goal) + " oz", true);
     }
     G.pour(p.name, oz, p.color);
+    emit("pour", { name: p.name, oz, color: p.color });
     await settle();
   });
 }
@@ -441,7 +466,7 @@ function wire() {
   $("tab-shop").onclick = () => tab("shop");
   $("bankShop").onclick = () => { openShopFor($("bankShop").dataset.name); closeOverlays(); tab("shop"); };
   uiHooks.renderShop = renderShop;
-  initShop({ settle, guard, askConfirm });
+  initShop({ settle, guard, askConfirm, pollSoon });
   $("cog").onclick = () => $("settingsPanel").hidden ? openSettings() : closeSettings();
   $("applySettings").onclick = applySettings;
   $("upgradeBtn").onclick = upgradeFormat;

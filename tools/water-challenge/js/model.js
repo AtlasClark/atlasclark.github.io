@@ -252,6 +252,15 @@ export function openAwaySince(p) {
 }
 
 /* ---- tokens: one per goal day, computed from history -------------------- */
+/* Days past the cap since the bonus began; each pays CAP_BONUS on top of goal days. */
+export function capBonusDays(p) {
+  const by = dailyTotals(p);
+  let n = 0;
+  for (const k in by) if (k >= C.CAP_BONUS_SINCE && by[k] > 0 && pastCap(by[k], p, k)) n++;
+  return n;
+}
+export const capBonus = p => C.CAP_BONUS * capBonusDays(p);
+
 export function tokensEarned(p) {
   const by = dailyTotals(p);
   let n = 0;

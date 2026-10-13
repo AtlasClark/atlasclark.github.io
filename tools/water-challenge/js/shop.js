@@ -4,14 +4,15 @@
    Every action here saves; callers run them inside store.serial(). */
 
 import * as C from "./config.js";
-import { S, tokensEarned } from "./model.js";
+import { S, tokensEarned, capBonus } from "./model.js";
 import { saveParticipant, petKindFor } from "./store.js";
 import { has, todayKey, localStamp } from "./util.js";
-import { applyRoll, dayRng, binPool, grantHomunculus, isGrave, petBinIndex } from "./pets.js";
+import { applyRoll, dayRng, grantHomunculus, isGrave, petBinIndex } from "./pets.js";
 
 export const shopOpen = () => S.folderFormat >= C.FORMAT_REV;
 export const spentTotal = p => (p.spends || []).reduce((a, s) => a + (Number(s.cost) || 0), 0);
-export const balance = p => tokensEarned(p) - spentTotal(p);
+export const earnedTotal = p => tokensEarned(p) + capBonus(p);
+export const balance = p => earnedTotal(p) - spentTotal(p);
 export const priceOf = kind => C.SHOP_PRICES[petBinIndex(kind)];
 
 function spend(p, kind, cost, extra) {
@@ -66,7 +67,6 @@ export async function reroll(p) {
 export function plinkoBlock(p) {
   if (!shopOpen()) return "The shop needs the folder at format " + C.FORMAT_REV + " (Settings > Data format).";
   if (balance(p) < C.PLINKO_COST) return "Needs " + C.PLINKO_COST + " token.";
-  if (!C.PET_BINS.some(b => binPool(b, p).length)) return "Every pet is buried. There is nothing left to win.";
   return "";
 }
 
@@ -81,13 +81,19 @@ export function plinkoOdds() {
   return odds;
 }
 
+/* What a rarity can give on Plinko: species they don't have alive (unowned or
+   buried) first; once every one is alive, any of them (a duplicate). */
+export function plinkoPool(bin, p) {
+  const kinds = C.PET_BINS[bin].kinds, missing = kinds.filter(k => !has(p.pets, k));
+  return missing.length ? missing : kinds.slice();
+}
+
 /* A real drop: a fair 50/50 bounce at every peg, and the slot it ends in decides the
-   rarity. Then a species the way a roll picks one: never buried, preferring one not
-   owned yet. kind is -1 when every species of that rarity is buried. */
+   rarity, then a species from plinkoPool. */
 export function plinkoDrop(p, rnd = Math.random) {
   const path = Array.from({ length: C.PLINKO_ROWS }, () => rnd() < 0.5 ? 0 : 1);
   const slot = path.reduce((a, b) => a + b, 0), bin = C.PLINKO_SLOTS[slot];
-  const pool = binPool(C.PET_BINS[bin], p);
+  const pool = plinkoPool(bin, p);
   return { path, slot, bin, kind: pool.length ? pool[Math.floor(rnd() * pool.length)] : C.PET_NO_PET };
 }
 
@@ -96,13 +102,20 @@ export function plinkoDrop(p, rnd = Math.random) {
 export async function plinkoPlay(p) {
   if (plinkoBlock(p)) return null;
   const d = plinkoDrop(p), empty = d.kind < 0, fresh = !empty && !has(p.pets, d.kind);
-  const hue = empty ? 0 : has(p.pets, d.kind) ? Number(p.pets[String(d.kind)]) : newHue(d.kind);
-  if (fresh) { p.pets[String(d.kind)] = hue; wear(p, d.kind); }
+  const revived = fresh && isGrave(p, d.kind);
+  const hue = empty ? 0 : has(p.pets, d.kind) ? Number(p.pets[String(d.kind)]) : revived ? Number(p.graves[String(d.kind)]) : newHue(d.kind);
+  if (fresh) { give(p, d.kind, hue); wear(p, d.kind); }
   const homunculus = fresh && grantHomunculus(p);
-  const s = spend(p, "plinko", empty ? 0 : C.PLINKO_COST, { pet: d.kind, bin: d.bin, slot: d.slot, fresh });
-  if (!(await saveParticipant(p, null))) return null;
-  return { id: s.id, at: Date.now(), name: p.name, color: p.color, kind: d.kind, bin: d.bin, hue, fresh, empty,
+  const s = spend(p, "plinko", empty ? 0 : C.PLINKO_COST, { pet: d.kind, bin: d.bin, slot: d.slot, fresh, revived });
+  if (!(await saveParticipant(p, null, null, revived ? [String(d.kind)] : null))) return null;
+  return { id: s.id, at: Date.now(), name: p.name, color: p.color, kind: d.kind, bin: d.bin, hue, fresh, empty, revived,
            homunculus, slot: d.slot, path: d.path };
+}
+
+/* Into the collection; a buried one leaves its grave and keeps its colour. */
+function give(p, k, hue) {
+  if (isGrave(p, k)) delete p.graves[String(k)];
+  p.pets[String(k)] = hue;
 }
 
 /* ---- buying ---------------------------------------------------------------- */
@@ -110,20 +123,19 @@ export function buyBlock(p, k) {
   if (!shopOpen()) return "The shop needs the folder at format " + C.FORMAT_REV + " (Settings > Data format).";
   if (!(k >= 0 && k < C.PET_COUNT)) return "Not for sale.";
   if (has(p.pets, k)) return "Already owned.";
-  if (isGrave(p, k)) return "Buried: gone for good.";
   if (balance(p) < priceOf(k)) return "Needs " + priceOf(k) + " tokens.";
   return "";
 }
 
 export async function buy(p, k) {
   if (buyBlock(p, k)) return null;
-  const hue = newHue(k);
-  p.pets[String(k)] = hue;
+  const revived = isGrave(p, k), hue = revived ? Number(p.graves[String(k)]) : newHue(k);
+  give(p, k, hue);
   wear(p, k);
   const homunculus = grantHomunculus(p);
-  spend(p, "buy", priceOf(k), { pet: k });
-  if (!(await saveParticipant(p, null))) return null;
-  return { kind: k, hue, homunculus };
+  spend(p, "buy", priceOf(k), { pet: k, revived });
+  if (!(await saveParticipant(p, null, null, revived ? [String(k)] : null))) return null;
+  return { kind: k, hue, homunculus, revived };
 }
 
 /* Today's and a given day's shop events, for the activity feed and the recap. */

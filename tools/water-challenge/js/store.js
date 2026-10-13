@@ -512,7 +512,7 @@ export async function writeLive(ev) {
   if (!dir) return false;
   try {
     const d = await liveDir();
-    const fh = await d.getFileHandle("drop-" + ev.at + "-" + ev.id + ".json", { create: true });
+    const fh = await d.getFileHandle("ev-" + ev.at + "-" + liveFileId(ev.id) + ".json", { create: true });
     const w = await fh.createWritable();
     await w.write(JSON.stringify(ev));
     await w.close();
@@ -521,22 +521,26 @@ export async function writeLive(ev) {
   } catch (e) { note("live write failed: " + (e.message || e)); return false; }
 }
 
+/* Ids like "s:abc" carry a colon, which Windows does not allow in a file name. */
+export const liveFileId = id => String(id).replace(/[^A-Za-z0-9_-]/g, "_");
+
 async function pruneLive(d) {
   const now = Date.now();
   for await (const [name, h] of d.entries()) {
-    const m = /^drop-(\d+)-/.exec(name);
+    const m = /^(?:ev|drop)-(\d+)-/.exec(name);
     if (h.kind === "file" && m && now - Number(m[1]) > C.LIVE_KEEP_MS) { try { await d.removeEntry(name); } catch { } }
   }
 }
 
-/* Events newer than sinceMs (writer's clock, from the file name), oldest first. */
+/* Events newer than sinceMs (writer's clock, from the file name), oldest first.
+   seen holds liveFileId()s of events already handled. */
 export async function readLive(sinceMs, seen) {
   if (!dir) return [];
   const out = [];
   try {
     const d = await liveDir();
     for await (const [name, h] of d.entries()) {
-      const m = /^drop-(\d+)-(.+)\.json$/.exec(name);
+      const m = /^(?:ev|drop)-(\d+)-(.+)\.json$/.exec(name);
       if (h.kind !== "file" || !m || Number(m[1]) < sinceMs || (seen && seen.has(m[2]))) continue;
       try { out.push(JSON.parse(await (await h.getFile()).text())); } catch { }
     }

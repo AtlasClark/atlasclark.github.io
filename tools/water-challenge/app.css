@@ -550,7 +550,9 @@ li.pour.armed .undo-x { opacity: 1; background: #c4434f; color: #fff; }
 .buy-cell.short .bp { color: var(--faint); }
 .buy-cell.owned { background: var(--pc-eq-bg); }
 .buy-cell.owned .bp, .buy-cell.buried .bp { color: var(--faint); font-weight: 700; }
-.buy-cell.buried { opacity: .7; }
+.buy-cell.buried .pi { opacity: .9; filter: none; }
+.buy-cell .bp small { font-size: 9px; font-weight: 700; color: var(--faint); text-transform: uppercase; }
+#activity li.ev-grave .tag.bonus { background: var(--gold-bg); color: var(--gold-ink-2); }
 #activity li.ev-shop { background: color-mix(in srgb, var(--accent-soft) 70%, transparent); padding-left: 6px; padding-right: 6px; border-radius: 8px; }
 #activity li.ev-shop .tag { background: var(--accent-soft); color: var(--accent-ink); }
 .bank-shop { margin-top: 10px; }

@@ -10,12 +10,12 @@ import { S, personalGoal, capFor, totalOn, metGoal, pastCap, atCap, dayScoreFor,
          recentDays, topOf, dayRec, dayLeaders, dayResult, wonDay, satOut, tokensEarned,
          duplicateNames, isAway, openAwaySince, goalForDate, petEventTimes, allDateKeys } from "./model.js";
 import { petKindFor, ownsEquipped, graveEquipped, petHueFor, isGrave, gravesOf, petsOwned,
-         graveLine, petLabel, petName, petRarityOf, petBinIndex, petGridOrder, penFound,
+         graveLine, petLabel, petName, petRarityOf, petBinIndex, petGridOrder, penFound, penWord,
          hashHue, rarityLabel, undoEffect } from "./pets.js";
 import { crownSvg, jesterSvg, hatSvg, drawPortrait, drawCritter, drawHeadstone, drawGoldPile } from "./art.js";
 import * as G from "./glass.js";
 import { diag, dir } from "./store.js";
-import { shopOpen, balance, spentTotal, spendsOn } from "./shop.js";
+import { shopOpen, balance, spentTotal, spendsOn, earnedTotal } from "./shop.js";
 import { $, esc, fmt, fmtOz, fmtGal, todayKey, dateKey, prettyTime, clockStamp, has, parseKey, shiftKey } from "./util.js";
 
 /* Set by app.js: the Shop tab renders from shopui.js, which imports this module. */
@@ -288,7 +288,8 @@ function renderActivity() {
              '<strong>' + esc(a.p.name) + '</strong> ' + (a.fresh ? "unlocked the " : "rolled another ") + esc(petLabel(a.pet)) +
              ' <span class="rar">' + esc(rarityLabel(a.pet)) + '</span></li>';
     }
-    return '<li class="ev-grave"><span class="tag">RIP</span>' + when + '<strong>' + esc(a.p.name) + '</strong> drowned the ' +
+    return '<li class="ev-grave"><span class="tag">RIP</span>' + (key >= C.CAP_BONUS_SINCE ? '<span class="tag bonus">+' + C.CAP_BONUS + ' tokens</span>' : '') +
+           when + '<strong>' + esc(a.p.name) + '</strong> drowned the ' +
            esc(petLabel(a.pet)) + '</li>';
   });
   for (const { p, e } of pours.slice(0, C.ACTIVITY_LIMIT)) {
@@ -387,7 +388,7 @@ function renderPets() {
   const order = petGridOrder(), h = [];
   h.push('<div class="pet-legend">');
   C.PET_BINS.forEach((b, i) => h.push('<span><i class="pl r' + i + '"></i>' + esc(b.name) + ' &middot; ' + b.weight + '%</span>'));
-  h.push('<span><i class="pl grave"></i>Buried &middot; gone for good</span>');
+  h.push('<span><i class="pl grave"></i>Buried &middot; ' + (shopOpen() ? 'buy it back or win it on Plinko' : 'gone for good') + '</span>');
   h.push('<span class="pl-note">Reach your goal to roll one. Click to equip, click again to put it away.</span></div>');
   h.push('<div class="pet-cards">');
   for (const p of S.participants) {
@@ -413,7 +414,7 @@ function renderPets() {
            ' title="' + (got ? esc(C.PET_NAMES[C.HOMUNCULUS_KIND]) + ' &middot; every one of them at once'
                              : 'Account for all ' + C.PET_COUNT + ' to find out') + '">' +
            (got ? '<i class="pi pi-hom"></i>' : '<span class="q">?</span>') +
-           '<span class="rl">' + (got ? esc(C.PET_NAMES[C.HOMUNCULUS_KIND]) : penFound(p) + ' / ' + C.PET_COUNT + ' found') + '</span></div>');
+           '<span class="rl">' + (got ? esc(C.PET_NAMES[C.HOMUNCULUS_KIND]) : penFound(p) + ' / ' + C.PET_COUNT + ' ' + penWord()) + '</span></div>');
     h.push('</div>');
   }
   h.push('</div>');
@@ -740,7 +741,9 @@ export function openBank(name) {
   $("bankShop").dataset.name = p.name;
   $("bankName").innerHTML = esc(p.name) + "&rsquo;s gold";
   $("bankCount").innerHTML = bal + ' <small>token' + (bal === 1 ? '' : 's') + '</small>';
-  $("bankNote").innerHTML = "one for every goal day" + (spent ? " &middot; " + spent + " spent" : "") +
+  const bonus = earnedTotal(p) - tokensEarned(p);
+  $("bankNote").innerHTML = "one for every goal day" + (bonus ? " &middot; " + bonus + " cap bonus" : "") +
+                            (spent ? " &middot; " + spent + " spent" : "") +
                             (bal > 160 ? "<br>the pile has stopped fitting in the dish" : "");
   $("bank").hidden = false;
   const cv = $("bankPile"), dpr = Math.min(window.devicePixelRatio || 1, 3);
