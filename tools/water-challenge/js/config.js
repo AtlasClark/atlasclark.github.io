@@ -3,8 +3,8 @@
    contract (FORMAT_REV 21, UTF-16 LE + BOM) must stay identical while R55 runs on the
    share: R55 deletes any field it does not know on its next write. */
 
-export const REV         = "rev 1.11.1";
-export const APP_VERSION = "web 1.11.1";   /* stamped as writerVersion */
+export const REV         = "rev 1.12.0";
+export const APP_VERSION = "web 1.12.0";   /* stamped as writerVersion */
 /* A folder stays at LEGACY_FORMAT (byte-compatible with R55) until someone upgrades
    it from Settings. Format 22 adds tokensSpent and keeps unknown fields; R55 must
    not be used on a folder after that. */
@@ -31,7 +31,11 @@ export const PLINKO_ROWS  = 10;
 /* Slot -> PET_BINS index, left to right. Every peg is a fair 50/50 bounce, so the
    ball's path decides the slot (slot k of n has C(rows, k) / 2^rows): with 10 rows,
    Common 65.6%, Uncommon 23.4%, Rare 8.8%, Epic 1.95%, ??? 0.20%. */
-export const PLINKO_SLOTS = [4, 3, 2, 1, 0, 0, 0, 1, 2, 3, 4];
+export const CHEST = -1;                     /* a slot that is the Community Chest, not a rarity */
+export const PLINKO_SLOTS = [4, 3, 2, 1, 0, CHEST, 0, 1, 2, 3, 4];
+/* The centre cup: the drop's token goes into the chest, then (if the chest held
+   anything before) this chance to win all of it. */
+export const CHEST_CHANCE = 0.05;
 export const PLINKO_ROW_SECS = 0.26;
 export const LIVE_SUBDIR  = "_live";       /* drops shared with every open shop */
 export const LIVE_POLL_MS = 1000;
@@ -51,7 +55,7 @@ export const BACKUP_KEEP_DAYS = 14;
    past the browser cache before reloading, so old and new modules never mix. */
 export const SITE_FILES = ["./", "app.css",
   "js/app.js", "js/art.js", "js/config.js", "js/glass.js", "js/guard.js", "js/live.js", "js/model.js", "js/petdefs.js",
-  "js/pets.js", "js/plinko.js", "js/radial.js", "js/shop.js", "js/shopui.js", "js/store.js", "js/ui.js", "js/util.js", "pets/pets.json"];
+  "js/pets.js", "js/plinko.js", "js/radial.js", "js/reveal.js", "js/shop.js", "js/shopui.js", "js/store.js", "js/ui.js", "js/util.js", "pets/pets.json"];
 export const VERSION_CHECK_MS = 300000;
 
 /* ---- goals (fallbacks; live values come from _settings.json) ---- */

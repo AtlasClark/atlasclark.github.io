@@ -11,7 +11,18 @@ import { applyRoll, dayRng, grantHomunculus, isGrave, petBinIndex } from "./pets
 
 export const shopOpen = () => S.folderFormat >= C.FORMAT_REV;
 export const spentTotal = p => (p.spends || []).reduce((a, s) => a + (Number(s.cost) || 0), 0);
-export const earnedTotal = p => tokensEarned(p) + capBonus(p);
+export const chestWinnings = p => (p.spends || []).reduce((a, s) => a + (s.chest ? Number(s.chest.won) || 0 : 0), 0);
+export const earnedTotal = p => tokensEarned(p) + capBonus(p) + chestWinnings(p);
+
+/* The Community Chest holds every token put in by a centre landing, less every win.
+   It lives in the spend records, so it merges like everything else. Two wins at the
+   same moment on two PCs could both pay out; the chest then refills from below zero. */
+export function chestRaw() {
+  let t = 0;
+  for (const p of S.participants) for (const s of p.spends || []) if (s.chest) t += (Number(s.chest.add) || 0) - (Number(s.chest.won) || 0);
+  return t;
+}
+export const chestTotal = () => Math.max(0, chestRaw());
 export const balance = p => earnedTotal(p) - spentTotal(p);
 export const priceOf = kind => C.SHOP_PRICES[petBinIndex(kind)];
 
@@ -70,16 +81,19 @@ export function plinkoBlock(p) {
   return "";
 }
 
-/* Chance of each rarity on the board: the binomial share of its slots. */
-export function plinkoOdds() {
-  const n = C.PLINKO_ROWS, odds = C.PET_BINS.map(() => 0);
+/* Chance of each slot kind on the board: the binomial share of its slots.
+   plinkoOdds() is per rarity; chestOdds() is the centre cup. */
+function slotOdds() {
+  const n = C.PLINKO_ROWS, odds = new Map();
   let c = 1;                                                   /* C(n, k), built up */
   for (let k = 0; k <= n; k++) {
-    odds[C.PLINKO_SLOTS[k]] += c / Math.pow(2, n);
+    odds.set(C.PLINKO_SLOTS[k], (odds.get(C.PLINKO_SLOTS[k]) || 0) + c / Math.pow(2, n));
     c = c * (n - k) / (k + 1);
   }
   return odds;
 }
+export const plinkoOdds = () => C.PET_BINS.map((_, i) => slotOdds().get(i) || 0);
+export const chestOdds = () => slotOdds().get(C.CHEST) || 0;
 
 /* What a rarity can give on Plinko: species they don't have alive (unowned or
    buried) first; once every one is alive, any of them (a duplicate). */
@@ -93,6 +107,7 @@ export function plinkoPool(bin, p) {
 export function plinkoDrop(p, rnd = Math.random) {
   const path = Array.from({ length: C.PLINKO_ROWS }, () => rnd() < 0.5 ? 0 : 1);
   const slot = path.reduce((a, b) => a + b, 0), bin = C.PLINKO_SLOTS[slot];
+  if (bin === C.CHEST) return { path, slot, bin, chest: true, kind: C.PET_NO_PET };
   const pool = plinkoPool(bin, p);
   return { path, slot, bin, kind: pool.length ? pool[Math.floor(rnd() * pool.length)] : C.PET_NO_PET };
 }
@@ -101,15 +116,28 @@ export function plinkoDrop(p, rnd = Math.random) {
    nothing left to give (every species of that rarity buried) costs nothing. */
 export async function plinkoPlay(p) {
   if (plinkoBlock(p)) return null;
-  const d = plinkoDrop(p), empty = d.kind < 0, fresh = !empty && !has(p.pets, d.kind);
+  const d = plinkoDrop(p);
+  if (d.chest) return chestPlay(p, d);
+  const empty = d.kind < 0, fresh = !empty && !has(p.pets, d.kind), was = petKindFor(p);
   const revived = fresh && isGrave(p, d.kind);
   const hue = empty ? 0 : has(p.pets, d.kind) ? Number(p.pets[String(d.kind)]) : revived ? Number(p.graves[String(d.kind)]) : newHue(d.kind);
   if (fresh) { give(p, d.kind, hue); wear(p, d.kind); }
   const homunculus = fresh && grantHomunculus(p);
-  const s = spend(p, "plinko", empty ? 0 : C.PLINKO_COST, { pet: d.kind, bin: d.bin, slot: d.slot, fresh, revived });
+  const s = spend(p, "plinko", empty ? 0 : C.PLINKO_COST, { pet: d.kind, bin: d.bin, slot: d.slot, fresh, revived, was });
   if (!(await saveParticipant(p, null, null, revived ? [String(d.kind)] : null))) return null;
   return { id: s.id, at: Date.now(), name: p.name, color: p.color, kind: d.kind, bin: d.bin, hue, fresh, empty, revived,
-           homunculus, slot: d.slot, path: d.path };
+           homunculus, was, slot: d.slot, path: d.path };
+}
+
+/* The centre cup: the token goes into the chest; if the chest held anything, a
+   CHEST_CHANCE roll wins all of it, this token included. */
+async function chestPlay(p, d, rnd = Math.random) {
+  const before = chestTotal(), add = C.PLINKO_COST;
+  const won = before > 0 && rnd() < C.CHEST_CHANCE ? before + add : 0;
+  const s = spend(p, "plinko", C.PLINKO_COST, { pet: C.PET_NO_PET, bin: C.CHEST, slot: d.slot, chest: { add, won } });
+  if (!(await saveParticipant(p, null))) return null;
+  return { id: s.id, at: Date.now(), name: p.name, color: p.color, kind: C.PET_NO_PET, bin: C.CHEST, chest: { add, won },
+           pot: before + add - won, slot: d.slot, path: d.path };
 }
 
 /* Into the collection; a buried one leaves its grave and keeps its colour. */
@@ -138,18 +166,21 @@ export async function buy(p, k) {
   return { kind: k, hue, homunculus, revived };
 }
 
-/* Plinko wins this page must not show yet: pet kind -> revived. The result is saved
-   before the ball falls, so a win stays hidden until its ball lands here (landed ids),
-   or for holdMs after the drop when this page never shows the ball. */
-export function pendingWins(p, inFlight, landed, now, holdMs) {
+/* Plinko drops of p this page must not show yet: [{ id, pet, fresh, revived, was, chest }].
+   The result is saved before the ball falls, so a drop stays hidden until its ball
+   lands here (landed ids), or for holdMs after it when this page never shows the ball. */
+export function pendingDrops(p, inFlight, landed, now, holdMs) {
   const out = new Map();
-  for (const ev of inFlight) if (ev.name === p.name && ev.fresh) out.set(ev.kind, !!ev.revived);
   for (const s of p.spends || []) {
-    if (s.kind !== "plinko" || !s.fresh || landed.has(s.id)) continue;
+    if (s.kind !== "plinko" || landed.has(s.id) || !(s.fresh || s.chest)) continue;
     const age = now - new Date(s.at).getTime();
-    if (age > -5000 && age < holdMs) out.set(s.pet, !!s.revived);     /* a few seconds of clock skew between PCs */
+    if (age > -5000 && age < holdMs) out.set(s.id, s);              /* a few seconds of clock skew between PCs */
   }
-  return out;
+  for (const ev of inFlight) {
+    if (ev.name !== p.name || !(ev.fresh || ev.chest) || landed.has(ev.id)) continue;
+    out.set(ev.id, { id: ev.id, pet: ev.kind, fresh: ev.fresh, revived: ev.revived, was: ev.was, chest: ev.chest });
+  }
+  return [...out.values()];
 }
 
 /* Today's and a given day's shop events, for the activity feed and the recap. */

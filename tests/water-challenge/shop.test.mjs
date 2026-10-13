@@ -40,12 +40,16 @@ test("prices are one token per roll: 1 / chance of rolling that exact species", 
 });
 
 test("plinko: the path decides the slot, at true Galton-board odds", () => {
-  const odds = shop.plinkoOdds();
-  assert.ok(Math.abs(odds.reduce((a, b) => a + b, 0) - 1) < 1e-12, "odds add up to 1");
+  const odds = shop.plinkoOdds(), chest = shop.chestOdds();
+  assert.ok(Math.abs(odds.reduce((a, b) => a + b, 0) + chest - 1) < 1e-12, "odds add up to 1");
   assert.ok(Math.abs(odds[4] - 2 / 1024) < 1e-12, "??? is the two edge slots: 2 in 1024");
+  assert.ok(Math.abs(chest - 252 / 1024) < 1e-12, "the centre cup is the chest: 252 in 1024");
+  assert.ok(Math.abs(odds[0] - 420 / 1024) < 1e-12, "Common keeps the two cups beside it");
   const p = { name: "x", pets: {}, graves: {} }, n = 400000, hits = [0, 0, 0, 0, 0];
+  let chestHits = 0;
   for (let i = 0; i < n; i++) {
     const d = shop.plinkoDrop(p);
+    if (d.chest) { chestHits++; assert.equal(d.kind, C.PET_NO_PET); assert.equal(d.slot, 5); continue; }
     hits[d.bin]++;
     assert.equal(d.path.length, C.PLINKO_ROWS);
     assert.equal(d.path.reduce((a, b) => a + b, 0), d.slot, "the path ends in its slot");
@@ -55,6 +59,7 @@ test("plinko: the path decides the slot, at true Galton-board odds", () => {
     const sd = Math.sqrt(v * (1 - v) / n);
     assert.ok(Math.abs(hits[i] / n - v) < 5 * sd + 1e-9, C.PET_BINS[i].name + " " + (hits[i] / n * 100).toFixed(3) + "% vs " + (v * 100).toFixed(3) + "%");
   });
+  assert.ok(Math.abs(chestHits / n - chest) < 5 * Math.sqrt(chest * (1 - chest) / n), "chest " + (chestHits / n * 100).toFixed(2) + "%");
 });
 
 test("plinko: every bounce is a fair coin, independent of the last", () => {
@@ -74,6 +79,7 @@ test("plinko: a pet they don't have alive first (buried ones included); duplicat
   const seenUnc = new Set();
   for (let i = 0; i < 20000; i++) {
     const d = shop.plinkoDrop(p);
+    if (d.chest) continue;                                   /* the centre cup gives no pet */
     assert.ok(d.kind >= 0, "every rarity always has something to give");
     if (d.bin === 0) assert.equal(d.kind, 10, "the one Common not alive (it is buried)");
     if (d.bin === 1) seenUnc.add(d.kind);
@@ -171,8 +177,9 @@ test("plinko play: winning a buried species brings it back", { skip: skipReason 
 
 test("plinko play: one token, the pet is awarded and logged before the ball lands", { skip: skipReason }, async () => {
   const { rich, mem } = await fresh();
-  const before = shop.balance(rich), r = await shop.plinkoPlay(rich);
-  assert.ok(r);
+  let before, r;
+  do { before = shop.balance(rich); r = await shop.plinkoPlay(rich); } while (r && r.chest && shop.balance(rich) >= 1);
+  assert.ok(r && !r.chest, "a pet slot within the balance");
   assert.equal(shop.balance(rich), before - C.PLINKO_COST);
   assert.ok(own(rich, r.kind));
   assert.equal(r.path.reduce((a, b) => a + b, 0), r.slot);
@@ -295,20 +302,49 @@ test("cap bonus: 5 tokens a day past the cap, from the start date on, taken back
   assert.equal(M.capBonus(p), 0, "undone");
 });
 
-test("plinko: a win stays hidden until its ball lands on this page", () => {
+test("plinko: a drop stays hidden until its ball lands on this page", () => {
   const t0 = new Date("2026-10-13T12:00:00").getTime(), stamp = "2026-10-13T12:00:00";
   const p = { name: "Kirby", spends: [
-    { id: "s:a", kind: "plinko", at: stamp, pet: 7, fresh: true },
+    { id: "s:a", kind: "plinko", at: stamp, pet: 7, fresh: true, was: 2 },
     { id: "s:b", kind: "plinko", at: stamp, pet: 3, fresh: true, revived: true },
     { id: "s:c", kind: "plinko", at: stamp, pet: 9, fresh: false },          /* a duplicate: nothing to hide */
+    { id: "s:e", kind: "plinko", at: stamp, pet: -1, chest: { add: 1, won: 30 } },
     { id: "s:d", kind: "buy", at: stamp, pet: 12 } ] };
-  const hold = 12000;
-  let h = shop.pendingWins(p, [], new Set(), t0 + 2000, hold);
-  assert.deepEqual([...h], [[7, false], [3, true]], "fresh wins hidden, the revived one shown buried");
-  h = shop.pendingWins(p, [], new Set(["s:a"]), t0 + 2000, hold);
-  assert.deepEqual([...h.keys()], [3], "landed here: shown");
-  assert.equal(shop.pendingWins(p, [], new Set(), t0 + hold + 1, hold).size, 0, "the wait runs out");
-  const ball = { name: "Kirby", kind: 15, fresh: true };
-  assert.ok(shop.pendingWins(p, [ball], new Set(["s:a", "s:b"]), t0 + hold * 5, hold).has(15), "a ball still falling is hidden");
-  assert.equal(shop.pendingWins({ name: "Rob" }, [ball], new Set(), t0, hold).size, 0, "someone else's ball");
+  const hold = 12000, ids = l => l.map(d => d.id);
+  let h = shop.pendingDrops(p, [], new Set(), t0 + 2000, hold);
+  assert.deepEqual(ids(h), ["s:a", "s:b", "s:e"], "fresh wins and chest drops are hidden");
+  assert.equal(h[0].was, 2, "with the pet worn before");
+  assert.deepEqual(ids(shop.pendingDrops(p, [], new Set(["s:a", "s:e"]), t0 + 2000, hold)), ["s:b"], "landed here: shown");
+  assert.equal(shop.pendingDrops(p, [], new Set(), t0 + hold + 1, hold).length, 0, "the wait runs out");
+  const ball = { id: "s:z", name: "Kirby", kind: 15, fresh: true, was: 7 };
+  assert.ok(ids(shop.pendingDrops(p, [ball], new Set(["s:a", "s:b"]), t0 + hold * 5, hold)).includes("s:z"), "a ball still falling is hidden");
+  assert.equal(shop.pendingDrops({ name: "Rob" }, [ball], new Set(), t0, hold).length, 0, "someone else's ball");
+});
+
+/* Plinko with a forced path into the centre cup, then the chest roll. */
+async function chestDrop(p, roll) {
+  const seq = [...Array(5).fill(0.9), ...Array(5).fill(0.1), roll], real = Math.random;
+  Math.random = () => seq.length ? seq.shift() : real();
+  try { return await shop.plinkoPlay(p); } finally { Math.random = real; }
+}
+
+test("community chest: the token goes in; an empty chest only adds; a win takes it all", { skip: skipReason }, async () => {
+  const { S, rich } = await fresh();
+  const other = S.participants.find(p => p !== rich && shop.balance(p) >= 2);
+  assert.equal(shop.chestTotal(), 0, "starts empty");
+  const b0 = shop.balance(rich);
+  let r = await chestDrop(rich, 0.0);                         /* a winning roll, but the chest was empty */
+  assert.ok(r.chest && r.chest.add === 1 && r.chest.won === 0, "empty: only adds");
+  assert.equal(shop.chestTotal(), 1);
+  assert.equal(shop.balance(rich), b0 - 1, "the token went in");
+  r = await chestDrop(other, 0.9);                           /* no win */
+  assert.equal(r.chest.won, 0);
+  assert.equal(shop.chestTotal(), 2, "every centre landing adds, from anyone");
+  const b1 = shop.balance(rich);
+  r = await chestDrop(rich, 0.01);                           /* under 5%: a win */
+  assert.equal(r.chest.won, 3, "the chest, this token included");
+  assert.equal(shop.chestTotal(), 0, "emptied");
+  assert.equal(shop.balance(rich), b1 - 1 + 3);
+  assert.equal(shop.chestWinnings(rich), 3);
+  assert.ok(Math.abs(C.CHEST_CHANCE - 0.05) < 1e-12);
 });

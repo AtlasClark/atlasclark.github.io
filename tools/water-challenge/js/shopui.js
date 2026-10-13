@@ -4,23 +4,25 @@
 import * as C from "./config.js";
 import { S, findParticipant, activeParticipants, tokensEarned, capBonus } from "./model.js";
 import * as store from "./store.js";
-import { shopOpen, balance, spentTotal, priceOf, rerollBlock, reroll, plinkoBlock, plinkoPlay, plinkoOdds, buyBlock, buy, pendingWins } from "./shop.js";
+import { shopOpen, balance, spentTotal, priceOf, rerollBlock, reroll, plinkoBlock, plinkoPlay, plinkoOdds, chestOdds, buyBlock, buy, chestWinnings } from "./shop.js";
+import { landed as landedIds, setFlying, HOLD_MS, hiddenPets, shownBalance, shownChest, anyPending } from "./reveal.js";
 import { onLive, emit } from "./live.js";
 import { petLabel, petGridOrder, rarityLabel, petBinIndex, isGrave, announce } from "./pets.js";
 import { PlinkoBoard } from "./plinko.js";
 import { $, esc, has, todayKey, prettyTime, localStamp, bus } from "./util.js";
-import { setMsg, ensureIcons, ui } from "./ui.js";
+import { setMsg, ensureIcons, ui, render } from "./ui.js";
 
 let hooks = null;            /* { settle, guard, askConfirm, pollSoon } from app.js */
 let board = null, holdTimer = 0;
-const feed = [], landedIds = new Set();
-const HOLD_MS = C.LIVE_SHOW_MS + 3000;      /* longest a win stays hidden without its ball landing here */
+const feed = [];
+setFlying(() => board ? board.inFlight() : []);
 
 export function initShop(h) {
   hooks = h;
   const pct = v => v >= 0.01 ? (v * 100).toFixed(1) + "%" : (v * 100).toFixed(2) + "%";
   $("plinkoOdds").innerHTML = plinkoOdds().map((v, i) =>
-    '<span class="rar r' + i + '">' + esc(C.PET_BINS[i].name) + '</span> ' + pct(v)).join(" &middot; ");
+    '<span class="rar r' + i + '">' + esc(C.PET_BINS[i].name) + '</span> ' + pct(v)).join(" &middot; ") +
+    ' &middot; <span class="rar chest">&#9733; Chest</span> ' + pct(chestOdds());
   try { ui.shopFor = localStorage.getItem("awc-shop-for") || ""; } catch { }
   $("shopWho").addEventListener("click", e => {
     const b = e.target.closest("[data-who]");
@@ -67,11 +69,14 @@ export function renderShop() {
 
   $("shopWho").innerHTML = S.participants.map(x =>
     '<button type="button" class="who-chip' + (x === p ? " on" : "") + '" data-who="' + esc(x.name) + '" style="--pc:' + x.color + '">' +
-    '<i class="dot" style="background:' + x.color + '"></i>' + esc(x.name) + '<b>' + balance(x) + '</b></button>').join("");
-  const bonus = capBonus(p);
-  $("shopBalance").innerHTML = '<span class="coin"></span><b>' + balance(p) + '</b> token' + (balance(p) === 1 ? '' : 's') +
+    '<i class="dot" style="background:' + x.color + '"></i>' + esc(x.name) + '<b>' + shownBalance(x) + '</b></button>').join("");
+  const bonus = capBonus(p), bal = shownBalance(p), fromChest = chestWinnings(p) - (balance(p) - bal);
+  $("shopBalance").innerHTML = '<span class="coin"></span><b>' + bal + '</b> token' + (bal === 1 ? '' : 's') +
     ' <span class="dim">&middot; ' + tokensEarned(p) + ' for goal days' + (bonus ? ' + ' + bonus + ' cap bonus' : '') +
-    ' &middot; ' + spentTotal(p) + ' spent</span>';
+    (fromChest ? ' + ' + fromChest + ' from the chest' : '') + ' &middot; ' + spentTotal(p) + ' spent</span>';
+  const pot = shownChest();
+  $("chestPot").innerHTML = '<span class="chest-star">&#9733;</span> Community Chest: <b>' + pot + '</b> token' + (pot === 1 ? '' : 's') +
+    ' <span class="dim">&middot; ' + (pot ? Math.round(C.CHEST_CHANCE * 100) + '% chance to win it all from the centre cup' : 'empty: the next centre landing starts it') + '</span>';
 
   const pb = plinkoBlock(p);
   $("plinkoDrop").disabled = !!pb;
@@ -90,9 +95,9 @@ export function renderShop() {
     (rb ? '<p class="hint">' + esc(rb) + '</p>' : '<p class="hint">Normal odds. Replaces today\'s pet.</p>');
 
   /* A win still falling on the board is shown as it was before the drop. */
-  const hidden = pendingWins(p, board ? board.inFlight() : [], landedIds, Date.now(), HOLD_MS);
+  const hidden = hiddenPets(p);
   clearTimeout(holdTimer);
-  if (hidden.size) holdTimer = setTimeout(() => { if (ui.tab === "shop") renderShop(); }, HOLD_MS);
+  if (anyPending()) holdTimer = setTimeout(render, HOLD_MS);
   const h = [];
   for (const kind of petGridOrder()) {
     const held = hidden.has(kind), owned = has(p.pets, kind) && !held, buried = isGrave(p, kind) || (held && hidden.get(kind));
@@ -113,32 +118,37 @@ export function renderShop() {
 function renderFeed() {
   $("plinkoFeed").innerHTML = feed.length
     ? feed.slice(0, 12).map(f => '<li><span class="t">' + esc(prettyTime(f.ts)) + '</span><i class="dot" style="background:' + f.color + '"></i><strong>' +
-        esc(f.name) + '</strong> &rarr; <span class="rar r' + f.bin + '">' + esc(C.PET_BINS[f.bin].name) + '</span> ' +
-        (f.kind < 0 ? '<span class="dim">nothing left there, token returned</span>'
-                    : esc(petLabel(f.kind)) + (f.revived ? ' <span class="pill good">back from the grave</span>'
-                                              : f.fresh ? ' <span class="pill good">new</span>' : ' <span class="dim">(had it)</span>')) + '</li>').join("")
+        esc(f.name) + '</strong> &rarr; ' +
+        (f.chest ? '<span class="rar chest">&#9733; Chest</span> ' +
+                   (f.chest.won ? '<span class="pill good">won ' + f.chest.won + ' tokens</span>' : '<span class="dim">+1 token</span>')
+         : '<span class="rar r' + f.bin + '">' + esc(C.PET_BINS[f.bin].name) + '</span> ' +
+           (f.kind < 0 ? '<span class="dim">nothing left there, token returned</span>'
+                       : esc(petLabel(f.kind)) + (f.revived ? ' <span class="pill good">back from the grave</span>'
+                                                 : f.fresh ? ' <span class="pill good">new</span>' : ' <span class="dim">(had it)</span>'))) + '</li>').join("")
     : '<li class="dim">No drops yet.</li>';
 }
 
 function addFeed(ev) {
   if (feed.some(f => f.id === ev.id)) return;
   feed.unshift({ id: ev.id, ts: localStamp(new Date(ev.at)), name: ev.name, color: ev.color, bin: ev.bin, kind: ev.kind,
-                 fresh: ev.fresh, revived: ev.revived });
+                 fresh: ev.fresh, revived: ev.revived, chest: ev.chest });
   renderFeed();
 }
 
 function landed(ev) {
   landedIds.add(ev.id);
   addFeed(ev);
-  if (!ev.mine && ui.tab === "shop") renderShop();
-  if (ev.mine && ev.kind < 0) {
+  render();                                        /* whatever this drop changed shows now */
+  if (ev.chest && ev.chest.won) {
+    setMsg(ev.name + " won the Community Chest: " + ev.chest.won + " tokens!", true);
+  } else if (ev.chest) {
+    if (ev.mine) setMsg("Into the Community Chest. It holds " + shownChest() + ".", true);
+  } else if (ev.mine && ev.kind < 0) {
     setMsg("Nothing left in " + C.PET_BINS[ev.bin].name + ". Token returned.", false);
-    renderShop();
   } else if (ev.mine) {
     setMsg(ev.name + " won " + (ev.fresh ? "the " : "another ") + petLabel(ev.kind) + " (" + C.PET_BINS[ev.bin].name + ") on Plinko" +
            (ev.revived ? ", back from the grave!" : ev.fresh ? "!" : ", which they already had."), true);
     if (ev.homunculus) setMsg(ev.name + " has all " + C.PET_COUNT + " alive. The pen made something new.", true);
-    renderShop();
   }
 }
 
@@ -153,7 +163,9 @@ async function dropToken() {
     res = await plinkoPlay(p);
     if (!res) return;
     /* the ball is in the air before anything redraws, so the win stays hidden until it lands */
-    const ev = emit("drop", Object.assign({}, res, { label: res.kind < 0 ? "nothing left" : (res.fresh ? "+" : "") + petLabel(res.kind) }));
+    const label = res.chest ? (res.chest.won ? "\u2605 +" + res.chest.won + " tokens!" : "\u2605 +1 to the chest")
+                : res.kind < 0 ? "nothing left" : (res.fresh ? "+" : "") + petLabel(res.kind);
+    const ev = emit("drop", Object.assign({}, res, { label }));
     board.drop(Object.assign({ mine: true }, ev));
     await hooks.settle();
   });

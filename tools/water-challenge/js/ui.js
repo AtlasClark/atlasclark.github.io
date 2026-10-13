@@ -16,7 +16,8 @@ import { crownSvg, jesterSvg, hatSvg, drawPortrait, drawCritter, drawHeadstone, 
 import * as G from "./glass.js";
 import { diag, dir } from "./store.js";
 import { defs as petDefs, hats as petHats } from "./petdefs.js";
-import { shopOpen, balance, spentTotal, spendsOn, earnedTotal } from "./shop.js";
+import { shownKind, hiddenPets, shownBalance, hiddenIds } from "./reveal.js";
+import { shopOpen, balance, spentTotal, spendsOn, earnedTotal, chestWinnings } from "./shop.js";
 import { $, esc, fmt, fmtOz, fmtGal, todayKey, dateKey, prettyTime, clockStamp, has, parseKey, shiftKey } from "./util.js";
 
 /* Set by app.js: the Shop tab renders from shopui.js, which imports this module. */
@@ -174,9 +175,10 @@ export function forceRebuild() { renderedSig = ""; }
 
 function petVisual(p, st, danger, key) {
   let ds = st.duckState;
-  if (st.shownKind !== petKindFor(p)) {
-    if (st.shownKind !== undefined && petKindFor(p) >= 0) st.wantDrop = true;   /* not on first load */
-    st.shownKind = petKindFor(p);
+  const worn = shownKind(p);                     /* a Plinko win shows once its ball lands */
+  if (st.shownKind !== worn) {
+    if (st.shownKind !== undefined && worn >= 0) st.wantDrop = true;   /* not on first load */
+    st.shownKind = worn;
     if (ds === 4) ds = 0;
   }
   if ((ds === 2 || ds === 3) && p.graveDay === key) return;      /* the body stays all day */
@@ -187,10 +189,13 @@ function petVisual(p, st, danger, key) {
     st.critterHue = has(p.graves, p.deadKind) ? Number(p.graves[String(p.deadKind)]) : 0;
     ds = prev === 1 ? 2 : 3;                                     /* seen live: watch it go under */
     if (ds === 2) st.duckT = 0;
-  } else if (ownsEquipped(p)) ds = 1;
-  else if (graveEquipped(p)) ds = 4;
+  } else if (worn >= 0 && has(p.pets, worn)) ds = 1;
+  else if (worn >= 0 && isGrave(p, worn)) ds = 4;
   else ds = 0;
-  if (ds === 1 || ds === 4) { st.critterKind = petKindFor(p); st.critterHue = petHueFor(p); }
+  if (ds === 1 || ds === 4) {
+    st.critterKind = worn;
+    st.critterHue = has(p.pets, worn) ? Number(p.pets[String(worn)]) : Number(p.graves[String(worn)]);
+  }
   st.duckState = ds;
   if (st.wantDrop) {                                 /* a newly worn pet falls into the glass */
     st.wantDrop = false;
@@ -276,7 +281,8 @@ function renderActivity() {
       pets.push({ kind: "roll", p, pet: Number(p.rollKind), fresh: !!p.rollWasNew, ts: t.roll });
     }
     if (p.graveDay === key && Number(p.deadKind) >= 0) pets.push({ kind: "grave", p, pet: Number(p.deadKind), ts: t.grave });
-    for (const s of spendsOn(p, key)) pets.push({ kind: "spend", p, s, ts: s.at });
+    const hid = hiddenIds(p);
+    for (const s of spendsOn(p, key)) if (!hid.has(s.id)) pets.push({ kind: "spend", p, s, ts: s.at });
   }
   pets.sort((a, b) => atOf(b.ts) - atOf(a.ts));
   pours.sort((a, b) => b.at - a.at);
@@ -392,14 +398,14 @@ function renderPets() {
   h.push('<span class="pl-note">Reach your goal to roll. Click a pet to wear it; click again to take it off.</span></div>');
   h.push('<div class="pet-cards">');
   for (const p of S.participants) {
-    const mine = petKindFor(p), n = ja(p.name);
+    const mine = shownKind(p), n = ja(p.name), held = hiddenPets(p), backSoon = [...held.values()].filter(Boolean).length;
     h.push('<div class="pet-card" data-name="' + n + '">');
     h.push('<div class="pet-head"><i class="dot" style="background:' + p.color + '"></i>' + esc(p.name) +
-           '<span class="pet-count">' + petsOwned(p) + ' / ' + C.PET_COUNT +
-           (gravesOf(p) ? '<b class="graven"> &middot; ' + gravesOf(p) + ' buried</b>' : '') + '</span></div>');
+           '<span class="pet-count">' + (petsOwned(p) - held.size) + ' / ' + C.PET_COUNT +
+           (gravesOf(p) + backSoon ? '<b class="graven"> &middot; ' + (gravesOf(p) + backSoon) + ' buried</b>' : '') + '</span></div>');
     h.push('<div class="pet-grid">');
     for (const k of order) {
-      const rar = petRarityOf(k), buried = isGrave(p, k), owned = !buried && has(p.pets, k);
+      const rar = petRarityOf(k), buried = isGrave(p, k) || held.get(k) === true, owned = !buried && has(p.pets, k) && !held.has(k);
       const cls = "pc r" + petBinIndex(k) + (buried ? " buried" : owned ? "" : " locked") +
                   (mine === k && (owned || buried) ? " equipped" : "");
       const title = buried ? esc(C.PET_NAMES[k]) + " &middot; " + esc(graveLine(k))
@@ -530,6 +536,8 @@ function spendLine(p, s, when) {
   const k = Number(s.pet), name = '<strong>' + esc(p.name) + '</strong> ';
   if (s.kind === "buy") return '<span class="tag">shop</span>' + when + name + 'bought the ' + esc(petLabel(k)) +
                                ' <span class="rar">' + s.cost + ' tokens</span>';
+  if (s.kind === "plinko" && s.chest) return '<span class="tag">plinko</span>' + when + name +
+    (s.chest.won ? 'won the Community Chest <span class="rar chest">' + s.chest.won + ' tokens</span>' : 'put a token in the Community Chest');
   if (s.kind === "plinko") return '<span class="tag">plinko</span>' + when + name + (k < 0 ? 'landed on an empty rarity' :
                                   'won ' + (s.fresh ? "the " : "another ") + esc(petLabel(k)) + ' <span class="rar">' + esc(rarityLabel(k)) + '</span>');
   if (s.kind === "reroll") return '<span class="tag">reroll</span>' + when + name + 'rerolled the ' + esc(petLabel(Number(s.from))) +
@@ -742,13 +750,14 @@ const rRow = (label, value, cls) => '<tr><td class="k">' + esc(label) + '</td><t
 export function openBank(name) {
   const p = findParticipant(name);
   if (!p) return;
-  const spent = spentTotal(p), bal = balance(p);
+  const spent = spentTotal(p), bal = shownBalance(p), chest = chestWinnings(p) - (balance(p) - bal);
   $("bankShop").hidden = !shopOpen();
   $("bankShop").dataset.name = p.name;
   $("bankName").innerHTML = esc(p.name) + "&rsquo;s gold";
   $("bankCount").innerHTML = bal + ' <small>token' + (bal === 1 ? '' : 's') + '</small>';
-  const bonus = earnedTotal(p) - tokensEarned(p);
+  const bonus = earnedTotal(p) - tokensEarned(p) - chestWinnings(p);
   $("bankNote").innerHTML = "one for every goal day" + (bonus ? " &middot; " + bonus + " cap bonus" : "") +
+                            (chest ? " &middot; " + chest + " from the chest" : "") +
                             (spent ? " &middot; " + spent + " spent" : "") +
                             (bal > 160 ? "<br>the pile has stopped fitting in the dish" : "");
   $("bank").hidden = false;

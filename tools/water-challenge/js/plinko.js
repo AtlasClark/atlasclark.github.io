@@ -6,6 +6,7 @@
 import * as C from "./config.js";
 
 const SLOT_LABEL = ["Com", "Unc", "Rare", "Epic", "???"];
+const label = bin => bin === C.CHEST ? "\u2605" : SLOT_LABEL[bin];     /* the Community Chest: a star */
 const FALL_IN = 0.3, INTO_SLOT = 0.38;                 /* seconds before the first peg / after the last */
 
 export class PlinkoBoard {
@@ -91,6 +92,7 @@ export class PlinkoBoard {
   colors() {
     const cs = getComputedStyle(this.cv);
     return { r: [0, 1, 2, 3, 4].map(i => cs.getPropertyValue("--r" + i).trim() || "#cfe0ec"),
+             chest: cs.getPropertyValue("--gold-ink").trim() || "#e0a82e",
              peg: cs.getPropertyValue("--faint").trim() || "#7793a8",
              ink: cs.getPropertyValue("--ink-2").trim() || "#264f6d",
              panel: cs.getPropertyValue("--solid-2").trim() || "#f1f6f9" };
@@ -104,7 +106,7 @@ export class PlinkoBoard {
     for (let j = 0; j <= rows; j++) {
       const bin = C.PLINKO_SLOTS[j], x = this.slotX(j) - this.s / 2 + 1.5, w = this.s - 3, y = this.slotTop;
       const glow = this.wins.find(z => z.slot === j);
-      ctx.fillStyle = col.r[bin];
+      ctx.fillStyle = bin === C.CHEST ? col.chest : col.r[bin];
       ctx.globalAlpha = glow ? 1 : 0.78;
       roundRect(ctx, x, y, w, this.slotH, 7);
       ctx.fill();
@@ -112,7 +114,7 @@ export class PlinkoBoard {
       ctx.fillStyle = "#17324d";
       ctx.font = "800 " + Math.max(8, Math.min(11, this.s * 0.3)) + "px 'Segoe UI', sans-serif";
       ctx.textAlign = "center";
-      ctx.fillText(SLOT_LABEL[bin], x + w / 2, y + this.slotH / 2 + 4);
+      ctx.fillText(label(bin), x + w / 2, y + this.slotH / 2 + 4);
     }
 
     /* pegs */
