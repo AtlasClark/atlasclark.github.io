@@ -39,29 +39,44 @@ test("prices are one token per roll: 1 / chance of rolling that exact species", 
   });
 });
 
-test("plinko: rarities land at the daily-roll odds, on a slot of that rarity", () => {
-  const p = { name: "x", pets: {}, graves: {} }, n = 200000, hits = [0, 0, 0, 0, 0];
+test("plinko: the path decides the slot, at true Galton-board odds", () => {
+  const odds = shop.plinkoOdds();
+  assert.ok(Math.abs(odds.reduce((a, b) => a + b, 0) - 1) < 1e-12, "odds add up to 1");
+  assert.ok(Math.abs(odds[4] - 2 / 1024) < 1e-12, "??? is the two edge slots: 2 in 1024");
+  const p = { name: "x", pets: {}, graves: {} }, n = 400000, hits = [0, 0, 0, 0, 0];
   for (let i = 0; i < n; i++) {
-    const d = shop.plinkoDraw(p);
+    const d = shop.plinkoDrop(p);
     hits[d.bin]++;
-    const r = shop.plinkoPath(d.bin);
-    assert.equal(r.path.length, C.PLINKO_ROWS);
-    assert.equal(r.path.reduce((a, b) => a + b, 0), r.slot, "the path ends in its slot");
-    assert.equal(C.PLINKO_SLOTS[r.slot], d.bin, "the slot belongs to the rarity");
+    assert.equal(d.path.length, C.PLINKO_ROWS);
+    assert.equal(d.path.reduce((a, b) => a + b, 0), d.slot, "the path ends in its slot");
+    assert.equal(C.PLINKO_SLOTS[d.slot], d.bin, "the slot decides the rarity");
   }
-  const total = C.PET_BINS.reduce((a, b) => a + b.weight, 0);
-  C.PET_BINS.forEach((b, i) => {
-    assert.ok(Math.abs(hits[i] / n - b.weight / total) < 0.006, b.name + " " + (hits[i] / n * 100).toFixed(2) + "%");
+  odds.forEach((v, i) => {
+    const sd = Math.sqrt(v * (1 - v) / n);
+    assert.ok(Math.abs(hits[i] / n - v) < 5 * sd + 1e-9, C.PET_BINS[i].name + " " + (hits[i] / n * 100).toFixed(3) + "% vs " + (v * 100).toFixed(3) + "%");
   });
 });
 
-test("plinko: never a buried species, unowned first, buried-out rarities skipped", () => {
+test("plinko: every bounce is a fair coin, independent of the last", () => {
+  const p = { name: "x", pets: {}, graves: {} }, n = 100000;
+  let rights = 0, same = 0, pairs = 0;
+  for (let i = 0; i < n; i++) {
+    const path = shop.plinkoDrop(p).path;
+    for (let k = 0; k < path.length; k++) { rights += path[k]; if (k) { pairs++; if (path[k] === path[k - 1]) same++; } }
+  }
+  assert.ok(Math.abs(rights / (n * C.PLINKO_ROWS) - 0.5) < 0.003);
+  assert.ok(Math.abs(same / pairs - 0.5) < 0.003);
+});
+
+test("plinko: never a buried species, unowned first, an all-buried rarity gives nothing", () => {
   const p = { name: "x", pets: { 0: 1, 1: 1, 2: 1, 6: 1, 7: 1, 8: 1, 9: 1 }, graves: { 3: 1, 4: 1, 11: 1, 12: 1, 13: 1, 14: 1, 15: 1 } };
+  let empties = 0;
   for (let i = 0; i < 20000; i++) {
-    const d = shop.plinkoDraw(p);
-    assert.notEqual(d.bin, 1, "every Uncommon is buried: that rarity is skipped");
+    const d = shop.plinkoDrop(p);
+    if (d.bin === 1) { assert.equal(d.kind, -1, "every Uncommon is buried"); empties++; }
     if (d.bin === 0) assert.equal(d.kind, 10, "the one Common they lack");
   }
+  assert.ok(empties > 0);
 });
 
 test("the shop stays shut on a format 21 folder", { skip: skipReason }, async () => {
@@ -118,6 +133,19 @@ test("reroll: after today's roll, once, for a token; it sticks through undo and 
   await pourToGoal(rich, day);
   assert.equal(Number(rich.rollKind), second);
   assert.ok(M.totalOn(rich, day) > 0);
+});
+
+test("plinko play: an all-buried rarity refunds the token", { skip: skipReason }, async () => {
+  const { rich } = await fresh();
+  for (const k of C.PET_BINS[1].kinds) { delete rich.pets[String(k)]; rich.graves[String(k)] = 1; }   /* bury every Uncommon */
+  let r = null, guard = 0;
+  while ((!r || r.bin !== 1) && guard++ < 400) {
+    const before = shop.balance(rich);
+    r = await shop.plinkoPlay(rich);
+    if (r.bin !== 1) assert.equal(shop.balance(rich), before - C.PLINKO_COST);
+    else { assert.equal(r.kind, -1); assert.equal(shop.balance(rich), before, "refunded"); }
+    if (shop.balance(rich) < 1) break;
+  }
 });
 
 test("plinko play: one token, the pet is awarded and logged before the ball lands", { skip: skipReason }, async () => {

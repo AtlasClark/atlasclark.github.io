@@ -3,8 +3,8 @@
    contract (FORMAT_REV 21, UTF-16 LE + BOM) must stay identical while R55 runs on the
    share: R55 deletes any field it does not know on its next write. */
 
-export const REV         = "rev 1.5.0";
-export const APP_VERSION = "web 1.5.0";   /* stamped as writerVersion */
+export const REV         = "rev 1.5.1";
+export const APP_VERSION = "web 1.5.1";   /* stamped as writerVersion */
 /* A folder stays at LEGACY_FORMAT (byte-compatible with R55) until someone upgrades
    it from Settings. Format 22 adds tokensSpent and keeps unknown fields; R55 must
    not be used on a folder after that. */
@@ -24,8 +24,9 @@ export const SHOP_PRICES  = [13, 35, 50, 80, 100];   /* by PET_BINS index */
 export const REROLL_COST  = 1;
 export const PLINKO_COST  = 1;
 export const PLINKO_ROWS  = 10;
-/* Slot -> PET_BINS index, left to right. The rarity is drawn by the bin weights
-   first; the ball is then steered to one of that rarity's slots. */
+/* Slot -> PET_BINS index, left to right. Every peg is a fair 50/50 bounce, so the
+   ball's path decides the slot (slot k of n has C(rows, k) / 2^rows): with 10 rows,
+   Common 65.6%, Uncommon 23.4%, Rare 8.8%, Epic 1.95%, ??? 0.20%. */
 export const PLINKO_SLOTS = [4, 3, 2, 1, 0, 0, 0, 1, 2, 3, 4];
 export const PLINKO_ROW_SECS = 0.26;
 export const LIVE_SUBDIR  = "_live";       /* drops shared with every open shop */

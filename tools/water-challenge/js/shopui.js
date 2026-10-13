@@ -4,7 +4,7 @@
 import * as C from "./config.js";
 import { S, findParticipant, activeParticipants, tokensEarned } from "./model.js";
 import * as store from "./store.js";
-import { shopOpen, balance, spentTotal, priceOf, rerollBlock, reroll, plinkoBlock, plinkoPlay, buyBlock, buy } from "./shop.js";
+import { shopOpen, balance, spentTotal, priceOf, rerollBlock, reroll, plinkoBlock, plinkoPlay, plinkoOdds, buyBlock, buy } from "./shop.js";
 import { petLabel, petGridOrder, rarityLabel, petBinIndex, isGrave, announce } from "./pets.js";
 import { PlinkoBoard } from "./plinko.js";
 import { $, esc, has, todayKey, prettyTime, localStamp, bus } from "./util.js";
@@ -17,6 +17,9 @@ const seen = new Set(), feed = [];
 
 export function initShop(h) {
   hooks = h;
+  const pct = v => v >= 0.01 ? (v * 100).toFixed(1) + "%" : (v * 100).toFixed(2) + "%";
+  $("plinkoOdds").innerHTML = plinkoOdds().map((v, i) =>
+    '<span class="rar r' + i + '">' + esc(C.PET_BINS[i].name) + '</span> ' + pct(v)).join(" &middot; ");
   try { ui.shopFor = localStorage.getItem("awc-shop-for") || ""; } catch { }
   $("shopWho").addEventListener("click", e => {
     const b = e.target.closest("[data-who]");
@@ -93,8 +96,9 @@ export function renderShop() {
 function renderFeed() {
   $("plinkoFeed").innerHTML = feed.length
     ? feed.slice(0, 12).map(f => '<li><span class="t">' + esc(prettyTime(f.ts)) + '</span><i class="dot" style="background:' + f.color + '"></i><strong>' +
-        esc(f.name) + '</strong> &rarr; <span class="rar r' + f.bin + '">' + esc(C.PET_BINS[f.bin].name) + '</span> ' + esc(petLabel(f.kind)) +
-        (f.fresh ? ' <span class="pill good">new</span>' : ' <span class="dim">(had it)</span>') + '</li>').join("")
+        esc(f.name) + '</strong> &rarr; <span class="rar r' + f.bin + '">' + esc(C.PET_BINS[f.bin].name) + '</span> ' +
+        (f.kind < 0 ? '<span class="dim">nothing left there, token returned</span>'
+                    : esc(petLabel(f.kind)) + (f.fresh ? ' <span class="pill good">new</span>' : ' <span class="dim">(had it)</span>')) + '</li>').join("")
     : '<li class="dim">No drops yet. Drops from anyone with the shop open show here as they happen.</li>';
 }
 
@@ -106,7 +110,10 @@ function addFeed(ev) {
 
 function landed(ev) {
   addFeed(ev);
-  if (ev.mine) {
+  if (ev.mine && ev.kind < 0) {
+    setMsg("The ball landed on " + C.PET_BINS[ev.bin].name + ", where every species is buried. Token returned.", false);
+    renderShop();
+  } else if (ev.mine) {
     setMsg(ev.name + " won " + (ev.fresh ? "the " : "another ") + petLabel(ev.kind) + " (" + C.PET_BINS[ev.bin].name + ") on Plinko" +
            (ev.fresh ? "!" : ", which they already had."), true);
     if (ev.homunculus) setMsg(ev.name + " has found all " + C.PET_COUNT + ". The pen has produced something none of them are on their own.", true);
@@ -127,7 +134,7 @@ async function dropToken() {
   });
   if (!res) { setMsg("The drop did not go through: " + (plinkoBlock(p) || "the file could not be saved") + ".", false); renderShop(); return; }
   seen.add(res.id);
-  const ev = Object.assign({}, res, { label: (res.fresh ? "+" : "") + petLabel(res.kind) });
+  const ev = Object.assign({}, res, { label: res.kind < 0 ? "nothing left" : (res.fresh ? "+" : "") + petLabel(res.kind) });
   board.drop(Object.assign({ mine: true }, ev));
   store.writeLive(ev);
   renderShop();                    /* the balance drops at once; the result shows on landing */

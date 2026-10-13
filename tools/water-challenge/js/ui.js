@@ -523,8 +523,8 @@ function spendLine(p, s, when) {
   const k = Number(s.pet), name = '<strong>' + esc(p.name) + '</strong> ';
   if (s.kind === "buy") return '<span class="tag">shop</span>' + when + name + 'bought the ' + esc(petLabel(k)) +
                                ' <span class="rar">' + s.cost + ' tokens</span>';
-  if (s.kind === "plinko") return '<span class="tag">plinko</span>' + when + name + 'won ' + (s.fresh ? "the " : "another ") +
-                                  esc(petLabel(k)) + ' <span class="rar">' + esc(rarityLabel(k)) + '</span>';
+  if (s.kind === "plinko") return '<span class="tag">plinko</span>' + when + name + (k < 0 ? 'landed on an empty rarity' :
+                                  'won ' + (s.fresh ? "the " : "another ") + esc(petLabel(k)) + ' <span class="rar">' + esc(rarityLabel(k)) + '</span>');
   if (s.kind === "reroll") return '<span class="tag">reroll</span>' + when + name + 'rerolled the ' + esc(petLabel(Number(s.from))) +
                                   ' into ' + (k >= 0 ? (s.fresh ? "the " : "another ") + esc(petLabel(k)) : "nothing");
   return '<span class="tag">shop</span>' + when + name + 'spent ' + s.cost;

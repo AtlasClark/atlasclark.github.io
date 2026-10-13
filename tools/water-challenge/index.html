@@ -141,8 +141,9 @@
         <div class="shop-grid">
           <div class="panel shop-plinko">
             <div class="panel-heading"><p class="eyebrow">1 token a drop &middot; anyone with the shop open sees it fall</p><h2>Plinko</h2></div>
-            <p class="hint">The ball lands on a rarity with the same odds as a daily roll, and wins a pet from it:
-              never a buried one, and one you don't have yet while there are any left.</p>
+            <p class="hint">Every peg is a fair 50/50 bounce, so the slot the ball reaches decides the rarity.
+              It wins a pet of that rarity: never a buried one, and one you don't have yet while there are any left.</p>
+            <p id="plinkoOdds" class="plinko-odds"></p>
             <div id="plinkoWrap" class="plinko-wrap"><canvas id="plinkoCanvas"></canvas></div>
             <div class="plinko-go"><button type="button" id="plinkoDrop" class="btn primary">Drop a token</button>
               <span id="plinkoNote" class="hint"></span></div>

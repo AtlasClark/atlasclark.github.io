@@ -70,39 +70,39 @@ export function plinkoBlock(p) {
   return "";
 }
 
-/* The rarity by the bin weights (bins with nothing left to give are skipped, as in
-   a daily roll), then a species the way a roll picks one: never buried, preferring
-   one not owned yet. */
-export function plinkoDraw(p, rnd = Math.random) {
-  const avail = [];
-  let total = 0;
-  C.PET_BINS.forEach((b, i) => { const pool = binPool(b, p); if (pool.length) { avail.push({ i, w: b.weight, pool }); total += b.weight; } });
-  if (!avail.length) return null;
-  let r = rnd() * total, pick = avail[avail.length - 1];
-  for (const a of avail) { if (r < a.w) { pick = a; break; } r -= a.w; }
-  return { bin: pick.i, kind: pick.pool[Math.floor(rnd() * pick.pool.length)] };
+/* Chance of each rarity on the board: the binomial share of its slots. */
+export function plinkoOdds() {
+  const n = C.PLINKO_ROWS, odds = C.PET_BINS.map(() => 0);
+  let c = 1;                                                   /* C(n, k), built up */
+  for (let k = 0; k <= n; k++) {
+    odds[C.PLINKO_SLOTS[k]] += c / Math.pow(2, n);
+    c = c * (n - k) / (k + 1);
+  }
+  return odds;
 }
 
-/* A slot of that rarity, and a path of left (0) / right (1) bounces that ends in it. */
-export function plinkoPath(bin, rnd = Math.random) {
-  const slots = C.PLINKO_SLOTS.map((b, i) => b === bin ? i : -1).filter(i => i >= 0);
-  const slot = slots[Math.floor(rnd() * slots.length)];
-  const bits = Array.from({ length: C.PLINKO_ROWS }, (_, i) => i < slot ? 1 : 0);
-  for (let i = bits.length - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); [bits[i], bits[j]] = [bits[j], bits[i]]; }
-  return { slot, path: bits };
+/* A real drop: a fair 50/50 bounce at every peg, and the slot it ends in decides the
+   rarity. Then a species the way a roll picks one: never buried, preferring one not
+   owned yet. kind is -1 when every species of that rarity is buried. */
+export function plinkoDrop(p, rnd = Math.random) {
+  const path = Array.from({ length: C.PLINKO_ROWS }, () => rnd() < 0.5 ? 0 : 1);
+  const slot = path.reduce((a, b) => a + b, 0), bin = C.PLINKO_SLOTS[slot];
+  const pool = binPool(C.PET_BINS[bin], p);
+  return { path, slot, bin, kind: pool.length ? pool[Math.floor(rnd() * pool.length)] : C.PET_NO_PET };
 }
 
-/* Spends a token and awards the pet now; the board only shows it. */
+/* Spends a token and awards the pet now; the board only shows it. A landing with
+   nothing left to give (every species of that rarity buried) costs nothing. */
 export async function plinkoPlay(p) {
   if (plinkoBlock(p)) return null;
-  const d = plinkoDraw(p), route = plinkoPath(d.bin), fresh = !has(p.pets, d.kind);
-  let hue = has(p.pets, d.kind) ? Number(p.pets[String(d.kind)]) : newHue(d.kind);
+  const d = plinkoDrop(p), empty = d.kind < 0, fresh = !empty && !has(p.pets, d.kind);
+  const hue = empty ? 0 : has(p.pets, d.kind) ? Number(p.pets[String(d.kind)]) : newHue(d.kind);
   if (fresh) { p.pets[String(d.kind)] = hue; wear(p, d.kind); }
   const homunculus = fresh && grantHomunculus(p);
-  const s = spend(p, "plinko", C.PLINKO_COST, { pet: d.kind, bin: d.bin, slot: route.slot, fresh });
+  const s = spend(p, "plinko", empty ? 0 : C.PLINKO_COST, { pet: d.kind, bin: d.bin, slot: d.slot, fresh });
   if (!(await saveParticipant(p, null))) return null;
-  return { id: s.id, at: Date.now(), name: p.name, color: p.color, kind: d.kind, bin: d.bin, hue, fresh,
-           homunculus, slot: route.slot, path: route.path };
+  return { id: s.id, at: Date.now(), name: p.name, color: p.color, kind: d.kind, bin: d.bin, hue, fresh, empty,
+           homunculus, slot: d.slot, path: d.path };
 }
 
 /* ---- buying ---------------------------------------------------------------- */
