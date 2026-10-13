@@ -67,10 +67,16 @@ async function reconcile() {
   await reconcilePets();
 }
 
+let backedUp = "";               /* the day this page last made sure a backup exists */
+
 async function refresh() {
   await store.loadSettings();
   S.participants = await store.loadAll();
   dataChanged();
+  if (backedUp !== todayKey()) {   /* before anything is written today */
+    try { await store.backupIfDue(todayKey()); backedUp = todayKey(); }
+    catch (e) { store.diagNote("backup failed: " + (e.message || e)); }
+  }
   if (S.folderFormat > (Number(S.settings.formatRev) || C.LEGACY_FORMAT)) {
     store.diagNote("restoring formatRev " + S.folderFormat + " in " + C.SETTINGS_FILE);
     await store.saveSettings();
@@ -537,7 +543,43 @@ function wire() {
     cancelAnimationFrame(rz);
     rz = requestAnimationFrame(() => { if (ui.tab === "today" && relayout()) render(); });
   });
-  document.addEventListener("visibilitychange", () => { if (!document.hidden && ui.connected) { clearTimeout(pollTimer); poll(); } });
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) return;
+    checkVersion(false);
+    if (ui.connected) { clearTimeout(pollTimer); poll(); }
+  });
+  $("updateBtn").onclick = () => { $("updateBtn").disabled = true; freshReload(); };
+}
+
+/* ---- updates ------------------------------------------------------------ */
+/* The revision on the site, read past every cache. "" when it can't be read. */
+async function siteRev() {
+  try {
+    const t = await (await fetch("js/config.js?check=" + Date.now(), { cache: "no-store" })).text();
+    return (/REV\s*=\s*"([^"]+)"/.exec(t) || [])[1] || "";
+  } catch { return ""; }
+}
+
+/* Re-fetch every file past the cache, then reload: a plain reload can keep cached
+   modules for up to ten minutes and mix two versions. */
+async function freshReload() {
+  await Promise.all(C.SITE_FILES.map(f => fetch(f, { cache: "reload" }).catch(() => {})));
+  location.reload();
+}
+
+async function checkVersion(atBoot) {
+  const rev = await siteRev();
+  if (!rev || rev === C.REV) return false;
+  let tried = "";
+  try { tried = sessionStorage.getItem("awc-reloaded-for") || ""; } catch { }
+  if (atBoot && tried !== rev) {                 /* nothing to lose yet: update straight away */
+    try { sessionStorage.setItem("awc-reloaded-for", rev); } catch { }
+    await freshReload();
+    return true;
+  }
+  $("updateRev").textContent = rev.replace("rev ", "");
+  $("updateBanner").hidden = false;
+  return false;
 }
 
 /* ---- boot --------------------------------------------------------------- */
@@ -549,6 +591,8 @@ async function boot() {
   setInterval(tickMasks, C.MASK_MS);
   render();
 
+  if (await checkVersion(true)) return;
+  setInterval(() => { if (!document.hidden) checkVersion(false); }, C.VERSION_CHECK_MS);
   if (typeof window.showDirectoryPicker !== "function") { showGate("noapi"); return; }
   try { S.me = (await store.kvGet("me")) || ""; } catch { }
   let stored = null;

@@ -886,6 +886,8 @@ export function showDiag() {
   h.push(rRow("Permission", esc(diag.permission || "(not checked)")));
   h.push(rRow("Signed in as", esc(S.me || "(not set)")));
   h.push(rRow("Writes", diag.writes + ' this session' + (diag.lockSteals ? ' &middot; ' + diag.lockSteals + ' stale lock(s) cleared' : '')));
+  h.push(rRow("Backup", diag.lastBackup ? esc(C.BACKUP_SUBDIR + '/' + diag.lastBackup) + ' <span class="dim">&middot; ' + C.BACKUP_KEEP_DAYS + ' days kept</span>'
+                                        : '<span class="bad">none yet this session</span>'));
   h.push(rRow("Layout", G.dims.cols + ' per row &middot; ' + G.dims.card + 'px cards &middot; ' + G.dims.gw + '&times;' + G.dims.gh + 'px glasses'));
   h.push(rRow("Animation", G.stats.fps + ' fps &middot; ' + G.bubbleCount() + ' bubbles' +
               (G.stats.errors ? ' &middot; <span class="bad">' + G.stats.errors + ' errors, last: ' + esc(G.stats.lastError) + '</span>' : '')));

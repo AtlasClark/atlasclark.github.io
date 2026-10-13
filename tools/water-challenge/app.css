@@ -146,6 +146,8 @@ h1 { margin: 4px 0 0; font-size: clamp(30px, 5vw, 52px); letter-spacing: -.04em;
   background: var(--note-bg); border: 1px solid var(--note-line); color: var(--note-ink);
   font-size: 13px; font-weight: 600;
 }
+.banner.update { display: flex; align-items: center; justify-content: center; gap: 12px;
+  background: var(--accent-soft); border-color: var(--chip-line); color: var(--accent-ink); }
 .banner.warn { background: var(--warn-bg); border-color: var(--warn-line); color: var(--warn-ink); }
 
 /* ---- team bar + tabs ---- */

@@ -12,10 +12,10 @@ import * as C from "./config.js";
 import { S, dataChanged, currentGoalFor, currentGoal, currentAnnualGoal, currentIdleMax,
          goalTunables, legacyFlat, challengeStart, forceLegacyStamps, personalGoal,
          defaultSettings } from "./model.js";
-import { todayKey, localStamp, parseKey, has } from "./util.js";
+import { todayKey, localStamp, parseKey, has, shiftKey } from "./util.js";
 
 export let dir = null;          /* FileSystemDirectoryHandle of the data folder */
-export const diag = { trail: [], lastError: "", permission: "", writes: 0, lockSteals: 0 };
+export const diag = { trail: [], lastError: "", permission: "", writes: 0, lockSteals: 0, lastBackup: "" };
 
 export function setDir(h) { dir = h; }
 
@@ -500,6 +500,39 @@ export async function moveToRemoved(name) {
   if (check.byteLength !== bytes.length) throw new Error("copy to " + C.REMOVED_SUBDIR + " did not verify");
   await dir.removeEntry(src);
   return destName;
+}
+
+/* ---- daily backup -------------------------------------------------------- */
+/* Copies every .json in the data folder, byte for byte, into _backup/<key>/, then
+   writes _done. A day already marked done is skipped, so only the first page of the
+   day does the work. Returns the number of files copied, or 0 when skipped. */
+export async function backupIfDue(key) {
+  if (!dir) return 0;
+  const root = await dir.getDirectoryHandle(C.BACKUP_SUBDIR, { create: true });
+  let day = null;
+  try { day = await root.getDirectoryHandle(key); } catch { }
+  if (day && await fileOrNull("_done", day)) { diag.lastBackup = key; return 0; }
+  if (!day) day = await root.getDirectoryHandle(key, { create: true });
+  let n = 0;
+  for await (const [name, h] of dir.entries()) {
+    if (h.kind !== "file" || !name.toLowerCase().endsWith(".json")) continue;
+    const bytes = new Uint8Array(await (await h.getFile()).arrayBuffer());
+    const out = await day.getFileHandle(name, { create: true });
+    const w = await out.createWritable();
+    await w.write(bytes);
+    await w.close();
+    n++;
+  }
+  await writeText("_done", localStamp(new Date()) + " " + (S.me || "") + " " + n + " files\r\n", day);
+  const oldest = shiftKey(key, -C.BACKUP_KEEP_DAYS);
+  for await (const [name, h] of root.entries()) {
+    if (h.kind === "directory" && /^\d{4}-\d{2}-\d{2}$/.test(name) && name < oldest) {
+      try { await root.removeEntry(name, { recursive: true }); } catch (e) { note("could not clear backup " + name + ": " + (e.message || e)); }
+    }
+  }
+  diag.lastBackup = key;
+  note("backup " + key + ": " + n + " files");
+  return n;
 }
 
 /* ---- live shop events ---------------------------------------------------- */

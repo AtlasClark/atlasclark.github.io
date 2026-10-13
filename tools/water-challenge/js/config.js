@@ -3,8 +3,8 @@
    contract (FORMAT_REV 21, UTF-16 LE + BOM) must stay identical while R55 runs on the
    share: R55 deletes any field it does not know on its next write. */
 
-export const REV         = "rev 1.6.1";
-export const APP_VERSION = "web 1.6.1";   /* stamped as writerVersion */
+export const REV         = "rev 1.7.0";
+export const APP_VERSION = "web 1.7.0";   /* stamped as writerVersion */
 /* A folder stays at LEGACY_FORMAT (byte-compatible with R55) until someone upgrades
    it from Settings. Format 22 adds tokensSpent and keeps unknown fields; R55 must
    not be used on a folder after that. */
@@ -41,6 +41,18 @@ export const LIVE_SHOW_MS = 9000;          /* a drop seen later than this shows 
 /* ---- files ---- */
 export const SETTINGS_FILE  = "_settings.json";
 export const REMOVED_SUBDIR = "_removed";
+/* The first page to connect each day copies every .json into _backup/YYYY-MM-DD/,
+   before anything is written that day. Older days are cleared after this many. */
+export const BACKUP_SUBDIR    = "_backup";
+export const BACKUP_KEEP_DAYS = 14;
+
+/* ---- updates ----
+   Every file the page is made of. When a new version is out, these are re-fetched
+   past the browser cache before reloading, so old and new modules never mix. */
+export const SITE_FILES = ["./", "app.css",
+  "js/app.js", "js/art.js", "js/config.js", "js/glass.js", "js/live.js", "js/model.js", "js/pets.js",
+  "js/plinko.js", "js/radial.js", "js/shop.js", "js/shopui.js", "js/store.js", "js/ui.js", "js/util.js"];
+export const VERSION_CHECK_MS = 300000;
 
 /* ---- goals (fallbacks; live values come from _settings.json) ---- */
 export const GOAL_OZ           = 128;
