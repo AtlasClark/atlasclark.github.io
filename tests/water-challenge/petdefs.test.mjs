@@ -97,3 +97,35 @@ test("studio import: every built-in pet draws the same from its shapes",
     }
   }
 });
+
+test("studio import: the crown and jester hat draw the same from their shapes",
+     { skip: fs.existsSync(IMPORTER) ? false : "Pet Studio not present (.dev/pet-studio)" }, async () => {
+  const I = await import(pathToFileURL(IMPORTER));
+  for (const key of P.HAT_KEYS) {
+    const hat = I.importHat(key);
+    assert.ok(Object.values(hat.pal).every(c => !c.hue), key + ": fixed colours only");
+    for (const k of [0, 11, 26]) {
+      const draw = c => A.drawCritter(c, 5, 7, 100, -0.2, true, false, k, 140, key === "jester");
+      const before = rec(draw);
+      P.hats[key] = hat;
+      const after = rec(draw);
+      delete P.hats[key];
+      assert.equal(sameDrawing(before, after, 1e-3), "", key + " on " + C.PET_NAMES[k]);
+    }
+  }
+});
+
+test("hats: the page's icons use a redrawn hat, and drop it again", () => {
+  const built = A.crownSvg(26, 17, "crown");
+  P.applyDefs({ format: 1, pets: {}, hats: { crown: { pal: { gold: { c: "#f0b429" } },
+    shapes: [{ t: "path", d: [["M", -0.3, 0], ["L", 0, -0.4], ["L", 0.3, 0], ["Z"]], fill: "gold" },
+             { t: "ell", x: 0, y: -0.4, rx: 0.06, ry: 0.06, a0: 3.1416, a1: 6.2832, chord: true, fill: "gold" }] } } });
+  const svg = A.crownSvg(26, 17, "crown");
+  assert.notEqual(svg, built);
+  assert.match(svg, /^<svg class="crown" width="26" height="17" viewBox="[-\d. ]+"/);
+  assert.match(svg, /<path d="M-0.3 0L0 -0.4L0.3 0Z" fill="#f0b429"\/>/);
+  assert.match(svg, /A0.06 0.06 0 0 1 /, "a part arc becomes an SVG arc");
+  assert.equal(A.jesterSvg(26, 17, "crown").includes("#d9434e"), true, "the jester stays built-in");
+  P.applyDefs({ format: 1, pets: {} });
+  assert.equal(A.crownSvg(26, 17, "crown"), built);
+});

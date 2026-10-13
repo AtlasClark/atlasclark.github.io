@@ -5,13 +5,14 @@
 
 import { PET_MAX, HOMUNCULUS_STYLE } from "./config.js";
 import { hsl } from "./util.js";
-import { defs, drawShapes } from "./petdefs.js";
+import { defs, hats, drawShapes, drawHat, hatSvgFrom } from "./petdefs.js";
 
 /* tricolour, so it never reads as a crown with balls on it */
 var JESTER_L = "#d9434e";
 var JESTER_C = "#4f8fd9";
 var JESTER_R = "#4aa86b";
 function jesterSvg(w, h, cls) {
+  if (hats.jester) return hatSvgFrom(hats.jester, w, h, cls);
   /* Worn instead of the crown when you were the only one who turned up. Same
      viewBox as the crown so it drops into every place the crown goes. */
   return '<svg class="' + cls + '" width="' + w + '" height="' + h + '" ' +
@@ -38,6 +39,7 @@ function hatSvg(w, h, cls, underGoal) {
   return underGoal ? jesterSvg(w, h, cls) : crownSvg(w, h, cls);
 }
 function crownSvg(w, h, cls) {
+  if (hats.crown) return hatSvgFrom(hats.crown, w, h, cls);
   /* Inline SVG: lucide-react is not an option here and IE renders no emoji
      crown worth looking at, but SVG 1.1 paths are solid. */
   /* Silver: the crown marks the day's leader, which is a leaderboard result.
@@ -70,7 +72,8 @@ function critterEye(ctx, x, y, r, dead) {
 }
 
 function critterCrown(ctx, cx, cy, r, jester) {
-  var cw = r * 0.52, ch = r * 0.36, i;
+  var cw = r * 0.52, ch = r * 0.36, i, hat = hats[jester ? "jester" : "crown"];
+  if (hat) { drawHat(ctx, hat, cx, cy, r); return; }
   if (jester) {
     /* three floppy points and their bells */
     /* Same hooked lobes as the svg, in canvas units. Centre first so it sits
