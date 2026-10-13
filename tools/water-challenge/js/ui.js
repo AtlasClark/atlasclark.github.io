@@ -15,6 +15,7 @@ import { petKindFor, ownsEquipped, graveEquipped, petHueFor, isGrave, gravesOf, 
 import { crownSvg, jesterSvg, hatSvg, drawPortrait, drawCritter, drawHeadstone, drawGoldPile } from "./art.js";
 import * as G from "./glass.js";
 import { diag, dir } from "./store.js";
+import { defs as petDefs } from "./petdefs.js";
 import { shopOpen, balance, spentTotal, spendsOn, earnedTotal } from "./shop.js";
 import { $, esc, fmt, fmtOz, fmtGal, todayKey, dateKey, prettyTime, clockStamp, has, parseKey, shiftKey } from "./util.js";
 
@@ -371,7 +372,7 @@ export function ensureIcons() {
   iconsReady = true;
   const css = [];
   for (let k = 0; k < C.PET_COUNT; k++) {
-    css.push(".pi-" + k + "{background-image:url(" + iconUrl(ctx => drawPortrait(ctx, 30, 42, 20, k, hashHue(C.PET_NAMES[k] + k))) + ")}");
+    css.push(".pi-" + k + "{background-image:url(" + iconUrl(ctx => drawPortrait(ctx, 30, 42, 20, k, hashHue(C.PET_BASE_NAMES[k] + k))) + ")}");
   }
   css.push(".pi-grave{background-image:url(" + iconUrl(ctx => drawHeadstone(ctx, 30, 50, 26, 210)) + ")}");
   css.push(".pi-hom{background-image:url(" + iconUrl(ctx => drawCritter(ctx, 30, 50, 17, 0, false, false, C.HOMUNCULUS_KIND, 210)) + ")}");
@@ -895,6 +896,8 @@ export function showDiag() {
   h.push(rRow("Writes", diag.writes + ' this session' + (diag.lockSteals ? ' &middot; ' + diag.lockSteals + ' stale lock(s) cleared' : '')));
   h.push(rRow("Backup", diag.lastBackup ? esc(C.BACKUP_SUBDIR + '/' + diag.lastBackup) + ' <span class="dim">&middot; ' + C.BACKUP_KEEP_DAYS + ' days kept</span>'
                                         : '<span class="bad">none yet this session</span>'));
+  h.push(rRow("Drawn pets", Object.keys(petDefs).length ? esc(Object.keys(petDefs).map(k => C.PET_NAMES[k]).join(", ")) + ' <span class="dim">from pets/pets.json</span>'
+                                                       : '<span class="dim">none &middot; all built-in</span>'));
   h.push(rRow("Layout", G.dims.cols + ' per row &middot; ' + G.dims.card + 'px cards &middot; ' + G.dims.gw + '&times;' + G.dims.gh + 'px glasses'));
   h.push(rRow("Animation", G.stats.fps + ' fps &middot; ' + G.bubbleCount() + ' bubbles' +
               (G.stats.errors ? ' &middot; <span class="bad">' + G.stats.errors + ' errors, last: ' + esc(G.stats.lastError) + '</span>' : '')));

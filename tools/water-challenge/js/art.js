@@ -1,9 +1,11 @@
 /* Pet, crown and gold-pile drawing. The shapes are extracted unchanged from R55
    (drawCritter, drawPortrait, drawHeadstone, drawGoldPile), so every pet looks
-   the same on the web as it does in the HTA. */
+   the same on the web as it does in the HTA. A pet redrawn in the Pet Studio
+   (petdefs.js) is drawn from its shapes instead. */
 
 import { PET_MAX, HOMUNCULUS_STYLE } from "./config.js";
 import { hsl } from "./util.js";
+import { defs, drawShapes } from "./petdefs.js";
 
 /* tricolour, so it never reads as a crown with balls on it */
 var JESTER_L = "#d9434e";
@@ -131,6 +133,16 @@ var PET_CROWN = [
 ];
 
 function drawCritter(ctx, x, y, r, ang, crowned, dead, kind, hue, jester) {
+  var def = defs[kind];
+  if (def) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(ang);
+    drawShapes(ctx, def.swim, r, hue, def.pal, dead);
+    if (crowned) critterCrown(ctx, r * def.crown[0], r * def.crown[1], r, jester);
+    ctx.restore();
+    return;
+  }
   var body = hsl(hue, 62, 58), lite = hsl(hue, 62, 70), dark = hsl(hue, 55, 42);
   /* PET_MAX, not PET_COUNT: the pen holds 25, but the reward and the dragon
      live outside it. Clamping to the pen drew both of them as ducks. */
@@ -608,7 +620,15 @@ function drawPortrait(ctx, x, y, r, kind, hue) {
      live animation. */
   var body = hsl(hue, 62, 58), lite = hsl(hue, 62, 70), dark = hsl(hue, 55, 42);
   var full = { "1": 1, "3": 1, "4": 1, "14": 1, "16": 1, "17": 1, "21": 1, "23": 1 };
-  var i, tx, ty;
+  var i, tx, ty, def = defs[kind];
+
+  if (def) {
+    ctx.save();
+    ctx.translate(x, y);
+    drawShapes(ctx, def.portrait || def.swim, r, hue, def.pal, false);
+    ctx.restore();
+    return;
+  }
 
   if (!full[String(kind)]) {
     drawCritter(ctx, x, y, r, 0, false, false, kind, hue);
@@ -797,4 +817,4 @@ function drawGoldPile(ctx, W, H, n) {
   ctx.beginPath(); ctx.arc(cx - 3, base - (i - 1) * step - 2, 1.7, 0, 6.2832); ctx.fill();
 }
 
-export { jesterSvg, hatSvg, crownSvg, critterEye, drawCritter, drawHeadstone, drawPortrait, drawGoldPile };
+export { jesterSvg, hatSvg, crownSvg, critterEye, critterCrown, drawCritter, drawHeadstone, drawPortrait, drawGoldPile, PET_CROWN };

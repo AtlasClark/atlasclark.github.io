@@ -1,0 +1,99 @@
+/* Drawn pets: pets.json is checked before use, and every built-in pet imported by
+   the Pet Studio draws exactly as before (alive, dead, crowned, portrait, any hue). */
+
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
+import { pathToFileURL, fileURLToPath } from "node:url";
+import { FlatRec, sameDrawing } from "./lib/canvas-rec.mjs";
+
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
+const JS = path.join(ROOT, "tools/water-challenge/js/");
+const C = await import(pathToFileURL(JS + "config.js"));
+const P = await import(pathToFileURL(JS + "petdefs.js"));
+const A = await import(pathToFileURL(JS + "art.js"));
+const IMPORTER = path.join(ROOT, ".dev/pet-studio/importer.js");
+
+const rec = draw => { const c = new FlatRec(); draw(c); return c.out; };
+
+test("pets.json: bad pets and shapes are dropped, names apply and reset", () => {
+  const took = P.applyDefs({ format: 1, pets: {
+    "0": { name: " Slug ", crown: [0, -1], pal: { body: { hue: 1, dh: 0, s: 60, l: 50 }, bad: { c: "url(x)" } },
+           swim: [{ t: "ell", x: 0, y: 0, rx: 0.5, ry: 0.4, fill: "body" }, { t: "ell", x: 0, y: 0, rx: 1, ry: 1, fill: "bad" },
+                  { t: "path", d: [["M", 0, 0], ["L", 1]] }, { t: "eye", x: 0, y: -0.5 }, { t: "blob" }] },
+    "1": { swim: [] },
+    "99": { swim: [{ t: "eye", x: 0, y: 0 }] },
+    "x": {} } });
+  assert.deepEqual(took, [0]);
+  assert.equal(P.defs[0].swim.length, 2, "the ellipse and the eye survive");
+  assert.equal(C.PET_NAMES[0], "Slug");
+  assert.equal(C.PET_BASE_NAMES[0], "Duck");
+  assert.deepEqual(P.applyDefs({ format: 2, pets: {} }), [], "a newer format is not read");
+  assert.equal(C.PET_NAMES[0], "Duck", "names go back when the file no longer renames");
+  assert.equal(Object.keys(P.defs).length, 0);
+});
+
+test("pets.json: the committed file is valid", () => {
+  const obj = JSON.parse(fs.readFileSync(path.join(ROOT, "tools/water-challenge/pets/pets.json"), "utf8"));
+  const took = P.applyDefs(obj);
+  assert.equal(took.length, Object.keys(obj.pets).length, "every pet in the file is usable");
+  P.applyDefs({ format: 1, pets: {} });
+});
+
+test("hue: a colourable part follows the pet's hue, a fixed part does not", () => {
+  const pal = { a: { hue: 1, dh: 120, s: 50, l: 40, a: 1 }, b: { c: "#123456" } };
+  assert.equal(P.colourOf(pal, "a", 300), "hsl(60,50%,40%)");
+  assert.equal(P.colourOf(pal, "b", 300), "#123456");
+});
+
+const GEOM = path.join(ROOT, ".dev/pet-studio/geom.js");
+test("studio geometry: loops, splits, mirrors", { skip: fs.existsSync(GEOM) ? false : "Pet Studio not present (.dev/pet-studio)" }, async () => {
+  const G = await import(pathToFileURL(GEOM));
+  const loop = [];
+  for (let i = 0; i <= 40; i++) { const t = i / 40 * Math.PI * 2; loop.push([Math.sin(t), Math.cos(t)]); }
+  assert.ok(G.simplify(loop, 0.01).length > 8, "a closed freehand loop keeps its shape");
+
+  const tri = { t: "path", d: [["M", 0, 0], ["L", 1, 0], ["L", 1, 1], ["Z"]] };
+  const n = G.nearestOnPath(tri, 0.5, 0.01);
+  assert.equal(n.ci, 1); assert.ok(Math.abs(n.t - 0.5) < 0.01, "the middle of a straight edge");
+  assert.ok(G.splitAt(tri, n.ci, n.t));
+  assert.deepEqual(tri.d.map(c => c[0]).join(""), "MLLLZ");
+  assert.deepEqual(tri.d[1], ["L", 0.5, 0]);
+
+  const curve = { t: "path", d: [["M", 0, 0], ["C", 0, 1, 1, 1, 1, 0]] };
+  const mid = G.pathSegments(curve, 2)[0].pts[1];
+  G.splitAt(curve, 1, 0.5);
+  assert.deepEqual(curve.d[1].slice(-2), mid.map(v => Math.round(v * 1e5) / 1e5), "a curve splits on itself");
+
+  const dome = { t: "ell", x: 1, y: 0, rx: 0.5, ry: 0.3, rot: 0, a0: Math.PI, a1: 2 * Math.PI, chord: true };
+  const m = G.mapShape(dome, G.scaleM(0, 0, -1, 1));
+  const top = s => G.ellPoint(s, (s.a0 + s.a1) / 2);
+  assert.ok(Math.abs(m.x + 1) < 1e-9);
+  assert.ok(Math.abs(top(m)[1] - top(dome)[1]) < 1e-6, "a mirrored dome still points up");
+});
+
+test("studio import: every built-in pet draws the same from its shapes",
+     { skip: fs.existsSync(IMPORTER) ? false : "Pet Studio not present (.dev/pet-studio)" }, async () => {
+  const I = await import(pathToFileURL(IMPORTER));
+  const r = 100, same = (draw, def, k, what) => {
+    const before = rec(draw);
+    P.defs[k] = def;
+    const after = rec(draw);
+    delete P.defs[k];
+    const why = sameDrawing(before, after, 1e-3);
+    assert.equal(why, "", C.PET_NAMES[k] + " (" + k + ") " + what + ": " + why);
+  };
+  for (let k = 0; k < C.PET_MAX; k++) {
+    const def = I.importBuiltin(k);
+    for (const hue of [0, 77, 213]) {
+      for (const dead of [false, true]) {
+        for (const crowned of [false, true]) {
+          same(c => A.drawCritter(c, 40, 30, r, 0.3, crowned, dead, k, hue, k % 2 === 0), def, k,
+               "hue " + hue + (dead ? " dead" : "") + (crowned ? " crowned" : ""));
+        }
+      }
+      same(c => A.drawPortrait(c, 10, 20, r, k, hue), def, k, "portrait hue " + hue);
+    }
+  }
+});

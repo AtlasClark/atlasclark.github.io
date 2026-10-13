@@ -9,6 +9,7 @@ import * as store from "./store.js";
 import { reconcilePets, equipPet } from "./pets.js";
 import * as G from "./glass.js";
 import { startLive, onLive, emit } from "./live.js";
+import { loadPetDefs } from "./petdefs.js";
 import { openRadial, wireRadial } from "./radial.js";
 import { initShop, renderShop, shopTabChanged, openShopFor } from "./shopui.js";
 import { ui, render, setTab, setMsg, showBanner, tickMasks, relayout, forceRebuild,
@@ -622,6 +623,7 @@ async function checkVersion(atBoot) {
 
 /* ---- boot --------------------------------------------------------------- */
 async function boot() {
+  await loadPetDefs();
   initTheme();
   wire();
   try { const a = Number(localStorage.getItem("awc-amount")); if (a > 0) ui.amount = a; } catch { }

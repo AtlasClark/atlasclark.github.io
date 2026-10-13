@@ -3,8 +3,8 @@
    contract (FORMAT_REV 21, UTF-16 LE + BOM) must stay identical while R55 runs on the
    share: R55 deletes any field it does not know on its next write. */
 
-export const REV         = "rev 1.8.0";
-export const APP_VERSION = "web 1.8.0";   /* stamped as writerVersion */
+export const REV         = "rev 1.9.0";
+export const APP_VERSION = "web 1.9.0";   /* stamped as writerVersion */
 /* A folder stays at LEGACY_FORMAT (byte-compatible with R55) until someone upgrades
    it from Settings. Format 22 adds tokensSpent and keeps unknown fields; R55 must
    not be used on a folder after that. */
@@ -50,8 +50,8 @@ export const BACKUP_KEEP_DAYS = 14;
    Every file the page is made of. When a new version is out, these are re-fetched
    past the browser cache before reloading, so old and new modules never mix. */
 export const SITE_FILES = ["./", "app.css",
-  "js/app.js", "js/art.js", "js/config.js", "js/glass.js", "js/guard.js", "js/live.js", "js/model.js", "js/pets.js",
-  "js/plinko.js", "js/radial.js", "js/shop.js", "js/shopui.js", "js/store.js", "js/ui.js", "js/util.js"];
+  "js/app.js", "js/art.js", "js/config.js", "js/glass.js", "js/guard.js", "js/live.js", "js/model.js", "js/petdefs.js",
+  "js/pets.js", "js/plinko.js", "js/radial.js", "js/shop.js", "js/shopui.js", "js/store.js", "js/ui.js", "js/util.js", "pets/pets.json"];
 export const VERSION_CHECK_MS = 300000;
 
 /* ---- goals (fallbacks; live values come from _settings.json) ---- */
@@ -93,6 +93,8 @@ export const PET_NAMES = [
   "Narwhal","Axolotl","Nessie","Cat in a Ring",
   "Homunculus","Dragon"
 ];
+/* PET_NAMES can be renamed by pets/pets.json; these never change (icon hues use them). */
+export const PET_BASE_NAMES = PET_NAMES.slice();
 export const PET_BINS = [
   { name: "Common",   weight: 60, kinds: [0, 1, 2, 6, 7, 8, 9, 10] },
   { name: "Uncommon", weight: 20, kinds: [3, 4, 11, 12, 13, 14, 15] },
