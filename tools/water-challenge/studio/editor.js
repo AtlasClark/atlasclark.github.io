@@ -500,6 +500,7 @@ export class Editor {
       ctx.beginPath(); ctx.moveTo(0, hy); ctx.lineTo(W, hy); ctx.stroke(); ctx.setLineDash([]);
       ctx.fillStyle = css("--headroom"); ctx.fillText("headroom: keep the pet below this line", 8, hy - 5);
     }
+    this.forwardArrow(hat ? oy + 0.5 * z : swimPose ? oy + 0.22 * z : oy + 0.9 * z, hat);
 
     /* selection */
     const sel = this.selected();
@@ -583,6 +584,21 @@ export class Editor {
       ctx.strokeStyle = css("--sel"); ctx.lineWidth = 1; ctx.strokeRect(x0, y0, x1 - x0, y1 - y0);
     }
   }
+  /* Pets are drawn facing left: that way is forward when they swim, and the glass
+     mirrors the drawing when they turn. */
+  forwardArrow(y, hat) {
+    const { ctx, view: { ox, z } } = this, x0 = ox + 0.15 * z, x1 = ox - Math.min(0.9 * z, ox - 24), hh = 6;
+    if (x0 - x1 < 30) return;
+    ctx.save();
+    ctx.strokeStyle = ctx.fillStyle = css("--accent");
+    ctx.globalAlpha = 0.85; ctx.lineWidth = 2; ctx.lineCap = "round";
+    ctx.beginPath(); ctx.moveTo(x0, y); ctx.lineTo(x1 + hh, y); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(x1, y); ctx.lineTo(x1 + hh * 1.8, y - hh); ctx.lineTo(x1 + hh * 1.8, y + hh); ctx.closePath(); ctx.fill();
+    ctx.font = "700 11px Segoe UI, system-ui, sans-serif"; ctx.textAlign = "left";
+    ctx.fillText(hat ? "the pet faces this way" : "forward: the pet swims this way (mirrored when it turns)", x1, y + 16);
+    ctx.restore();
+  }
+
   segLine(a, b) {
     const ctx = this.ctx;
     ctx.beginPath(); ctx.moveTo(...this.toScreen(...a)); ctx.lineTo(...this.toScreen(...b)); ctx.stroke();
