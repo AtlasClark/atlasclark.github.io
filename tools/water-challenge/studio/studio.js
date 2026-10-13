@@ -11,7 +11,7 @@ import { Editor, TOOL_HINTS } from "./editor.js";
 import { Preview } from "./preview.js";
 import * as G from "./geom.js";
 
-const REV = "studio 1.2.0";
+const REV = "studio 1.3.0";
 const PETS_URL = "../pets/pets.json";
 const $ = id => document.getElementById(id);
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -180,6 +180,32 @@ function reorder(dir) {           /* 1 forward, -1 back, 2 front, -2 back-most *
     }
   });
 }
+/* Combine: the selected shapes and strokes become one solid shape in the colour of
+   the lowest one. Cut out: the lowest keeps its colour and loses what the others
+   cover. Eyes stay separate. */
+function combineSel(cut) {
+  const list = app.shapes;
+  if (!list) return;
+  const idx = selIdx().filter(i => list[i].t !== "eye");
+  if (!idx.length) { toast("Select shapes or strokes first. Eyes stay separate."); return; }
+  if (cut && idx.length < 2) { toast("Select a shape and what to cut from it. The lowest one keeps its colour."); return; }
+  const base = list[idx[0]], parts = idx.map(i => list[i]);
+  let d;
+  try { d = G.areaToPath(cut ? G.cutOut(parts[0], parts.slice(1)) : G.combine(parts)); }
+  catch (e) { toast("Could not combine: " + (e.message || e)); return; }
+  const shows = new Set(parts.map(s => s.show || ""));
+  change(() => {
+    const out = { t: "path", d: d || [], fill: base.fill || base.stroke };
+    if (shows.size === 1 && base.show) out.show = base.show;
+    const keep = list.filter((_, i) => !idx.includes(i));
+    const at = idx[0] - idx.filter(i => i < idx[0]).length;
+    list.length = 0; list.push(...keep);
+    W.sel.clear();
+    if (d) { list.splice(at, 0, out); W.sel.add(at); }
+  });
+  if (!d) toast("Nothing was left, so the shapes were removed. Undo brings them back.");
+}
+
 function nudge(dx, dy) { editSel(s => G.mapShape(s, G.translateM(dx, dy))); }
 function copySel() {
   if (!app.shapes || !W.sel.size) return;
@@ -416,7 +442,7 @@ function shapeTab() {
   if (!sel.length) {
     return '<h4>Nothing selected</h4><p class="note">Pick a tool above and draw, or click a shape. Every shape takes a colour from the Colours tab; ' +
       'pet colours follow each pet&rsquo;s own hue in the game.</p>' +
-      '<p class="note"><kbd>Del</kbd> delete &middot; <kbd>Ctrl D</kbd> duplicate &middot; <kbd>Ctrl C/V</kbd> copy between pets &middot; <kbd>M</kbd> mirror &middot; ' +
+      '<p class="note"><kbd>Del</kbd> delete &middot; <kbd>Ctrl D</kbd> duplicate &middot; <kbd>Ctrl E</kbd> combine into one solid shape &middot; <kbd>Ctrl C/V</kbd> copy between pets &middot; <kbd>M</kbd> mirror &middot; ' +
       '<kbd>Shift M</kbd> mirrored copy across the centre line &middot; <kbd>[ ]</kbd> order &middot; arrows nudge &middot; wheel zoom &middot; Space or right-drag pan &middot; <kbd>0</kbd> fit</p>';
   }
   const all = (f) => { const v = sel.map(s => s[f] ?? ""); return v.every(x => x === v[0]) ? v[0] : "mixed"; };
@@ -451,13 +477,17 @@ function shapeTab() {
       h.push('<div class="row"><label>Points</label><span>' + G.anchorCount(s) + '</span></div>');
       h.push('<div class="row"><label></label><label style="width:auto"><input type="checkbox" data-f="closed"' + (G.isClosed(s) ? " checked" : "") + '> closed shape</label></div>');
       h.push('<div class="btns"><button type="button" class="btn small" data-act="smooth" title="Curve through every point">Smooth</button>' +
-             '<button type="button" class="btn small" data-act="straight" title="Straight lines between points">Straighten</button></div>');
+             '<button type="button" class="btn small" data-act="straight" title="Straight lines between points">Straighten</button>' +
+             '<button type="button" class="btn small" data-act="simplify" title="Remove points from straight-edged outlines, a step at a time">Simplify</button></div>' +
+             (G.anchorCount(s) > 90 ? '<p class="note">Too many points to show handles. Simplify to edit points.</p>' : ''));
     }
   }
   h.push('<div class="btns">' +
     '<button type="button" class="btn small" data-act="dup">Duplicate</button>' +
     '<button type="button" class="btn small" data-act="mirror">Mirror</button>' +
     '<button type="button" class="btn small" data-act="mirrorx" title="A mirrored copy across the centre line (x = 0)">Mirror copy</button>' +
+    '<button type="button" class="btn small" data-act="combine" title="Merge into one solid shape in the colour of the lowest; strokes become solid (Ctrl+E)">Combine</button>' +
+    (sel.length > 1 ? '<button type="button" class="btn small" data-act="cutout" title="Cut the upper shapes out of the lowest one">Cut out</button>' : '') +
     '<button type="button" class="btn small" data-act="front">To front</button>' +
     '<button type="button" class="btn small" data-act="back">To back</button>' +
     '<button type="button" class="btn small danger" data-act="del">Delete</button></div>');
@@ -655,11 +685,19 @@ function act(a, el) {
     case "dup": return duplicateSel();
     case "mirror": return mirrorSel();
     case "mirrorx": return duplicateSel(G.scaleM(0, 0, -1, 1));
+    case "combine": return combineSel(false);
+    case "cutout": return combineSel(true);
     case "front": return reorder(2);
     case "back": return reorder(-2);
     case "del": return deleteSel();
     case "smooth": return editSel(s => { if (s.t === "path") G.smoothAll(s); return s; });
     case "straight": return editSel(s => { if (s.t === "path") G.straightenAll(s); return s; });
+    case "simplify": {
+      let n = 0;
+      editSel(s => { if (s.t === "path" && G.simplifyPath(s)) n++; return s; });
+      if (!n) toast("Nothing more to remove without changing the shape much.");
+      return;
+    }
     case "hue-rand": W.hue = Math.floor(Math.random() * 360); renderPanels(); editor.redraw(); return;
     case "pal-add": return change(() => { let n = 1; while (d.pal["colour" + n]) n++; d.pal["colour" + n] = isHat(W.kind) ? { c: "#9aa5ad" } : { hue: 1, dh: 0, s: 62, l: 58, a: 1 }; });
     case "port-copy": return change(() => { d.portrait = G.clone(d.swim); W.pose = "portrait"; W.sel.clear(); });
@@ -827,6 +865,7 @@ function wire() {
     if (ctrl && k.toLowerCase() === "y") { e.preventDefault(); undo(true); return; }
     if (ctrl && k.toLowerCase() === "s") { e.preventDefault(); saveToRepo(); return; }
     if (ctrl && k.toLowerCase() === "d") { e.preventDefault(); duplicateSel(); return; }
+    if (ctrl && k.toLowerCase() === "e") { e.preventDefault(); combineSel(false); return; }
     if (ctrl && k.toLowerCase() === "c") { copySel(); return; }
     if (ctrl && k.toLowerCase() === "v") { paste(); return; }
     if (ctrl && k.toLowerCase() === "a") { e.preventDefault(); W.sel = new Set((app.shapes || []).map((_, i) => i)); renderPanels(); editor.redraw(); return; }

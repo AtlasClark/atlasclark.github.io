@@ -73,6 +73,51 @@ test("studio geometry: loops, splits, mirrors", { skip: fs.existsSync(GEOM) ? fa
   assert.ok(Math.abs(top(m)[1] - top(dome)[1]) < 1e-6, "a mirrored dome still points up");
 });
 
+test("studio combine: shapes and strokes become one solid shape, with holes where they enclose",
+     { skip: fs.existsSync(GEOM) ? false : "Pet Studio not present" }, async () => {
+  const { createRequire } = await import("node:module");
+  globalThis.polygonClipping = createRequire(import.meta.url)(path.join(ROOT, "tools/water-challenge/studio/vendor/polygon-clipping.umd.js"));
+  const G = await import(pathToFileURL(GEOM));
+  const ringArea = r => { let a = 0; for (let i = 0; i < r.length; i++) { const p = r[i], q = r[(i + 1) % r.length]; a += p[0] * q[1] - q[0] * p[1]; } return Math.abs(a / 2); };
+  const area = mp => mp.reduce((t, poly) => t + ringArea(poly[0]) - poly.slice(1).reduce((h, r) => h + ringArea(r), 0), 0);
+  const near = (a, b, tol, what) => assert.ok(Math.abs(a - b) <= tol * b, what + ": " + a.toFixed(4) + " vs " + b.toFixed(4));
+  const circle = (x, y, r) => ({ t: "ell", x, y, rx: r, ry: r, rot: 0, a0: 0, a1: 6.2832, fill: "body" });
+
+  /* two circles of radius 1, centres 1 apart: union = 2πr² − lens */
+  const lens = 2 * Math.acos(0.5) - 0.5 * Math.sqrt(3);
+  const two = G.combine([circle(0, 0, 1), circle(1, 0, 1)]);
+  assert.equal(two.length, 1, "one solid piece");
+  near(area(two), 2 * Math.PI - lens, 0.01, "union area");
+
+  /* a donut: cut a small circle from a big one, then read the path back */
+  const d = G.areaToPath(G.cutOut(circle(0, 0, 1), [circle(0, 0, 0.4)]));
+  assert.equal(d.filter(c => c[0] === "M").length, 2, "outer ring and hole");
+  near(area(G.areaOf({ t: "path", d, fill: "body" })), Math.PI * (1 - 0.16), 0.01, "the hole stays a hole when drawn");
+
+  /* a round-capped line becomes a capsule */
+  const line = { t: "path", d: [["M", 0, 0], ["L", 2, 0]], stroke: "dark", w: 0.2, cap: "round" };
+  near(area(G.areaOf(line)), 2 * 0.2 + Math.PI * 0.01, 0.01, "capsule area");
+  const butt = Object.assign({}, line, { cap: undefined });
+  near(area(G.areaOf(butt)), 2 * 0.2, 0.001, "square ends add nothing");
+
+  /* a freehand loop drawn as a stroke becomes a ring with a hole */
+  const loop = G.smoothPath([[1, 0], [0, 1], [-1, 0], [0, -1]], true);
+  const ring = G.areaOf({ t: "path", d: loop, stroke: "dark", w: 0.1, cap: "round" });
+  assert.equal(ring.length, 1); assert.equal(ring[0].length, 2, "an outline with a hole");
+
+  /* a stroke and a fill combine; eyes are left out */
+  const both = G.combine([circle(0, 0, 0.5), line, { t: "eye", x: 0, y: 0 }]);
+  assert.equal(both.length, 1);
+  assert.ok(area(both) > Math.PI * 0.25 && area(both) < Math.PI * 0.25 + 2 * 0.2 + Math.PI * 0.01);
+
+  /* Simplify thins a combined outline and keeps its area */
+  const solid = { t: "path", d: G.areaToPath(both), fill: "body" }, n0 = G.anchorCount(solid), a0 = area(G.areaOf(solid));
+  assert.ok(G.simplifyPath(solid));
+  assert.ok(G.anchorCount(solid) <= n0 * 0.75, n0 + " -> " + G.anchorCount(solid));
+  near(area(G.areaOf(solid)), a0, 0.02, "area kept");
+  delete globalThis.polygonClipping;
+});
+
 test("studio import: every built-in pet draws the same from its shapes",
      { skip: fs.existsSync(IMPORTER) ? false : "Pet Studio not present" }, async () => {
   const I = await import(pathToFileURL(IMPORTER));

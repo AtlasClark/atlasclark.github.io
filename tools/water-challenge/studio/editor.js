@@ -132,7 +132,7 @@ export class Editor {
       const pr = this.toScreen(...G.ellPoint(one, 0)), pq = this.toScreen(...G.ellPoint(one, Math.PI / 2));
       out.push({ type: "rx", x: pr[0], y: pr[1] }, { type: "ry", x: pq[0], y: pq[1] });
     }
-    if (one && one.t === "path") {
+    if (one && one.t === "path" && G.anchorCount(one) <= 90) {       /* denser paths: Simplify first */
       for (const n of G.pathNodes(one)) {
         const c = one.d[n.ci], [x, y] = this.toScreen(c[n.xi], c[n.xi + 1]);
         out.push({ type: "node", node: n, x, y });

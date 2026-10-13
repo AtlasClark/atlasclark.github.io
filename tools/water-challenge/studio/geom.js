@@ -242,4 +242,148 @@ export function straightenAll(s) {
   s.d = s.d.map(c => (c[0] === "Q" || c[0] === "C") ? ["L", c[c.length - 2], c[c.length - 1]] : c);
 }
 
+/* ---- solid outlines: Combine and Cut out ------------------------------------
+   Each shape becomes the area it paints (fill, plus its stroke as an outline);
+   polygon-clipping (vendor/, MIT) unions or subtracts those areas. Output is
+   GeoJSON-style multipolygons: [polygon], polygon = [outer ring, ...holes]. */
+const PC = () => {
+  if (!globalThis.polygonClipping) throw new Error("vendor/polygon-clipping.umd.js is not loaded");
+  return globalThis.polygonClipping;
+};
+
+/* A shape's sub-paths as point lists; curves and arcs sampled. */
+export function subpaths(s, steps = 16) {
+  if (s.t === "ell") {
+    const a0 = s.a0 ?? 0, full = (s.a1 ?? TAU) - a0 >= 6.283, a1 = full ? a0 + 2 * Math.PI : s.a1;
+    const n = Math.max(24, Math.ceil(Math.abs(a1 - a0) / TAU * 96)), pts = [];
+    for (let i = 0; i <= (full ? n - 1 : n); i++) pts.push(ellPoint(s, a0 + (a1 - a0) * i / n));   /* 6.2832 overshoots a turn */
+    return [{ pts, closed: full || !!s.chord }];
+  }
+  const out = [];
+  let cur = [0, 0], sub = null;
+  for (const c of s.d) {
+    if (c[0] === "M") { sub = { pts: [[c[1], c[2]]], closed: false }; out.push(sub); cur = sub.pts[0]; continue; }
+    if (c[0] === "Z") { if (sub) { sub.closed = true; cur = sub.pts[0]; } sub = null; continue; }
+    if (!sub) { sub = { pts: [cur], closed: false }; out.push(sub); }
+    if (c[0] === "L") sub.pts.push([c[1], c[2]]);
+    else if (c[0] === "Q") for (let i = 1; i <= steps; i++) sub.pts.push(quad(cur, [c[1], c[2]], [c[3], c[4]], i / steps));
+    else if (c[0] === "C") for (let i = 1; i <= steps; i++) sub.pts.push(bez(cur, [c[1], c[2]], [c[3], c[4]], [c[5], c[6]], i / steps));
+    cur = sub.pts[sub.pts.length - 1];
+  }
+  return out.filter(p => p.pts.length > 1);
+}
+
+const signedArea = r => { let a = 0; for (let i = 0; i < r.length; i++) { const p = r[i], q = r[(i + 1) % r.length]; a += p[0] * q[1] - q[0] * p[1]; } return a / 2; };
+
+/* Canvas fills sub-paths with the non-zero rule: rings wound like the largest add,
+   rings wound the other way cut holes. */
+function fillArea(rings) {
+  if (rings.length === 1) return [[rings[0]]];
+  const areas = rings.map(signedArea), big = areas.reduce((m, a, i) => Math.abs(a) > Math.abs(areas[m]) ? i : m, 0);
+  const sign = Math.sign(areas[big]) || 1;
+  const add = rings.filter((_, i) => Math.sign(areas[i]) !== -sign), cut = rings.filter((_, i) => Math.sign(areas[i]) === -sign);
+  const base = PC().union(...add.map(r => [[r]]));
+  return cut.length ? PC().difference(base, ...cut.map(r => [[r]])) : base;
+}
+
+function disc(c, rad) {
+  const ring = [];
+  for (let i = 0; i < 16; i++) { const t = i / 16 * TAU; ring.push([c[0] + Math.cos(t) * rad, c[1] + Math.sin(t) * rad]); }
+  return [ring];
+}
+
+/* A stroke as an area: a band per segment, plus round (or bevelled) joins and ends. */
+function strokeArea(subs, w, round) {
+  const hw = w / 2, parts = [];
+  for (const { pts: raw, closed } of subs) {
+    const pts = raw.filter((p, i) => !i || Math.hypot(p[0] - raw[i - 1][0], p[1] - raw[i - 1][1]) > 1e-7);
+    const shut = pts.length > 2 && Math.hypot(pts[0][0] - pts.at(-1)[0], pts[0][1] - pts.at(-1)[1]) < 1e-7;
+    if (closed && pts.length > 2 && !shut) pts.push(pts[0]);
+    if (pts.length < 2) { if (round && pts.length) parts.push(disc(pts[0], hw)); continue; }
+    const dirs = [];
+    for (let i = 0; i < pts.length - 1; i++) {
+      const [p, q] = [pts[i], pts[i + 1]], l = Math.hypot(q[0] - p[0], q[1] - p[1]);
+      const n = [-(q[1] - p[1]) / l * hw, (q[0] - p[0]) / l * hw];
+      dirs.push(n);
+      const e = [(q[0] - p[0]) / l * hw * 0.02, (q[1] - p[1]) / l * hw * 0.02];   /* a hair longer, so pieces overlap */
+      const back = closed || i > 0 ? 1 : 0, fwd = closed || i < pts.length - 2 ? 1 : 0;   /* free ends stay exact */
+      const P = [p[0] - e[0] * back, p[1] - e[1] * back], Q = [q[0] + e[0] * fwd, q[1] + e[1] * fwd];
+      parts.push([[[P[0] + n[0], P[1] + n[1]], [Q[0] + n[0], Q[1] + n[1]], [Q[0] - n[0], Q[1] - n[1]], [P[0] - n[0], P[1] - n[1]]]]);
+    }
+    for (let i = closed ? 0 : 1; i <= pts.length - 2; i++) {     /* vertex i joins segment i-1 to segment i */
+      const a = dirs[(i - 1 + dirs.length) % dirs.length], b = dirs[i], v = pts[i];
+      const turn = Math.abs(Math.atan2(a[0] * b[1] - a[1] * b[0], a[0] * b[0] + a[1] * b[1]));
+      if (turn < 1e-4) continue;                                  /* straight on: the bands meet */
+      if (round && turn > 0.3) { parts.push(disc(v, hw)); continue; }
+      /* a wedge fills the notch the two bands leave on the outer side of the bend */
+      const out = (a[0] * b[1] - a[1] * b[0]) < 0 ? 1 : -1;      /* the side the bend opens on */
+      const c = [v[0] - out * (a[0] + b[0]) * 0.15, v[1] - out * (a[1] + b[1]) * 0.15];   /* apex sunk into the bands */
+      parts.push([[c, [v[0] + out * a[0], v[1] + out * a[1]], [v[0] + out * b[0], v[1] + out * b[1]]]]);
+    }
+    if (round && !closed) parts.push(disc(pts[0], hw), disc(pts[pts.length - 1], hw));
+  }
+  return parts.length ? PC().union(...parts) : [];
+}
+
+/* Everything a shape paints. Eyes are left out: they change when a pet drowns. */
+export function areaOf(s) {
+  if (s.t === "eye") return [];
+  const subs = subpaths(s), parts = [];
+  if (s.fill) parts.push(fillArea(subs.map(p => p.pts)));
+  if (s.stroke) parts.push(strokeArea(subs, s.w || 0.05, s.cap === "round"));
+  return parts.length ? PC().union(...parts) : [];
+}
+
+export function combine(shapes) { const a = shapes.map(areaOf).filter(m => m.length); return a.length ? PC().union(...a) : []; }
+export function cutOut(subject, cutters) {
+  const base = areaOf(subject), cuts = cutters.map(areaOf).filter(m => m.length);
+  return cuts.length ? PC().difference(base, ...cuts) : base;
+}
+
+/* A multipolygon as one path: a closed sub-path per ring, straight edges, thinned. */
+export function areaToPath(mp, tol = 0.003) {
+  const d = [];
+  for (const poly of mp) {
+    for (const ring of poly) {
+      let pts = simplify(ring, tol);
+      if (pts.length > 1 && Math.hypot(pts[0][0] - pts.at(-1)[0], pts[0][1] - pts.at(-1)[1]) < 1e-9) pts = pts.slice(0, -1);
+      if (pts.length < 3 || Math.abs(signedArea(pts)) < 1e-6) continue;    /* specks */
+      pts.forEach((p, i) => d.push([i ? "L" : "M", R5(p[0]), R5(p[1])]));
+      d.push(["Z"]);
+    }
+  }
+  return d.length ? d : null;
+}
+
+/* Fewer points on the straight-edged sub-paths: the tolerance grows until about a
+   quarter of the points go. Curved sub-paths are left alone. False if nothing changed. */
+export function simplifyPath(s) {
+  const before = anchorCount(s);
+  for (let tol = 0.002; tol < 0.08; tol *= 1.6) {
+    const d = [];
+    let sub = [], open = null, curved = false;
+    const flush = closed => {
+      if (!sub.length) return;
+      let pts = curved ? null : simplify(closed ? [...sub, sub[0]] : sub, tol);
+      if (pts && closed) pts = pts.slice(0, -1);
+      if (!pts || pts.length < (closed ? 3 : 2)) d.push(...open);
+      else pts.forEach((p, i) => d.push([i ? "L" : "M", R5(p[0]), R5(p[1])]));
+      if (closed) d.push(["Z"]);
+      sub = []; open = null; curved = false;
+    };
+    for (const c of s.d) {
+      if (c[0] === "M") { flush(false); open = [c]; sub = [[c[1], c[2]]]; continue; }
+      if (c[0] === "Z") { if (open) flush(true); else d.push(c); continue; }
+      if (!open) { d.push(c); continue; }
+      open.push(c);
+      if (c[0] !== "L") curved = true;
+      sub.push([c[c.length - 2], c[c.length - 1]]);
+    }
+    flush(false);
+    const n = d.filter(c => c[0] !== "Z").length;
+    if (n <= before * 0.75 || tol * 1.6 >= 0.08) { if (n >= before) return false; s.d = d; return true; }
+  }
+  return false;
+}
+
 export { R5 };
