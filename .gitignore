@@ -19,3 +19,9 @@ AtlasWaterTracker/
 Project_Catalog/
 atlas-catalog-*.json
 atlas-catalog-*.csv
+
+# Kit Studio Python source, builds and runtime data are local only. Never commit them.
+Kit_Studio/
+*.kitproj
+*.pdf
+*.csv

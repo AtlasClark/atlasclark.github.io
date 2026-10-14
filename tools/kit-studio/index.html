@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<!--
+  Kit Studio — Atlas Devices tools
+  Scope: component kitting for consigned PCB builds. Load one or more BOMs
+  (Standard BOM Template .xlsx exports), set a build order, build quantity and
+  attrition per BOM, enter on-hand quantities, and switch lines or whole
+  assemblies on and off. Required = ceil(qty/board × build qty × (1 + attrition)).
+  Shortages show at once. Output: kit PDF (cover sheet + Avery 5163 labels) and a
+  packing list PDF. An imported parts list (CSV) fills blank Atlas PN,
+  manufacturer and description fields by manufacturer part number.
+  Web port of the desktop Kit Studio 2.5 (rev 5); .kitproj session files load in both.
+
+  All data stays on the operator's machine: the working kit and the parts list
+  are kept in this browser (IndexedDB); sessions save to .kitproj files you keep.
+  No BOM, parts list, session or PDF is ever committed — .gitignore blocks
+  *.csv, *.pdf, *.xlsx and *.kitproj.
+
+  The CSP below blocks all network requests from scripts; the page loads
+  nothing from other hosts (fonts in fonts/, SIL OFL 1.1; jsPDF in vendor/, MIT).
+  Bump REV in js/app.js on each change.
+-->
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' blob: data:; worker-src 'none'; frame-src 'none'; form-action 'none'; base-uri 'none'">
+<meta name="referrer" content="no-referrer">
+<title>Kit Studio</title>
+<meta name="theme-color" content="#0B0C0A">
+<link rel="icon" type="image/png" href="../../assets/brand/favicon-64.png">
+<style>
+  @font-face { font-family: "Geist"; src: url("fonts/Geist-Variable.woff2") format("woff2"); font-weight: 100 900; font-display: swap; }
+  @font-face { font-family: "Geist Mono"; src: url("fonts/GeistMono-Variable.woff2") format("woff2"); font-weight: 100 900; font-display: swap; }
+  /* ===== Atlas Devices brand tokens — mirrored from atlasclark.github.io ===== */
+  :root {
+    --font: "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    --mono: "Geist Mono", ui-monospace, "SFMono-Regular", Consolas, monospace;
+    --radius-sm: 10px;
+    --lime: #D0DD2B;
+    --on-lime: #10110E;
+    --wordmark-src: url("../../assets/brand/wordmark.png");
+  }
+  [data-theme="light"] {
+    --bg: #F3F3EE; --bg2: #ECECE5; --surface: #FBFBF8; --surface2: #F3F3EE;
+    --border: #DCDCD3; --text: #10110E; --ink-2: #3A3B35; --text-dim: #5E5F57; --text-faint: #9A9B91;
+    --input-bg: #FBFBF8; --hover: #EEEEE7; --row-alt: rgba(16,17,14,.025); --sel: rgba(140,152,0,.14);
+    --accent-text: #5F6A00;
+    --shadow-lg: 0 24px 60px rgba(16,17,14,.16);
+    --green: #3E8A4E; --yellow: #A87A06; --red: #B8402F; --red-bg: rgba(184,64,47,.12); --purple: #6E4FAE;
+    color-scheme: light;
+  }
+  [data-theme="dark"] {
+    --bg: #0B0C0A; --bg2: #10110E; --surface: #131411; --surface2: #1A1B17;
+    --border: #24251F; --text: #ECEDE6; --ink-2: #B9BAB1; --text-dim: #9C9D94; --text-faint: #65665E;
+    --input-bg: #10110E; --hover: #1B1C18; --row-alt: rgba(236,237,230,.022); --sel: rgba(208,221,43,.10);
+    --accent-text: #D0DD2B;
+    --shadow-lg: 0 24px 70px rgba(0,0,0,.55);
+    --green: #86C98F; --yellow: #E2C14E; --red: #EE7B68; --red-bg: rgba(238,123,104,.14); --purple: #B49CEB;
+    color-scheme: dark;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body {
+    font-family: var(--font); font-size: 14px; -webkit-font-smoothing: antialiased;
+    background: var(--bg); color: var(--text);
+    display: flex; flex-direction: column; overflow: hidden;
+  }
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 6px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--text-faint); }
+  ::selection { background: var(--lime); color: var(--on-lime); }
+  :focus-visible { outline: 2px solid var(--accent-text); outline-offset: 2px; }
+
+  /* ===== Top bar ===== */
+  .topbar {
+    position: relative; z-index: 20; display: flex; align-items: center; gap: 20px;
+    padding: 0 24px; min-height: 62px; flex-wrap: wrap;
+    background: color-mix(in srgb, var(--bg) 86%, transparent);
+    border-bottom: 1px solid var(--border);
+  }
+  a.brand { color: inherit; text-decoration: none; }
+  .brand { display: flex; align-items: center; gap: 14px; font-weight: 500; font-size: 17px; }
+  .brand .wordmark {
+    display: none; width: 132px; aspect-ratio: 900 / 152; background: var(--text);
+    -webkit-mask: var(--wordmark-src) center / contain no-repeat; mask: var(--wordmark-src) center / contain no-repeat;
+  }
+  .has-wm .brand .wordmark { display: block; }
+  .has-wm .brand .wm-text { display: none; }
+  .wm-text { font: 600 15px var(--font); letter-spacing: .06em; }
+  .wm-text b { font-weight: 400; margin-left: 5px; color: var(--text-dim); }
+  .brand .div { width: 1px; height: 18px; background: var(--border); }
+  .brand-lbl {
+    display: flex; align-items: center; gap: 9px;
+    font: 500 12px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--text-dim);
+  }
+  .pulse { width: 7px; height: 7px; border-radius: 50%; background: var(--lime); animation: brandPulse 2.4s ease-out infinite; flex-shrink: 0; }
+  @keyframes brandPulse {
+    0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--lime) 70%, transparent); }
+    70%, 100% { box-shadow: 0 0 0 9px transparent; }
+  }
+  .topbar .actions { display: flex; gap: 8px; margin-left: auto; align-items: center; }
+  .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--text-faint); flex-shrink: 0; }
+  .dot.on { background: var(--green); }
+
+  /* ===== Buttons / inputs ===== */
+  .btn {
+    border: 1px solid var(--border); background: var(--surface); color: var(--text);
+    font-family: inherit; font-size: 13px; font-weight: 500; height: 36px; padding: 0 13px;
+    border-radius: var(--radius-sm); cursor: pointer; display: inline-flex; align-items: center; gap: 7px;
+    white-space: nowrap; transition: transform .15s, border-color .15s, background-color .15s, color .15s;
+  }
+  .btn:hover { border-color: var(--ink-2); transform: translateY(-1px); }
+  .btn:disabled { opacity: .45; cursor: default; transform: none; border-color: var(--border); }
+  .btn-icon { width: 36px; padding: 0; justify-content: center; }
+  .btn-primary, .btn-primary:hover { background: var(--text); color: var(--bg); border: 1px solid var(--text); }
+  .btn-primary:hover { background: var(--lime); border-color: var(--lime); color: var(--on-lime); }
+  .btn-danger:hover { border-color: var(--red); color: var(--red); background: transparent; }
+  .icon-btn {
+    border: none; background: transparent; color: var(--text-dim); cursor: pointer;
+    font-size: 13px; padding: 3px 6px; border-radius: 6px; font-family: inherit;
+  }
+  .icon-btn:hover { background: var(--hover); color: var(--text); }
+  input, select {
+    font-family: var(--font); font-size: 13.5px; color: var(--text);
+    background: var(--input-bg); border: 1px solid var(--border); border-radius: var(--radius-sm);
+    padding: 7px 11px; outline: none; transition: border .15s; height: 36px;
+  }
+  input:focus, select:focus { border-color: var(--ink-2); }
+  input::placeholder { color: var(--text-faint); }
+  input[type="checkbox"] { accent-color: var(--text); height: auto; width: 15px; height: 15px; cursor: pointer; }
+  .search-wrap { position: relative; }
+  .search-wrap input { padding-left: 32px; width: 300px; }
+  .search-wrap::before {
+    content: "⌕"; position: absolute; left: 11px; top: 50%; transform: translateY(-54%);
+    color: var(--text-faint); font-size: 16px; pointer-events: none;
+  }
+
+  /* ===== Toolbars ===== */
+  main { position: relative; z-index: 1; flex: 1; min-height: 0; display: flex; flex-direction: column; }
+  .toolbar { display: flex; align-items: center; gap: 10px; padding: 12px 24px 0; flex-wrap: wrap; }
+  .toolbar .spacer { flex: 1; }
+  .toolbar .vsep { width: 1px; height: 22px; background: var(--border); }
+  .grp { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0; }
+  .grp-lbl { font: 500 10.5px var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--text-faint); }
+  .mini-lbl { font: 500 10.5px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--text-dim); }
+  #defBo { width: 130px; font-family: var(--mono); font-weight: 600; color: var(--accent-text); }
+  #defQty { width: 86px; } #defAttr { width: 78px; }
+
+  /* ===== Kit table ===== */
+  .grid-wrap { flex: 1; min-height: 0; overflow: auto; margin: 12px 24px 14px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); }
+  .grid-wrap:focus-visible { outline: none; border-color: var(--ink-2); }
+  table.kit { border-collapse: separate; border-spacing: 0; width: 100%; min-width: 1400px; font-size: 12.5px; table-layout: fixed; }
+  .kit th {
+    position: sticky; top: 0; z-index: 2; background: var(--surface2); text-align: left; white-space: nowrap;
+    font: 500 10.5px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--text-dim);
+    padding: 9px 8px; border-bottom: 1px solid var(--border);
+  }
+  .kit td { padding: 5px 8px; border-bottom: 1px solid color-mix(in srgb, var(--border) 60%, transparent); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 0; }
+  .kit .c-chk { width: 34px; text-align: center; }
+  .kit .c-item { width: 50px; text-align: center; }
+  .kit .c-atlas { width: 118px; } .kit .c-mpn { width: 180px; } .kit .c-mfr { width: 140px; }
+  .kit .c-ref { width: 150px; } .kit .c-sub { width: 150px; }
+  .kit .c-qty, .kit .c-req, .kit .c-oh, .kit .c-short { width: 76px; text-align: center; }
+  .kit td.c-atlas, .kit td.c-mpn, .kit td.c-ref, .kit td.c-qty, .kit td.c-req, .kit td.c-oh, .kit td.c-short, .kit td.c-item { font-family: var(--mono); font-size: 12px; }
+  .kit td.ed { cursor: text; }
+  .kit tr.line:nth-child(even of .line) td { background: var(--row-alt); }
+  .kit tr.line:hover td { background: var(--hover); }
+  .kit tr.sel td, .kit tr.sel:hover td { background: var(--sel); }
+  .kit tr.off td { color: var(--text-faint); text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--text-faint) 70%, transparent); }
+  .kit tr.off td.c-chk { text-decoration: none; }
+  .kit tr.pcb td { color: var(--purple); font-style: italic; }
+  .kit tr.pcb.off td { color: color-mix(in srgb, var(--purple) 45%, var(--text-faint)); }
+  .kit td.req-auto { color: var(--accent-text); font-weight: 600; }
+  .kit td.req-ov { color: var(--yellow); font-weight: 600; }
+  .kit td.oh-ok { color: var(--green); }
+  .kit td.oh-short { color: var(--yellow); }
+  .kit td.short { color: var(--red); background: var(--red-bg) !important; font-weight: 700; }
+  .kit tr.hide { display: none; }
+  .kit td input.cell-ed {
+    width: 100%; height: 24px; padding: 2px 6px; border-radius: 5px; font: inherit; font-style: normal;
+    border-color: var(--accent-text); color: var(--text); text-decoration: none;
+  }
+
+  /* BOM group row */
+  .kit tr.bom td { background: var(--surface2); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); padding: 0 8px; height: 40px; cursor: default; }
+  .kit tr.bom.sel td { background: color-mix(in srgb, var(--lime) 10%, var(--surface2)); }
+  .bom-head { display: flex; align-items: center; gap: 12px; min-width: 0; }
+  .bom-head .caret { all: unset; cursor: pointer; color: var(--text-faint); font-size: 11px; width: 16px; text-align: center; transition: transform .15s; }
+  .bom-head .caret:focus-visible { outline: 2px solid var(--accent-text); border-radius: 4px; }
+  tr.bom:not(.shut) .caret { transform: rotate(90deg); }
+  .bom-name { font: 600 13px var(--mono); color: var(--accent-text); white-space: nowrap; }
+  .chipx { font: 500 11px var(--mono); letter-spacing: .03em; padding: 3px 9px; border: 1px solid var(--border); border-radius: 999px; color: var(--ink-2); white-space: nowrap; cursor: pointer; background: transparent; }
+  .chipx:hover { border-color: var(--ink-2); color: var(--text); }
+  .chipx.warn { color: var(--yellow); border-color: color-mix(in srgb, var(--yellow) 50%, var(--border)); }
+  .chipx.bad { color: var(--red); border-color: color-mix(in srgb, var(--red) 50%, var(--border)); cursor: default; }
+  .bom-desc { color: var(--text-dim); font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 1; }
+  .bom-count { font: 400 11px var(--mono); color: var(--text-faint); white-space: nowrap; }
+
+  .empty-state {
+    margin: auto; text-align: center; padding: 60px 20px; max-width: 560px;
+    font-family: var(--mono); font-size: 12px; letter-spacing: .03em; color: var(--text-faint); line-height: 1.7;
+  }
+  .empty-state .big { font-size: 40px; margin-bottom: 10px; opacity: .35; }
+  .empty-state b { color: var(--text-dim); font-weight: 500; }
+  .empty-state .btn { margin-top: 18px; }
+
+  /* drop target */
+  body.drag::after {
+    content: "Drop BOM .xlsx, a parts list .csv, or a .kitproj session"; position: fixed; inset: 12px; z-index: 300;
+    display: grid; place-items: center; border: 2px dashed var(--accent-text); border-radius: 16px;
+    background: color-mix(in srgb, var(--bg) 82%, transparent); font: 500 14px var(--mono); color: var(--accent-text);
+  }
+
+  /* ===== Modal ===== */
+  .overlay {
+    position: fixed; inset: 0; background: color-mix(in srgb, var(--bg) 70%, transparent);
+    backdrop-filter: blur(4px); display: none; align-items: flex-start; justify-content: center;
+    z-index: 100; padding: 7vh 16px;
+  }
+  .overlay.open { display: flex; }
+  .modal {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 16px;
+    width: 560px; max-width: 100%; max-height: 86vh; overflow-y: auto; box-shadow: var(--shadow-lg);
+    animation: pop .18s ease;
+  }
+  .modal.wide { width: 760px; }
+  @keyframes pop { from { transform: translateY(14px) scale(.98); opacity: 0; } }
+  .modal-head { display: flex; align-items: center; padding: 16px 20px; border-bottom: 1px solid var(--border); }
+  .modal-head h3 { font-size: 15.5px; font-weight: 500; letter-spacing: -.01em; flex: 1; }
+  .modal-body { padding: 18px 20px; display: flex; flex-direction: column; gap: 13px; font-size: 13.5px; line-height: 1.5; }
+  .modal-body p { color: var(--text-dim); }
+  .modal-body ul { padding-left: 18px; color: var(--text-dim); font-family: var(--mono); font-size: 12px; }
+  .modal-foot { display: flex; justify-content: flex-end; gap: 9px; padding: 14px 20px; border-top: 1px dashed var(--border); flex-wrap: wrap; }
+  .modal-foot .spacer { flex: 1; }
+  .field { display: flex; flex-direction: column; gap: 5px; }
+  .field label { font: 500 10.5px var(--mono); text-transform: uppercase; letter-spacing: .08em; color: var(--text-faint); }
+  .field input, .field select { width: 100%; }
+  .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .note { font-size: 12px; color: var(--text-faint); }
+  .kv { display: grid; grid-template-columns: auto 1fr; gap: 4px 14px; font: 400 12px var(--mono); color: var(--text-dim); }
+  .kv b { color: var(--text); font-weight: 500; }
+  .preview { width: 100%; border-collapse: collapse; font: 400 11.5px var(--mono); }
+  .preview th { text-align: left; font-weight: 500; color: var(--text-faint); text-transform: uppercase; letter-spacing: .06em; font-size: 10px; padding: 4px 6px; border-bottom: 1px solid var(--border); }
+  .preview td { padding: 4px 6px; border-bottom: 1px dashed var(--border); max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .hit { font: 400 12px var(--mono); color: var(--text-dim); min-height: 18px; }
+  .hit.ok { color: var(--green); } .hit.miss { color: var(--yellow); }
+
+  /* ===== Toast ===== */
+  #toasts { position: fixed; bottom: 44px; right: 20px; display: flex; flex-direction: column; gap: 8px; z-index: 200; }
+  .toast {
+    background: var(--surface); border: 1px solid var(--border); border-left: 3px solid var(--lime);
+    padding: 11px 16px; border-radius: 10px; font-size: 13px; font-weight: 500; box-shadow: var(--shadow-lg);
+    animation: slidein .25s ease; max-width: 420px;
+  }
+  .toast.warn { border-left-color: var(--yellow); }
+  .toast.err { border-left-color: var(--red); }
+  @keyframes slidein { from { transform: translateX(30px); opacity: 0; } }
+
+  /* ===== Status bar ===== */
+  .statusbar {
+    position: relative; z-index: 20; display: flex; align-items: center; gap: 12px;
+    min-height: 28px; padding: 0 24px; border-top: 1px solid var(--border);
+    background: color-mix(in srgb, var(--bg) 86%, transparent);
+    font: 400 11px var(--mono); letter-spacing: .04em; color: var(--text-faint);
+    white-space: nowrap; overflow: hidden;
+  }
+  .statusbar > span { flex-shrink: 0; }
+  .statusbar #stats, .statusbar #saveStat { flex-shrink: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .statusbar .grow { flex: 1; }
+  .statusbar .sep { width: 1px; height: 12px; background: var(--border); }
+  .statusbar .alert { color: var(--red); font-weight: 600; }
+  .statusbar .rev { color: var(--accent-text); }
+
+  @media (max-width: 640px) {
+    .topbar, .toolbar { padding-left: 16px; padding-right: 16px; }
+    .grid-wrap { margin-left: 16px; margin-right: 16px; }
+    .search-wrap input { width: 200px; }
+    .statusbar { padding: 0 16px; }
+    .statusbar .hide-sm { display: none; }
+    .field-row { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="../../" title="Atlas Devices Tools, home">
+      <span class="wordmark" role="img" aria-label="Atlas Devices"></span>
+      <span class="wm-text">ATLAS<b>DEVICES</b></span>
+      <span class="div"></span>
+      <div class="brand-lbl"><span class="pulse"></span>Kit Studio</div>
+    </a>
+    <div class="actions">
+      <button class="btn" id="partsBtn" title="Parts list (CSV) — fills blank Atlas PN, manufacturer and description"><span class="dot" id="partsDot"></span><span id="partsLbl">Parts list</span></button>
+      <button class="btn btn-icon" id="themeBtn" title="Toggle light / dark theme" aria-label="Toggle color theme">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="4.5"/><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M5.3 18.7l1.4-1.4M17.3 6.7l1.4-1.4"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <main>
+    <div class="toolbar">
+      <button class="btn btn-primary" id="addBtn" title="Add BOM file(s) (Ctrl+O)">＋ Add BOMs</button>
+      <span class="vsep"></span>
+      <div class="grp" title="Applied to each BOM you add. Each BOM keeps its own values.">
+        <span class="grp-lbl">New BOM defaults</span>
+        <span class="mini-lbl">B/O</span><input id="defBo" placeholder="BO-XXXXX" autocomplete="off" spellcheck="false">
+        <span class="mini-lbl">Qty</span><input id="defQty" type="number" min="1" max="100000" step="1" value="1">
+        <span class="mini-lbl">Attr %</span><input id="defAttr" type="number" min="0" max="100" step="0.5" value="5">
+        <button class="btn" id="applyAllBtn" title="Set these values on every loaded BOM">Apply to All</button>
+      </div>
+      <div class="spacer"></div>
+      <button class="btn" id="loadBtn" title="Open a .kitproj session file">Load Session</button>
+      <button class="btn" id="saveBtn" title="Save the kit as a .kitproj session file (Ctrl+S)">Save Session</button>
+      <button class="btn btn-danger" id="newBtn" title="Clear the kit and start again">New Kit</button>
+    </div>
+    <div class="toolbar">
+      <div class="search-wrap"><input type="text" id="filter" placeholder="Filter by PN, RefDes, description…  (Ctrl+F)" autocomplete="off" spellcheck="false"></div>
+      <span class="vsep"></span>
+      <button class="btn" id="enAllBtn">Enable All</button>
+      <button class="btn" id="disAllBtn">Disable All</button>
+      <button class="btn" id="fillBtn" title="Set On Hand = Required on every enabled line">Fill On-Hand = Req</button>
+      <button class="btn" id="unshipBtn" title="Disable enabled lines with blank or zero On Hand">Disable Not-Shipping</button>
+      <div class="spacer"></div>
+      <button class="btn" id="packBtn">Export Packing List</button>
+      <button class="btn btn-primary" id="pdfBtn" title="Cover sheet + Avery 5163 labels (Ctrl+G)">⬡ Generate Kit PDF</button>
+    </div>
+    <div class="grid-wrap" id="gridWrap" tabindex="0" aria-label="Kit lines"></div>
+  </main>
+
+  <div class="overlay" id="overlay">
+    <div class="modal" id="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+      <div class="modal-head"><h3 id="modalTitle"></h3><button class="icon-btn" id="modalX" style="font-size:17px" aria-label="Close">✕</button></div>
+      <div class="modal-body" id="modalBody"></div>
+      <div class="modal-foot" id="modalFoot"></div>
+    </div>
+  </div>
+
+  <footer class="statusbar">
+    <span title="This page has no network access. Files are read in memory; the kit and parts list stay in this browser.">Local only</span>
+    <span class="sep hide-sm"></span>
+    <span id="stats"></span>
+    <span class="alert" id="shortStat"></span>
+    <span class="grow"></span>
+    <span class="hide-sm" id="saveStat"></span>
+    <span class="sep hide-sm"></span>
+    <span class="rev" id="rev"></span>
+  </footer>
+
+  <input type="file" id="bomFile" accept=".xlsx,.xlsm,.xltx" multiple hidden>
+  <input type="file" id="sessFile" accept=".kitproj,.json" hidden>
+  <input type="file" id="csvFile" accept=".csv,.tsv,.txt" hidden>
+  <div id="toasts"></div>
+
+  <script src="vendor/jspdf.umd.min.js"></script>
+  <script src="js/xlsx.js"></script>
+  <script src="js/model.js"></script>
+  <script src="js/pdf.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
