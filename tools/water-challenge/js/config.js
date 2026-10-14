@@ -3,8 +3,8 @@
    contract (FORMAT_REV 21, UTF-16 LE + BOM) must stay identical while R55 runs on the
    share: R55 deletes any field it does not know on its next write. */
 
-export const REV         = "rev 1.15.0";
-export const APP_VERSION = "web 1.15.0";   /* stamped as writerVersion */
+export const REV         = "rev 1.16.0";
+export const APP_VERSION = "web 1.16.0";   /* stamped as writerVersion */
 /* A folder stays at LEGACY_FORMAT (byte-compatible with R55) until someone upgrades
    it from Settings. Format 22 adds tokensSpent and keeps unknown fields; R55 must
    not be used on a folder after that. */
@@ -197,6 +197,15 @@ export function narrowCup() {
 }
 export const DIVE_EVERY     = [25, 60];   /* random gap between dives */
 export const HOP_EVERY      = [9, 24];    /* random gap between small hops */
+/* Visits: now and then a pet leaps to the glass beside it (same row, left or right),
+   plays there, then leaps home. Only on screen: nothing is saved, and each screen
+   picks its own visits, since every screen lays the glasses out its own way. */
+export const VISIT_EVERY     = [30, 90];  /* seconds between a pet's chances to go */
+export const VISIT_CHANCE    = 0.08;      /* the chance each time: about one visit per 12 minutes */
+export const VISIT_STAY      = [20, 45];  /* seconds it stays */
+export const VISIT_JUMP_SECS = 1.15;      /* the leap between glasses */
+export const VISIT_PLAY      = 0.3;       /* dive and hop gaps scale by this for guest and host */
+export const VISIT_MIN_LEVEL = 0.15;      /* both glasses need this much water */
 /* A dive is one continuous path: down and forward, back up, out of the water on a
    gravity arc at the speed it rose, and a splash on landing. */
 export const DIVE_UNDER_SECS = 2.3;       /* time under the surface */

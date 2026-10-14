@@ -254,3 +254,102 @@ test("walls: a pet's own swim range makes it wander less; its reach still limits
   assert.equal(P.defs[0].range, 1, "clamped to 1");
   P.applyDefs({ format: 1, pets: {} });
 });
+
+/* ---- visits between glasses ---------------------------------------------- */
+function glassRow(names, cols) {
+  G.applyLayout(G.pickLayout(8, 748));
+  G.dims.cols = cols;
+  G.setOrder(names);
+  return names.map(n => {
+    const st = G.animState(n);
+    st.duckState = 1; st.critterKind = 0; st.level = st.target = 0.5; st.dcv = {};
+    st.visit = null; st.guest = null;
+    Object.assign(st.m, { dive: -1, hop: -1, drop: -1, nextVisit: 1e9 });
+    return st;
+  });
+}
+const steps = (secs) => { for (let i = 0; i < secs * 30; i++) G.stepVisits(1); };
+
+test("visits: only the glass beside it in the same row is a neighbour", () => {
+  glassRow(["n1", "n2", "n3", "n4", "n5"], 3);
+  assert.deepEqual(G.neighborsOf("n1"), ["n2"]);
+  assert.deepEqual(G.neighborsOf("n2"), ["n1", "n3"]);
+  assert.deepEqual(G.neighborsOf("n3"), ["n2"], "the row ends at three");
+  assert.deepEqual(G.neighborsOf("n4"), ["n5"], "next row");
+  assert.deepEqual(G.neighborsOf("nobody"), []);
+});
+
+test("visits: leap over, play faster, leap home", () => {
+  const [a, b] = glassRow(["va", "vb", "vc"], 3);
+  assert.ok(G.startVisit("va", "vb"));
+  assert.equal(G.visitOf("va").stage, "out");
+  assert.equal(b.guest, "va", "the host is taken from the start");
+  steps(C.VISIT_JUMP_SECS + 0.1);
+  assert.equal(G.visitOf("va").stage, "there");
+  assert.equal(b.play, C.VISIT_PLAY, "the host plays more");
+  assert.equal(a.visit.sw.play, C.VISIT_PLAY, "and so does the guest");
+  a.visit.until = a.m.t;                                   /* the stay is up */
+  a.visit.sw.m.dive = -1; a.visit.sw.m.hop = -1;
+  steps(0.1);
+  assert.equal(G.visitOf("va").stage, "back");
+  assert.equal(b.guest, null);
+  steps(C.VISIT_JUMP_SECS + 0.1);
+  assert.equal(G.visitOf("va"), null, "home");
+  assert.equal(b.play, 1);
+});
+
+test("visits: a new ranking that moves the glasses apart sends the guest home", () => {
+  glassRow(["ra", "rb", "rc"], 3);
+  G.startVisit("ra", "rb");
+  steps(C.VISIT_JUMP_SECS + 0.1);
+  assert.equal(G.visitOf("ra").stage, "there");
+  G.setOrder(["ra", "rc", "rb"]);                          /* rb is no longer beside ra */
+  steps(0.05);
+  assert.equal(G.visitOf("ra").stage, "back", "leaves at once, even mid-stay");
+  steps(C.VISIT_JUMP_SECS + 0.1);
+  assert.equal(G.visitOf("ra"), null);
+});
+
+test("visits: drowning, a new pet or a glass leaving the screen end a visit", () => {
+  const [a, b] = glassRow(["da", "db"], 2);
+  G.startVisit("da", "db");
+  G.startSink("da", 0, 0);
+  assert.equal(G.visitOf("da"), null, "goes under at home");
+  assert.equal(b.guest, null);
+  glassRow(["da", "db"], 2);
+  G.startVisit("da", "db"); steps(C.VISIT_JUMP_SECS + 0.1);
+  G.startSink("db", 0, 0);                                 /* the host's pet goes under */
+  assert.equal(G.visitOf("da").stage, "back");
+  glassRow(["da", "db"], 2);
+  G.startVisit("da", "db");
+  b.dcv = null;                                            /* the host's glass went off screen */
+  steps(0.05);
+  assert.equal(G.visitOf("da"), null);
+  glassRow(["da", "db"], 2);
+  G.startVisit("da", "db");
+  a.critterKind = 3;                                       /* wears a different pet now */
+  steps(0.05);
+  assert.equal(G.visitOf("da"), null);
+});
+
+test("visits: only from a settled pet with water, to a free neighbour with water", () => {
+  const real = Math.random;
+  Math.random = () => 0;                                   /* every chance comes up */
+  try {
+    let [a, b] = glassRow(["ea", "eb"], 2);
+    b.level = b.target = 0.05;                             /* almost dry */
+    a.m.nextVisit = 0; steps(0.05);
+    assert.equal(G.visitOf("ea"), null, "not into a dry glass");
+    [a, b] = glassRow(["ea", "eb"], 2);
+    a.m.dive = 0.5; a.m.nextVisit = 0;
+    G.stepVisits(1);
+    assert.equal(G.visitOf("ea"), null, "not mid-dive");
+    [a, b] = glassRow(["ea", "eb"], 2);
+    b.guest = "someone";
+    a.m.nextVisit = 0; steps(0.05);
+    assert.equal(G.visitOf("ea"), null, "one guest at a time");
+    [a, b] = glassRow(["ea", "eb"], 2);
+    a.m.nextVisit = 0; G.stepVisits(1);
+    assert.equal(G.visitOf("ea").host, "eb", "otherwise it goes");
+  } finally { Math.random = real; }
+});

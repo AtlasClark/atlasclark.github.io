@@ -149,8 +149,10 @@ function buildGlasses() {
     }
     h.push('</div></div>');
   });
+  h.push('<canvas class="flight" id="flightCv" aria-hidden="true"></canvas>');   /* pets leaping between glasses */
   $("glasses").innerHTML = h.join("");
   G.unbindAll();
+  G.bindFlight($("flightCv"));
   ordered.forEach((p, i) => {
     G.bindCanvases(p.name, $("cv_" + i), $("dc_" + i), T.gw, T.gh);
     G.animState(p.name).hatIs = "";
@@ -160,6 +162,7 @@ function buildGlasses() {
 
 function renderGlasses() {
   ordered = orderedBy(C.CARD_ORDER);
+  G.setOrder(ordered.map(p => p.name));
   relayout();
   if (!S.participants.length) {
     $("glasses").innerHTML = '<p class="empty-state">Add a participant to begin.</p>';
