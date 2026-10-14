@@ -17,7 +17,7 @@ import * as G from "./glass.js";
 import { diag, dir } from "./store.js";
 import { defs as petDefs, hats as petHats, petSource } from "./petdefs.js";
 import { shownKind, hiddenPets, shownBalance, hiddenIds } from "./reveal.js";
-import { shopOpen, balance, spentTotal, spendsOn, earnedTotal, chestWinnings } from "./shop.js";
+import { shopOpen, balance, spentTotal, spendsOn, earnedTotal, chestWinnings, shopDay } from "./shop.js";
 import { $, esc, fmt, fmtOz, fmtGal, todayKey, dateKey, prettyTime, clockStamp, has, parseKey, shiftKey } from "./util.js";
 
 /* Set by app.js: the Shop tab renders from shopui.js, which imports this module. */
@@ -609,19 +609,58 @@ function recapHtml() {
            (g >= 2 ? ' <b class="pip pip-goal">' + g + 'G</b>' : '') + '</span>';
   }).join("") : '<p class="dim">Nobody this time.</p>') + '</div>');
 
-  const ev = [];
+  /* Pets: what changed in each pen. Plinko is folded to one line per person (new
+     pets only); every drop is counted in the shop strip below instead. */
+  const ev = [], shop = [];
+  const icon = k => k >= 0 && k < C.PET_COUNT ? '<i class="pi pi-' + k + '"></i>' : '';
+  const names = ks => { const l = ks.map(k => "the " + esc(petLabel(k)));
+    return l.length <= 3 ? l.join(l.length === 2 ? " and " : ", ").replace(/, ([^,]*)$/, " and $1") : l.slice(0, 3).join(", ") + " and " + (l.length - 3) + " more"; };
   for (const p of S.participants) {
-    const r = rollOn(p, day), g = graveOn(p, day);
-    if (r) ev.push('<li>' + (r.k < C.PET_COUNT ? '<i class="pi pi-' + r.k + '"></i>' : '') + '<strong>' + esc(p.name) + '</strong> ' +
-                   (r.fresh ? 'unlocked the ' : 'rolled another ') + esc(petLabel(r.k)) + '</li>');
-    if (g !== null) ev.push('<li><i class="pi pi-grave"></i><strong>' + esc(p.name) + '</strong> drowned the ' + esc(petLabel(g)) + '</li>');
-    for (const s of spendsOn(p, day)) ev.push('<li class="rc-shop">' + spendLine(p, s, "") + '</li>');
+    const r = rollOn(p, day), g = graveOn(p, day), d = shopDay(p, day), who = '<strong>' + esc(p.name) + '</strong> ';
+    const line = (ic, text) => '<li>' + ic + '<span class="rc-t">' + who + text + '</span></li>';   /* name and text wrap as one */
+    if (r) ev.push(line(icon(r.k), (r.fresh ? 'unlocked the ' : 'rolled another ') + esc(petLabel(r.k))));
+    if (g !== null) ev.push(line('<i class="pi pi-grave"></i>', 'drowned the ' + esc(petLabel(g))));
+    for (const s of d.rerolls) ev.push('<li class="rc-shop">' + spendLine(p, s, "") + '</li>');
+    for (const s of d.buys) ev.push(line(icon(Number(s.pet)), 'bought the ' + esc(petLabel(Number(s.pet))) + (s.revived ? ' back from the grave' : '')));
+    if (d.fresh.length) ev.push(line(icon(d.fresh[0]), 'won ' + names(d.fresh) + ' on Plinko'));
+    if (d.revived.length) ev.push(line(icon(d.revived[0]), 'won ' + names(d.revived) + ' back from the grave on Plinko'));
+    if (d.drops || d.buys.length || d.rerolls.length) shop.push({ p, d });
   }
   h.push('<div><h4>Pets</h4>' + (ev.length ? '<ul class="rc-pets">' + ev.join("") + '</ul>' : '<p class="dim">No pet news.</p>') + '</div>');
 
   h.push('<div><h4>Sat out</h4>' + (satOut.length ? satOut.map(r => '<span class="rc-chip dim"><i class="dot" style="background:' + r.color +
          '"></i>' + esc(r.name) + '</span>').join("") : '<p class="dim">Everyone played.</p>') + '</div>');
-  h.push('</div></section>');
+  h.push('</div>');
+  if (shop.length) h.push(recapShop(shop));
+  h.push('</section>');
+  return h.join("");
+}
+
+/* The token shop on the recap day: a total, then one line per person. */
+function recapShop(shop) {
+  const sum = (f) => shop.reduce((a, x) => a + f(x.d), 0);
+  const drops = sum(d => d.drops), spent = sum(d => d.spent), winners = shop.filter(x => x.d.chestWon > 0);
+  const h = ['<div class="recap-shop"><h4>Token shop</h4><p class="rc-shop-sum">' +
+             drops + ' Plinko drop' + (drops === 1 ? '' : 's') + ' &middot; ' + spent + ' token' + (spent === 1 ? '' : 's') + ' spent' +
+             (sum(d => d.chestIn) ? ' &middot; ' + sum(d => d.chestIn) + ' into the Community Chest' : '') +
+             winners.map(x => ' &middot; <b class="rc-win">' + esc(x.p.name) + ' won the chest: ' + x.d.chestWon + ' tokens</b>').join("") +
+             '</p><ul class="rc-shop-list">'];
+  shop.sort((a, b) => b.d.spent - a.d.spent || (a.p.name < b.p.name ? -1 : 1));
+  for (const { p, d } of shop) {
+    const bits = [];
+    if (d.drops) bits.push(d.drops + ' drop' + (d.drops === 1 ? '' : 's'));
+    if (d.fresh.length + d.revived.length) bits.push((d.fresh.length + d.revived.length) + ' new');
+    if (d.repeats) bits.push(d.repeats + ' repeat' + (d.repeats === 1 ? '' : 's'));
+    if (d.chestIn) bits.push(d.chestIn + ' into the chest');
+    if (d.empty) bits.push(d.empty + ' returned');
+    if (d.buys.length) bits.push(d.buys.length + ' bought');
+    if (d.rerolls.length) bits.push('rerolled');
+    h.push('<li><i class="dot" style="background:' + p.color + '"></i><strong>' + esc(p.name) + '</strong>' +
+           '<span class="rc-spent"><span class="coin sm"></span>' + d.spent + '</span>' +
+           '<span class="dim">' + bits.join(' &middot; ') + '</span>' +
+           (d.chestWon ? '<span class="pill good">won ' + d.chestWon + '</span>' : '') + '</li>');
+  }
+  h.push('</ul></div>');
   return h.join("");
 }
 

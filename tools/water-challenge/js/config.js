@@ -3,8 +3,8 @@
    contract (FORMAT_REV 21, UTF-16 LE + BOM) must stay identical while R55 runs on the
    share: R55 deletes any field it does not know on its next write. */
 
-export const REV         = "rev 1.16.0";
-export const APP_VERSION = "web 1.16.0";   /* stamped as writerVersion */
+export const REV         = "rev 1.16.1";
+export const APP_VERSION = "web 1.16.1";   /* stamped as writerVersion */
 /* A folder stays at LEGACY_FORMAT (byte-compatible with R55) until someone upgrades
    it from Settings. Format 22 adds tokensSpent and keeps unknown fields; R55 must
    not be used on a folder after that. */

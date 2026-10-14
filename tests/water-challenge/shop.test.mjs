@@ -348,3 +348,26 @@ test("community chest: the token goes in; an empty chest only adds; a win takes 
   assert.equal(shop.chestWinnings(rich), 3);
   assert.ok(Math.abs(C.CHEST_CHANCE - 0.05) < 1e-12);
 });
+
+test("recap: a shop day folds into counts per person", () => {
+  const day = "2026-10-13", at = day + "T12:00:00", p = { name: "x", spends: [
+    { id: "a", at, kind: "plinko", cost: 1, pet: 7, fresh: true },
+    { id: "b", at, kind: "plinko", cost: 1, pet: 3, fresh: true, revived: true },
+    { id: "c", at, kind: "plinko", cost: 1, pet: 9, fresh: false },
+    { id: "d", at, kind: "plinko", cost: 1, pet: 9, fresh: false },
+    { id: "e", at, kind: "plinko", cost: 1, pet: -1, chest: { add: 1, won: 0 } },
+    { id: "f", at, kind: "plinko", cost: 1, pet: -1, chest: { add: 1, won: 12 } },
+    { id: "g", at, kind: "plinko", cost: 0, pet: -1 },
+    { id: "h", at, kind: "buy", cost: 35, pet: 4 },
+    { id: "i", at, kind: "reroll", cost: 1, pet: 2, from: 0 },
+    { id: "j", at: "2026-10-12T12:00:00", kind: "plinko", cost: 1, pet: 5, fresh: true } ] };
+  const d = shop.shopDay(p, day);
+  assert.equal(d.drops, 7);
+  assert.deepEqual(d.fresh, [7]);
+  assert.deepEqual(d.revived, [3]);
+  assert.equal(d.repeats, 2);
+  assert.equal(d.empty, 1);
+  assert.equal(d.chestIn, 2); assert.equal(d.chestWon, 12);
+  assert.equal(d.buys.length, 1); assert.equal(d.rerolls.length, 1);
+  assert.equal(d.spent, 6 + 35 + 1, "every token that day");
+});

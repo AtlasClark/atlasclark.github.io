@@ -184,4 +184,23 @@ export function pendingDrops(p, inFlight, landed, now, holdMs) {
 }
 
 /* Today's and a given day's shop events, for the activity feed and the recap. */
+/* One person's shop day in short, for the recap: what Plinko gave and cost (new pets,
+   pets back from the grave, repeats, chest), what was bought, the rerolls. */
+export function shopDay(p, key) {
+  const d = { drops: 0, spent: 0, fresh: [], revived: [], repeats: 0, empty: 0, chestIn: 0, chestWon: 0, buys: [], rerolls: [] };
+  for (const s of spendsOn(p, key)) {
+    d.spent += Number(s.cost) || 0;
+    if (s.kind === "plinko") {
+      d.drops++;
+      if (s.chest) { d.chestIn += Number(s.chest.add) || 0; d.chestWon += Number(s.chest.won) || 0; }
+      else if (!(Number(s.pet) >= 0)) d.empty++;
+      else if (s.revived) d.revived.push(Number(s.pet));
+      else if (s.fresh) d.fresh.push(Number(s.pet));
+      else d.repeats++;
+    } else if (s.kind === "buy") d.buys.push(s);
+    else if (s.kind === "reroll") d.rerolls.push(s);
+  }
+  return d;
+}
+
 export function spendsOn(p, key) { return (p.spends || []).filter(s => String(s.at).slice(0, 10) === key); }
