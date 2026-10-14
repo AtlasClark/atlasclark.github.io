@@ -202,3 +202,38 @@ test("identity: usernames come from the data, and a near-miss is caught", () => 
     assert.deepEqual(M.matchUser("gjuan"), {}, "a new person is not flagged");
   } finally { M.S.participants = keep; }
 });
+
+test("walls: each pet's reach is measured, and its drawing stays inside the glass facing either way", async () => {
+  const e = G.critterExtent(0);
+  assert.ok(Math.abs(e.left - 1.18) < 0.01 && Math.abs(e.right - 0.52) < 0.01, "the duck: beak 1.18 r ahead, tail 0.52 r behind");
+  assert.ok(G.critterExtent(C.MYSTERY_KIND).right > 1.4, "the dragon's tail reaches far behind");
+  for (const [n, w] of [[8, 343], [8, 748], [3, 1300]]) {                /* narrowest and widest glasses */
+    G.applyLayout(G.pickLayout(n, w));
+    const r = G.petR(), W = G.dims.W;
+    for (let k = 0; k < C.PET_MAX; k++) {
+      const st = G.animState("w" + k + "-" + w), x = G.critterExtent(k);
+      st.duckState = 1; st.critterKind = k;
+      for (const flip of [1, -1, 0.3]) {
+        st.m.flip = flip;
+        for (let i = 0; i < 64; i++) {
+          st.phase = i / 64 * 2 * Math.PI / 0.31;
+          st.m.xs = i % 2 ? r * 1.6 : -r * 1.6;                          /* as if a dive pushed it either way */
+          const px = G.petX(st);
+          const left = (flip >= 0 ? flip * x.left : -flip * x.right) * r, right = (flip >= 0 ? flip * x.right : -flip * x.left) * r;
+          if (left + right + 2 * r * C.WALL_GAP_R > W) { assert.equal(px, W / 2, "too wide for this glass: centred"); continue; }
+          assert.ok(px - left >= -1e-9 && px + right <= W + 1e-9, C.PET_NAMES[k] + " in a " + W + "px glass, facing " + flip + ": " + (px - left).toFixed(1) + ".." + (px + right).toFixed(1));
+        }
+      }
+    }
+  }
+});
+
+test("walls: a dive near the wall turns round toward open water", () => {
+  const st = pet(0.8, 0.8), r = G.petR();
+  st.critterKind = 0;
+  st.m.face = st.m.flip = st.m.drift = 1;                                 /* facing left */
+  st.phase = 1.5 * Math.PI / 0.31;                                        /* the far left of its drift */
+  run(st, 0.1);
+  assert.ok(st.m.dive >= 0, "dived");
+  assert.equal(st.m.fwd, 1, "heading right, away from the left wall");
+});

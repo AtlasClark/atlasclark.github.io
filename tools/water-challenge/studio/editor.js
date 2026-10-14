@@ -3,7 +3,7 @@
 
 import { drawShapes, tracePath, colourOf } from "../js/petdefs.js";
 import { critterCrown } from "../js/art.js";
-import { TALLEST_PET_R, UNDERWATER_TINT } from "../js/config.js";
+import { TALLEST_PET_R, UNDERWATER_TINT, CARD_MIN, GLASS_W_RATIO, PET_R_SHARE, PET_R_MAX, SWIM_RANGE, WALL_GAP_R } from "../js/config.js";
 import * as G from "./geom.js";
 
 const HANDLE = 5, PICK = 7, SNAP = 0.02;
@@ -500,6 +500,7 @@ export class Editor {
       ctx.beginPath(); ctx.moveTo(0, hy); ctx.lineTo(W, hy); ctx.stroke(); ctx.setLineDash([]);
       ctx.fillStyle = css("--headroom"); ctx.fillText("headroom: keep the pet below this line", 8, hy - 5);
     }
+    if (swimPose) this.cupWalls(shapes || []);
     this.forwardArrow(hat ? oy + 0.5 * z : swimPose ? oy + 0.22 * z : oy + 0.9 * z, hat);
 
     /* selection */
@@ -584,6 +585,42 @@ export class Editor {
       ctx.strokeStyle = css("--sel"); ctx.lineWidth = 1; ctx.strokeRect(x0, y0, x1 - x0, y1 - y0);
     }
   }
+  /* The narrowest glass, centred on the pet: its walls (solid), and how far the drawing
+     can reach and still swim the full range (dashed). Further out it swims less of
+     the width; wider than the glass, it stays in the middle. Same rules as glass.js. */
+  cupWalls(shapes) {
+    const { ctx, view: { ox, oy, z }, h: H } = this;
+    const W = Math.round(CARD_MIN * GLASS_W_RATIO) - 8, r = Math.min(W * PET_R_SHARE, PET_R_MAX), half = W / r / 2;
+    const full = half - SWIM_RANGE * W / r - WALL_GAP_R, fit = half - WALL_GAP_R;
+    const line = (x, dash, col) => {
+      ctx.setLineDash(dash); ctx.strokeStyle = col;
+      for (const s of [-1, 1]) { const sx = Math.round(ox + s * x * z) + 0.5; ctx.beginPath(); ctx.moveTo(sx, 0); ctx.lineTo(sx, H); ctx.stroke(); }
+    };
+    ctx.save();
+    ctx.lineWidth = 1.5; ctx.globalAlpha = 0.8;
+    line(half, [], css("--headroom"));
+    ctx.lineWidth = 1; ctx.globalAlpha = 0.7;
+    line(full, [5, 5], css("--accent"));
+    ctx.globalAlpha = 1;
+    ctx.font = "11px Segoe UI, system-ui, sans-serif"; ctx.textAlign = "left";
+    ctx.fillStyle = css("--headroom"); ctx.fillText("cup wall", ox + half * z + 5, oy - TALLEST_PET_R * z + 16);
+    ctx.fillStyle = css("--accent"); ctx.fillText("full swim", ox + full * z + 5, oy - TALLEST_PET_R * z + 32);
+
+    const vis = shapes.filter(s => s.show !== "dead");
+    const b = G.bounds(vis);
+    if (b) {
+      const reach = Math.max(-b.x0, b.x1);
+      const share = Math.max(0, Math.min(1, (half - reach - WALL_GAP_R) / (SWIM_RANGE * W / r)));
+      const text = reach > fit ? "Reach " + reach.toFixed(2) + " r: wider than the narrowest glass, so it stays in the middle there"
+                 : reach <= full ? "Reach " + reach.toFixed(2) + " r: swims the full width"
+                 : "Reach " + reach.toFixed(2) + " r: swims " + Math.round(share * 100) + "% of the full range";
+      ctx.fillStyle = reach > fit ? css("--danger") : reach <= full ? css("--accent") : css("--headroom");
+      ctx.font = "700 11.5px Segoe UI, system-ui, sans-serif";
+      ctx.fillText(text, 10, H - 12);
+    }
+    ctx.restore();
+  }
+
   /* Pets are drawn facing left: that way is forward when they swim, and the glass
      mirrors the drawing when they turn. */
   forwardArrow(y, hat) {

@@ -3,8 +3,8 @@
    contract (FORMAT_REV 21, UTF-16 LE + BOM) must stay identical while R55 runs on the
    share: R55 deletes any field it does not know on its next write. */
 
-export const REV         = "rev 1.13.0";
-export const APP_VERSION = "web 1.13.0";   /* stamped as writerVersion */
+export const REV         = "rev 1.14.0";
+export const APP_VERSION = "web 1.14.0";   /* stamped as writerVersion */
 /* A folder stays at LEGACY_FORMAT (byte-compatible with R55) until someone upgrades
    it from Settings. Format 22 adds tokensSpent and keeps unknown fields; R55 must
    not be used on a folder after that. */
@@ -178,6 +178,14 @@ export const BUBBLE_WOBBLE  = 2.4;
 /* Pet motion. Applied around the drawing (position, facing, tilt, tint), never
    inside the shapes, so it survives new pet graphics. Times in seconds. */
 export const PET_MOTION     = true;
+/* Pet size and swim range. r = min(glass width x PET_R_SHARE, PET_R_MAX), so a glass
+   is 3.9 to 4.1 r wide. A pet swims SWIM_RANGE of the width either side of the middle,
+   less when its drawing reaches further than that leaves room for, and always keeps
+   WALL_GAP_R from the walls, facing either way. The Pet Studio draws these limits. */
+export const PET_R_SHARE    = 0.26;
+export const PET_R_MAX      = 30;
+export const SWIM_RANGE     = 0.21;
+export const WALL_GAP_R     = 0.06;
 export const DIVE_EVERY     = [25, 60];   /* random gap between dives */
 export const HOP_EVERY      = [9, 24];    /* random gap between small hops */
 /* A dive is one continuous path: down and forward, back up, out of the water on a

@@ -8,6 +8,7 @@
 import * as C from "./config.js";
 import { rnd } from "./util.js";
 import { drawCritter, drawHeadstone } from "./art.js";
+import { defs as petDefs } from "./petdefs.js";
 
 export const anim = {};
 const reduceMotion = typeof window !== "undefined" && window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)");
@@ -34,7 +35,56 @@ export function pickLayout(count, avail) {
   return best;
 }
 
-export const petR = () => Math.min(dims.W * 0.26, 30);
+export const petR = () => Math.min(dims.W * C.PET_R_SHARE, C.PET_R_MAX);
+
+/* How far a pet's drawing reaches left and right of its anchor, in r, as drawn
+   (facing left): { left, right }. Measured once per drawing on a recording context. */
+const extents = {};
+export function critterExtent(kind) {
+  const def = petDefs[kind] || null, c = extents[kind];
+  if (c && c.def === def) return c.e;
+  const b = new BoundsCtx();
+  try { drawCritter(b, 0, 0, 100, 0, false, false, kind, 0, false); } catch { }
+  const e = b.x0 <= b.x1 ? { left: Math.max(0, -b.x0 / 100), right: Math.max(0, b.x1 / 100) } : { left: 0.6, right: 0.6 };
+  extents[kind] = { def, e };
+  return e;
+}
+
+/* A canvas stand-in that only tracks the box of what is filled or stroked. */
+class BoundsCtx {
+  constructor() {
+    this.m = [1, 0, 0, 1, 0, 0]; this.st = []; this.pts = [];
+    this.x0 = Infinity; this.x1 = -Infinity;
+    this.lineWidth = 1; this.fillStyle = this.strokeStyle = ""; this.lineCap = this.lineJoin = this.font = this.textAlign = "";
+    this.globalAlpha = 1; this.globalCompositeOperation = "";
+  }
+  save() { this.st.push({ m: this.m.slice(), lw: this.lineWidth }); }
+  restore() { const s = this.st.pop(); if (s) { this.m = s.m; this.lineWidth = s.lw; } }
+  translate(x, y) { const m = this.m; m[4] += m[0] * x + m[2] * y; m[5] += m[1] * x + m[3] * y; }
+  scale(x, y) { const m = this.m; m[0] *= x; m[1] *= x; m[2] *= y; m[3] *= y; }
+  rotate(a) { const m = this.m, c = Math.cos(a), s = Math.sin(a), [a0, b0, c0, d0] = m;
+    m[0] = a0 * c + c0 * s; m[1] = b0 * c + d0 * s; m[2] = c0 * c - a0 * s; m[3] = d0 * c - b0 * s; }
+  p(x, y) { const m = this.m; this.pts.push(m[0] * x + m[2] * y + m[4]); this.last = [x, y]; }
+  beginPath() { this.pts = []; }
+  moveTo(x, y) { this.p(x, y); }
+  lineTo(x, y) { this.p(x, y); }
+  quadraticCurveTo(a, b, x, y) { this.p(a, b); this.p(x, y); }            /* controls bound the curve */
+  bezierCurveTo(a, b, c, d, x, y) { this.p(a, b); this.p(c, d); this.p(x, y); }
+  arc(x, y, r, a0, a1) { this.ellipse(x, y, r, r, 0, a0, a1); }
+  ellipse(x, y, rx, ry, rot, a0, a1) {
+    for (let i = 0; i <= 24; i++) {
+      const t = a0 + (a1 - a0) * i / 24, ex = rx * Math.cos(t), ey = ry * Math.sin(t);
+      this.p(x + ex * Math.cos(rot) - ey * Math.sin(rot), y + ex * Math.sin(rot) + ey * Math.cos(rot));
+    }
+  }
+  rect(x, y, w, h) { this.p(x, y); this.p(x + w, y + h); }
+  closePath() { }
+  commit(pad) { for (const x of this.pts) { this.x0 = Math.min(this.x0, x - pad); this.x1 = Math.max(this.x1, x + pad); } }
+  fill() { this.commit(0); }
+  stroke() { this.commit(this.lineWidth * Math.hypot(this.m[0], this.m[1]) / 2); }
+  fillRect(x, y, w, h) { this.beginPath(); this.rect(x, y, w, h); this.fill(); }
+  clearRect() { } fillText() { } setLineDash() { }
+}
 
 export function applyLayout(lay) {
   if (lay.card === dims.card && lay.cols === dims.cols) return false;
@@ -103,10 +153,18 @@ export function unbindAll() { for (const k in anim) { anim[k].ctx = null; anim[k
 const motionOn = () => C.PET_MOTION && !(reduceMotion && reduceMotion.matches);
 const depthAt = level => Math.min(Math.max(level, 0), 1) * (dims.H - C.SURFACE_BAND);
 const surfaceY = st => dims.H - Math.min(Math.max(st.level, 0), 1) * (dims.H - C.SURFACE_BAND);
-/* Drift across the glass, plus whatever ground a dive covered, kept inside the walls. */
-function petX(st) {
-  const r = petR(), x = dims.W / 2 + Math.sin(st.phase * 0.31) * (dims.W * 0.21) + (st.m.xs || 0);
-  return Math.max(r * 0.8, Math.min(dims.W - r * 0.8, x));
+/* Drift across the glass, plus whatever ground a dive covered. The drift is narrowed
+   for a pet whose drawing reaches far (so it turns before the wall, facing either
+   way), and the drawing as it faces now is kept inside the walls. */
+export function petX(st) {
+  const r = petR(), m = st.m, e = critterExtent(st.critterKind || 0), gap = r * C.WALL_GAP_R;
+  const reach = Math.max(e.left, e.right) * r;
+  const amp = Math.max(0, Math.min(dims.W * C.SWIM_RANGE, dims.W / 2 - reach - gap));
+  const x = dims.W / 2 + Math.sin(st.phase * 0.31) * amp + (m.xs || 0);
+  const s = motionOn() ? m.flip : 1;
+  const left = (s >= 0 ? s * e.left : -s * e.right) * r, right = (s >= 0 ? s * e.right : -s * e.left) * r;
+  const lo = left + gap, hi = dims.W - right - gap;
+  return lo > hi ? dims.W / 2 : Math.max(lo, Math.min(hi, x));
 }
 
 /* Enough water under the surface for a dive, now and where the level is heading. */
@@ -166,6 +224,10 @@ function startDive(st) {
                   Math.min(rise, Math.sqrt(2 * g * r * C.BREACH_R)));  /* a cap for a deep one */
   m.tb = 2 * m.vb / g;
   m.xs0 = m.xs; m.fwd = -m.face;                                    /* pets are drawn facing left */
+  /* Too close to the wall ahead to cover the dive: turn round and dive the other way. */
+  const x = petX(st), front = critterExtent(st.critterKind || 0).left * r + r * C.WALL_GAP_R;
+  const room = fwd => (fwd < 0 ? x : dims.W - x) - front;
+  if (room(m.fwd) < r * C.DIVE_FORWARD_R && room(-m.fwd) > room(m.fwd)) { m.face = -m.face; m.fwd = -m.face; }
 }
 const diveSecs = m => C.DIVE_UNDER_SECS + m.tb;
 
