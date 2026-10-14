@@ -18,6 +18,7 @@
 import * as C from "./config.js";
 
 export const PET_DEFS_FORMAT = 1;
+/* A pet may also carry range (0..1): its share of the normal swim range. */
 export const defs = {};            /* kind -> pet, only the redrawn ones */
 export const hats = {};            /* "crown" | "jester" -> { pal, shapes }, only the redrawn ones */
 export const HAT_KEYS = ["crown", "jester"];
@@ -64,7 +65,8 @@ export function applyDefs(obj) {
     if (!swim.length) continue;
     const portrait = Array.isArray(p.portrait) ? p.portrait.map(s => cleanShape(s, pal)).filter(Boolean) : null;
     const crown = Array.isArray(p.crown) && p.crown.length === 2 && p.crown.every(fin) ? p.crown : [0, -1];
-    defs[k] = { pal, swim, portrait: portrait && portrait.length ? portrait : null, crown };
+    const range = fin(p.range) ? Math.max(0, Math.min(1, p.range)) : 1;
+    defs[k] = { pal, swim, portrait: portrait && portrait.length ? portrait : null, crown, range };
     if (typeof p.name === "string" && p.name.trim()) C.PET_NAMES[k] = p.name.trim().slice(0, 24);
     took.push(k);
   }

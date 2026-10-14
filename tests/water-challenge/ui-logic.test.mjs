@@ -237,3 +237,20 @@ test("walls: a dive near the wall turns round toward open water", () => {
   assert.ok(st.m.dive >= 0, "dived");
   assert.equal(st.m.fwd, 1, "heading right, away from the left wall");
 });
+
+test("walls: a pet's own swim range makes it wander less; its reach still limits it", async () => {
+  const P = await import(pathToFileURL(path.join(JS, "petdefs.js")));
+  G.applyLayout(G.pickLayout(8, 748));
+  const W = G.dims.W, st = G.animState("range-test");
+  st.duckState = 1; st.critterKind = 0; st.m.flip = 1; st.m.xs = 0;
+  const swing = () => { let m = 0; for (let i = 0; i < 200; i++) { st.phase = i / 200 * 2 * Math.PI / 0.31; m = Math.max(m, Math.abs(G.petX(st) - W / 2)); } return m; };
+  const small = { pal: { b: { c: "#888888" } }, swim: [{ t: "ell", x: 0, y: -0.3, rx: 0.3, ry: 0.3, fill: "b" }], crown: [0, -1] };
+  P.applyDefs({ format: 1, pets: { "0": small } });
+  const full = swing();
+  assert.ok(Math.abs(full - W * C.SWIM_RANGE) < 0.5, "a small pet swims the normal range");
+  P.applyDefs({ format: 1, pets: { "0": Object.assign({ range: 0.5 }, small) } });
+  assert.ok(Math.abs(swing() - full / 2) < 0.5, "range 0.5: half as far");
+  P.applyDefs({ format: 1, pets: { "0": Object.assign({ range: 7 }, small) } });
+  assert.equal(P.defs[0].range, 1, "clamped to 1");
+  P.applyDefs({ format: 1, pets: {} });
+});

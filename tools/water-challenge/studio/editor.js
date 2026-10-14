@@ -3,11 +3,13 @@
 
 import { drawShapes, tracePath, colourOf } from "../js/petdefs.js";
 import { critterCrown } from "../js/art.js";
-import { TALLEST_PET_R, UNDERWATER_TINT, CARD_MIN, GLASS_W_RATIO, PET_R_SHARE, PET_R_MAX, SWIM_RANGE, WALL_GAP_R } from "../js/config.js";
+import { TALLEST_PET_R, UNDERWATER_TINT, WALL_GAP_R, narrowCup } from "../js/config.js";
 import * as G from "./geom.js";
 
 const HANDLE = 5, PICK = 7, SNAP = 0.02;
 const css = name => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+
+const RANGE_HANDLE_Y = -1.75;              /* where the swim-range handles sit, in r */
 
 export const TOOL_HINTS = {
   select: "Click to select, Shift-click to add, drag to move. Double-click a path to add a point or bend a corner; Alt-click a point to delete it.",
@@ -119,6 +121,10 @@ export class Editor {
       const [x, y] = this.toScreen(this.app.def.crown[0], this.app.def.crown[1]);
       out.push({ type: "crown", x, y });
     }
+    if (this.app.def && this.app.pose === "swim" && !this.app.isHat && this.app.tool === "select") {
+      const lx = narrowCup().reachFor(this.app.range), [, y] = this.toScreen(0, RANGE_HANDLE_Y);
+      for (const s of [-1, 1]) out.push({ type: "range", x: this.toScreen(s * lx, 0)[0], y });
+    }
     if (!sel.length || this.app.tool !== "select") return out;
     const one = sel.length === 1 ? sel[0] : null;
     const b = G.bounds(sel);
@@ -207,6 +213,7 @@ export class Editor {
     const app = this.app;
     app.begin();
     if (h.type === "crown") { this.drag = { type: "crown" }; return; }
+    if (h.type === "range") { this.drag = { type: "range" }; return; }
     const sel = this.selected(), b = G.bounds(sel);
     if (h.type === "scale") {
       const cs = [[b.x0, b.y0], [b.x1, b.y0], [b.x1, b.y1], [b.x0, b.y1]];
@@ -234,7 +241,7 @@ export class Editor {
       if (this.draft) this.redraw();
       else if (app.tool === "select") {
         const h = this.handleAt(sx, sy);
-        this.cv.style.cursor = h ? (h.type === "rot" ? "grab" : "pointer") : this.space ? "grab" : this.pick(...w) >= 0 ? "move" : "default";
+        this.cv.style.cursor = h ? (h.type === "rot" ? "grab" : h.type === "range" ? "ew-resize" : "pointer") : this.space ? "grab" : this.pick(...w) >= 0 ? "move" : "default";
         this.redraw();
       } else this.cv.style.cursor = "crosshair";
       return;
@@ -272,6 +279,10 @@ export class Editor {
         G.moveAnchor(s, n.ci, target[0] - c[n.xi], target[1] - c[n.xi + 1]);
       }
       app.live();
+    } else if (d.type === "range") {
+      const cup = narrowCup(), v = (cup.half - WALL_GAP_R - Math.abs(w[0])) / cup.swim;
+      app.def.range = Math.max(0, Math.min(1, Math.round(v * 20) / 20));      /* 5% steps */
+      app.live();
     } else if (d.type === "crown") {
       const p = this.snapPt(w, e);
       app.def.crown = [G.R5(p[0]), G.R5(p[1])];
@@ -296,7 +307,7 @@ export class Editor {
     const d = this.drag, app = this.app;
     this.drag = null;
     if (!d) return;
-    if (["move", "scale", "rot", "rx", "ry", "node", "crown", "ref"].includes(d.type)) { app.commit(); return; }
+    if (["move", "scale", "rot", "rx", "ry", "node", "crown", "ref", "range"].includes(d.type)) { app.commit(); return; }
     if (d.type === "marquee") {
       const x0 = Math.min(d.w[0], d.cur[0]), x1 = Math.max(d.w[0], d.cur[0]), y0 = Math.min(d.w[1], d.cur[1]), y1 = Math.max(d.w[1], d.cur[1]);
       if ((x1 - x0) * this.view.z > 3 || (y1 - y0) * this.view.z > 3) {
@@ -589,9 +600,8 @@ export class Editor {
      can reach and still swim the full range (dashed). Further out it swims less of
      the width; wider than the glass, it stays in the middle. Same rules as glass.js. */
   cupWalls(shapes) {
-    const { ctx, view: { ox, oy, z }, h: H } = this;
-    const W = Math.round(CARD_MIN * GLASS_W_RATIO) - 8, r = Math.min(W * PET_R_SHARE, PET_R_MAX), half = W / r / 2;
-    const full = half - SWIM_RANGE * W / r - WALL_GAP_R, fit = half - WALL_GAP_R;
+    const { ctx, view: { ox, oy, z }, h: H } = this, cup = narrowCup(), range = this.app.range;
+    const half = cup.half, full = cup.reachFor(range), fit = half - WALL_GAP_R;
     const line = (x, dash, col) => {
       ctx.setLineDash(dash); ctx.strokeStyle = col;
       for (const s of [-1, 1]) { const sx = Math.round(ox + s * x * z) + 0.5; ctx.beginPath(); ctx.moveTo(sx, 0); ctx.lineTo(sx, H); ctx.stroke(); }
@@ -604,19 +614,24 @@ export class Editor {
     ctx.globalAlpha = 1;
     ctx.font = "11px Segoe UI, system-ui, sans-serif"; ctx.textAlign = "left";
     ctx.fillStyle = css("--headroom"); ctx.fillText("cup wall", ox + half * z + 5, oy - TALLEST_PET_R * z + 16);
-    ctx.fillStyle = css("--accent"); ctx.fillText("full swim", ox + full * z + 5, oy - TALLEST_PET_R * z + 32);
+    ctx.fillStyle = css("--accent");
+    ctx.fillText((range < 1 ? "swim range " + Math.round(range * 100) + "%" : "full swim") + " \u2194 drag", ox + full * z + 9, oy + RANGE_HANDLE_Y * z + 4);
 
     const vis = shapes.filter(s => s.show !== "dead");
     const b = G.bounds(vis);
     if (b) {
       const reach = Math.max(-b.x0, b.x1);
-      const share = Math.max(0, Math.min(1, (half - reach - WALL_GAP_R) / (SWIM_RANGE * W / r)));
+      const auto = Math.max(0, Math.min(1, (half - reach - WALL_GAP_R) / cup.swim)), share = Math.min(auto, range);
       const text = reach > fit ? "Reach " + reach.toFixed(2) + " r: wider than the narrowest glass, so it stays in the middle there"
-                 : reach <= full ? "Reach " + reach.toFixed(2) + " r: swims the full width"
-                 : "Reach " + reach.toFixed(2) + " r: swims " + Math.round(share * 100) + "% of the full range";
-      ctx.fillStyle = reach > fit ? css("--danger") : reach <= full ? css("--accent") : css("--headroom");
+                 : "Reach " + reach.toFixed(2) + " r: swims " + Math.round(share * 100) + "% of the normal range" +
+                   (range < 1 && range <= auto ? " (set by the swim range)" : auto < 1 ? " (limited by its size)" : "");
+      ctx.fillStyle = reach > fit ? css("--danger") : share < 1 ? css("--headroom") : css("--accent");
       ctx.font = "700 11.5px Segoe UI, system-ui, sans-serif";
       ctx.fillText(text, 10, H - 12);
+      if (-b.y0 > TALLEST_PET_R) {
+        ctx.fillStyle = css("--danger");
+        ctx.fillText("Taller than the headroom line: the top is cut off in the glass", 10, H - 28);
+      }
     }
     ctx.restore();
   }

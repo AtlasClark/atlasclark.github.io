@@ -3,8 +3,8 @@
    contract (FORMAT_REV 21, UTF-16 LE + BOM) must stay identical while R55 runs on the
    share: R55 deletes any field it does not know on its next write. */
 
-export const REV         = "rev 1.14.0";
-export const APP_VERSION = "web 1.14.0";   /* stamped as writerVersion */
+export const REV         = "rev 1.15.0";
+export const APP_VERSION = "web 1.15.0";   /* stamped as writerVersion */
 /* A folder stays at LEGACY_FORMAT (byte-compatible with R55) until someone upgrades
    it from Settings. Format 22 adds tokensSpent and keeps unknown fields; R55 must
    not be used on a folder after that. */
@@ -186,6 +186,15 @@ export const PET_R_SHARE    = 0.26;
 export const PET_R_MAX      = 30;
 export const SWIM_RANGE     = 0.21;
 export const WALL_GAP_R     = 0.06;
+/* A drawn pet can also set its own swim range ("range" in pets.json, 0 to 1 of
+   SWIM_RANGE) so a big creature wanders less; the reach limit still applies. */
+
+/* The narrowest glass in pet radii: half its width, and how far a drawing can reach
+   and still swim a given share of the range. The Pet Studio draws these. */
+export function narrowCup() {
+  const W = Math.round(CARD_MIN * GLASS_W_RATIO) - 8, r = Math.min(W * PET_R_SHARE, PET_R_MAX), wr = W / r;
+  return { half: wr / 2, swim: SWIM_RANGE * wr, reachFor: range => wr / 2 - range * SWIM_RANGE * wr - WALL_GAP_R };
+}
 export const DIVE_EVERY     = [25, 60];   /* random gap between dives */
 export const HOP_EVERY      = [9, 24];    /* random gap between small hops */
 /* A dive is one continuous path: down and forward, back up, out of the water on a

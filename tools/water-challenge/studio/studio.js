@@ -11,7 +11,7 @@ import { Editor, TOOL_HINTS } from "./editor.js";
 import { Preview } from "./preview.js";
 import * as G from "./geom.js";
 
-const REV = "studio 1.5.0";
+const REV = "studio 1.6.0";
 const PETS_URL = "../pets/pets.json";
 const $ = id => document.getElementById(id);
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -65,6 +65,7 @@ const app = {
   get dead() { return W.dead; },
   get water() { return W.water; },
   get crown() { return W.crown && !isHat(W.kind); },
+  get range() { const d = this.def; return d && d.range !== undefined ? d.range : 1; },
   get snap() { return W.snap; },
   get brush() { return W.brush; },
   get lastFill() { return this.def && this.def.pal[W.lastFill] ? W.lastFill : firstKey(); },
@@ -254,7 +255,8 @@ function autosave() {
 function normalize(p) {
   const pal = p.pal && Object.keys(p.pal).length ? p.pal : basePalette();
   return { name: typeof p.name === "string" ? p.name : "", crown: Array.isArray(p.crown) ? p.crown : [0, -1], pal,
-           swim: Array.isArray(p.swim) ? p.swim : [], portrait: Array.isArray(p.portrait) && p.portrait.length ? p.portrait : null };
+           swim: Array.isArray(p.swim) ? p.swim : [], portrait: Array.isArray(p.portrait) && p.portrait.length ? p.portrait : null,
+           range: typeof p.range === "number" ? Math.max(0, Math.min(1, p.range)) : 1 };
 }
 
 function loadFileObj(obj) {
@@ -328,6 +330,7 @@ function petsJson() {
     parts.push('      "about": ' + JSON.stringify(baseName(k)));
     if (d.name && d.name !== baseName(k)) parts.push('      "name": ' + JSON.stringify(d.name));
     parts.push('      "crown": ' + tidy(d.crown));
+    if (d.range !== undefined && d.range < 1) parts.push('      "range": ' + G.R5(d.range));
     parts.push('      "pal": {\n' + Object.entries(d.pal).map(([key, c]) => "        " + JSON.stringify(key) + ": " + tidy(c)).join(",\n") + "\n      }");
     parts.push('      "swim": ' + list(d.swim));
     if (d.portrait) parts.push('      "portrait": ' + list(d.portrait));
@@ -667,6 +670,10 @@ function petTab() {
     '<p class="note">Leave blank to keep &ldquo;' + esc(baseName(k)) + '&rdquo;. A new name shows on the site; the HTA keeps the old one.</p>' +
     '<div class="grid2"><div class="row"><label>Crown</label>' + num("cx", d.crown[0]) + '</div><div class="row"><label>&nbsp;</label>' + num("cy", d.crown[1]) + '</div></div>' +
     '<p class="note">Turn on <b>Crown</b> above to see it; drag the gold diamond to move it.</p>' +
+    '<div class="row"><label>Swim range</label><input type="number" data-f="range" data-focus="range" min="0" max="100" step="5" value="' +
+      Math.round((d.range !== undefined ? d.range : 1) * 100) + '"><span class="val">%</span></div>' +
+    '<p class="note">How far it wanders, as a share of the normal range. Lower it so a big creature moves less; ' +
+    'drag the dashed lines on the canvas to set it. A pet that reaches past them swims less anyway.</p>' +
     '<div class="sep"></div><h4>Portrait</h4><p class="note">' + (d.portrait ? 'This pet has its own full-body portrait.' : 'None: the Pets tab and unlock cards use the swim drawing.') + '</p>' +
     '<div class="btns">' + (d.portrait ? '<button type="button" class="btn small danger" data-act="port-del">Remove portrait</button>'
                                        : '<button type="button" class="btn small" data-act="port-copy">Copy swim to portrait</button><button type="button" class="btn small" data-act="port-blank">Blank portrait</button>') + '</div>' +
@@ -845,6 +852,7 @@ function wire() {
     if (t.dataset.f === "w") { commit(); return; }
     if (t.dataset.f === "tryon") { W.tryOn = Number(t.value); editor.redraw(); return; }
     if (t.dataset.f === "name") { const v = t.value.trim(); change(() => { if (v && v !== baseName(W.kind)) app.def.name = v.slice(0, 24); else app.def.name = ""; }); return; }
+    if (t.dataset.f === "range") { const n = Number(t.value); if (isFinite(n)) change(() => { app.def.range = Math.max(0, Math.min(1, n / 100)); }); return; }
     if (t.dataset.f === "cx" || t.dataset.f === "cy") { const n = Number(t.value); if (isFinite(n)) change(() => { app.def.crown[t.dataset.f === "cx" ? 0 : 1] = n; }); return; }
     if (t.dataset.f) { setShapeField(t.dataset.f, t.value, t); return; }
     if (t.dataset.pf) {

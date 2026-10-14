@@ -159,7 +159,8 @@ const surfaceY = st => dims.H - Math.min(Math.max(st.level, 0), 1) * (dims.H - C
 export function petX(st) {
   const r = petR(), m = st.m, e = critterExtent(st.critterKind || 0), gap = r * C.WALL_GAP_R;
   const reach = Math.max(e.left, e.right) * r;
-  const amp = Math.max(0, Math.min(dims.W * C.SWIM_RANGE, dims.W / 2 - reach - gap));
+  const def = petDefs[st.critterKind || 0], range = def && def.range !== undefined ? def.range : 1;
+  const amp = Math.max(0, Math.min(dims.W * C.SWIM_RANGE * range, dims.W / 2 - reach - gap));
   const x = dims.W / 2 + Math.sin(st.phase * 0.31) * amp + (m.xs || 0);
   const s = motionOn() ? m.flip : 1;
   const left = (s >= 0 ? s * e.left : -s * e.right) * r, right = (s >= 0 ? s * e.right : -s * e.left) * r;

@@ -3,7 +3,8 @@
    the Pets-tab icon at four hues. */
 
 import { drawCritter, drawPortrait, crownSvg, jesterSvg } from "../js/art.js";
-import { UNDERWATER_TINT } from "../js/config.js";
+import { UNDERWATER_TINT, SWIM_RANGE, WALL_GAP_R } from "../js/config.js";
+import { bounds } from "./geom.js";
 
 const css = name => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 
@@ -100,9 +101,12 @@ export class Preview {
     /* swimming, at glass size */
     const gw = Math.min(110, gh * 0.72), r1 = Math.min(gw * 0.26, 30);
     let x = 14;
+    /* the page's swim rule: the range set for this pet, narrowed by its reach */
     const sway = Math.sin(t * 0.55), face = Math.cos(t * 0.55) >= 0 ? -1 : 1;
+    const b = app.def ? bounds(app.def.swim.filter(q => q.show !== "dead")) : null, reach = b ? Math.max(-b.x0, b.x1) * r1 : r1;
+    const amp = Math.max(0, Math.min(gw * SWIM_RANGE * app.range, gw / 2 - reach - r1 * WALL_GAP_R));
     this.glass(x, top, gw, gh, 0.58, (L, s) => {
-      const px = x + gw / 2 + sway * gw * 0.2, py = s + Math.sin(t * 2.1) * r1 * 0.05;
+      const px = x + gw / 2 + sway * amp, py = s + Math.sin(t * 2.1) * r1 * 0.05;
       L.save(); L.translate(px, py); L.scale(face, 1);
       drawCritter(L, 0, 0, r1, Math.sin(t * 1.3) * 0.06, crown, false, k, hue, false);
       L.restore();
