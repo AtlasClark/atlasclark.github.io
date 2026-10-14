@@ -14,3 +14,8 @@ atlas-ops-*.json
 
 # Water Challenge source HTA and team data live on the fileshare. Never commit them.
 AtlasWaterTracker/
+
+# Project Catalog data is local only. Never commit it.
+Project_Catalog/
+atlas-catalog-*.json
+atlas-catalog-*.csv
