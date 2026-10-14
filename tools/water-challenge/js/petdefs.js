@@ -85,9 +85,17 @@ export async function loadPetDefs(url = "pets/pets.json") {
   try {
     const res = await fetch(url, { cache: "no-cache" });
     if (!res.ok) return [];
-    return applyDefs(await res.json());
+    siteObj = await res.json();
+    return applyDefs(siteObj);
   } catch { return []; }
 }
+
+/* Where the art in use came from: "site" (pets/pets.json) or "folder" (the data
+   folder's own file, which wins while it exists). */
+let siteObj = null;
+export const petSource = { from: "site", count: 0 };
+export function useFolderDefs(obj) { petSource.count = applyDefs(obj).length; petSource.from = "folder"; }
+export function useSiteDefs() { petSource.count = applyDefs(siteObj).length; petSource.from = "site"; }
 
 export function colourOf(pal, key, hue) {
   const c = pal[key];

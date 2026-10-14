@@ -9,10 +9,10 @@ import * as store from "./store.js";
 import { reconcilePets, equipPet } from "./pets.js";
 import * as G from "./glass.js";
 import { startLive, onLive, emit } from "./live.js";
-import { loadPetDefs } from "./petdefs.js";
+import { loadPetDefs, useFolderDefs, useSiteDefs } from "./petdefs.js";
 import { openRadial, wireRadial } from "./radial.js";
 import { initShop, renderShop, shopTabChanged, openShopFor } from "./shopui.js";
-import { ui, render, setTab, setMsg, showBanner, tickMasks, relayout, forceRebuild,
+import { ui, render, setTab, setMsg, showBanner, tickMasks, relayout, forceRebuild, resetIcons,
          toggleSwatches, openBank, auditStreak, showDiag, closeOverlays, fillSettings, renderRoster,
          renderActivityNow, showUnlock, uiHooks } from "./ui.js";
 import { $, esc, bus, todayKey, localStamp, fmt, fmtOz, trim, parseKey, shiftKey, clockStamp } from "./util.js";
@@ -70,10 +70,27 @@ async function reconcile() {
 
 let backedUp = "";               /* the day this page last made sure a backup exists */
 
+/* A _pets.json in the data folder replaces the site's pet art for that folder. */
+let petSig = "";
+async function syncFolderPets() {
+  let r;
+  try { r = await store.readFolderPets(); } catch (e) { store.diagNote("pet art: " + (e.message || e)); return; }
+  if (r.sig === petSig) return;
+  petSig = r.sig;
+  if (r.obj) { useFolderDefs(r.obj); store.diagNote("pet art from " + C.FOLDER_PETS_FILE); }
+  else {
+    if (r.error) store.diagNote(C.FOLDER_PETS_FILE + " is not valid JSON, so the site's art is used: " + r.error);
+    useSiteDefs();
+  }
+  resetIcons();
+  forceRebuild();
+}
+
 async function refresh() {
   await store.loadSettings();
   S.participants = await store.loadAll();
   dataChanged();
+  await syncFolderPets();
   if (backedUp !== todayKey()) {   /* before anything is written today */
     try { await store.backupIfDue(todayKey()); backedUp = todayKey(); }
     catch (e) { store.diagNote("backup failed: " + (e.message || e)); }

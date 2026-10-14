@@ -11,7 +11,7 @@ import { Editor, TOOL_HINTS } from "./editor.js";
 import { Preview } from "./preview.js";
 import * as G from "./geom.js";
 
-const REV = "studio 1.3.1";
+const REV = "studio 1.4.0";
 const PETS_URL = "../pets/pets.json";
 const $ = id => document.getElementById(id);
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -27,6 +27,7 @@ const W = {
   refs: {},               /* kind -> { swim: ref, portrait: ref }; ref = { src, x, y, w, op } */
   hist: {}, pending: null, clip: null,
   dirty: false, savedAt: "", dirHandle: null, refDrag: false,
+  target: null,           /* { file, data }: what Save writes in dirHandle */
   tryOn: 0                /* the pet shown under a hat while it is edited */
 };
 
@@ -270,17 +271,48 @@ function loadFileObj(obj) {
   }
 }
 
+/* Save writes pets.json into the repo's pets folder (publish with a push), or
+   _pets.json into a challenge data folder (the one with _settings.json): that
+   folder then uses this art at once, for testing, until the file is deleted. */
+const SITE_FILE = "pets.json", FOLDER_FILE = "_pets.json";
+async function targetOf(h) {
+  try { await h.getFileHandle("_settings.json"); return { file: FOLDER_FILE, data: true }; }
+  catch { return { file: SITE_FILE, data: false }; }
+}
+async function readJson(h, name) {
+  const f = await (await h.getFileHandle(name)).getFile();
+  return JSON.parse((await f.text()).replace(/^\uFEFF/, ""));
+}
+
 async function readSaved() {
   if (W.dirHandle) {
     try {
       if (await W.dirHandle.queryPermission({ mode: "readwrite" }) === "granted") {
-        const f = await (await W.dirHandle.getFileHandle("pets.json")).getFile();
-        return JSON.parse(await f.text());
+        W.target = await targetOf(W.dirHandle);
+        try { return await readJson(W.dirHandle, W.target.file); } catch { }
+        if (W.target.data) { try { return await readJson(W.dirHandle, SITE_FILE); } catch { } }   /* saved there under the old name */
       }
     } catch { }
   }
   const res = await fetch(PETS_URL, { cache: "no-store" });
   return res.ok ? res.json() : { format: 1, pets: {} };
+}
+
+async function pickSaveFolder() {
+  toast("Pick tools/water-challenge/pets in the repo to publish, or a challenge data folder to test there.");
+  let h;
+  try { h = await window.showDirectoryPicker({ id: "awc-pet-studio", mode: "readwrite" }); }
+  catch (e) { if (e.name !== "AbortError") toast("Could not open the folder: " + (e.message || e)); return false; }
+  const t = await targetOf(h);
+  if (!t.data && h.name !== "pets") {
+    let has = false;
+    try { await h.getFileHandle(SITE_FILE); has = true; } catch { }
+    if (!has && !confirm('"' + h.name + '" is neither the repo\'s pets folder nor a challenge data folder. Save pets.json there anyway?')) return false;
+  }
+  W.dirHandle = h; W.target = t;
+  try { await idb.set("dir", h); } catch { }
+  renderSaveState();
+  return true;
 }
 
 const R = v => typeof v === "number" ? G.R5(v) : v;
@@ -316,22 +348,24 @@ function petsJson() {
 async function saveToRepo() {
   const { text, count } = petsJson();
   try {
-    if (!W.dirHandle) {
-      toast("Pick the folder tools/water-challenge/pets in this repo.");
-      const h = await window.showDirectoryPicker({ id: "awc-pet-studio", mode: "readwrite" });
-      let ok = h.name === "pets";
-      try { await h.getFileHandle("pets.json"); ok = true; } catch { }
-      if (!ok && !confirm('That folder is "' + h.name + '", not "pets". Save pets.json there anyway?')) return;
-      W.dirHandle = h;
-      await idb.set("dir", h);
-    }
+    if (!W.dirHandle && !(await pickSaveFolder())) return;
     if (await W.dirHandle.requestPermission({ mode: "readwrite" }) !== "granted") { toast("Permission refused. Nothing saved."); return; }
-    const fh = await W.dirHandle.getFileHandle("pets.json", { create: true }), w = await fh.createWritable();
+    W.target = await targetOf(W.dirHandle);
+    const fh = await W.dirHandle.getFileHandle(W.target.file, { create: true }), w = await fh.createWritable();
     await w.write(text); await w.close();
     W.dirty = false;
     W.savedAt = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
     autosave();
-    toast("Saved " + count + " pet" + (count === 1 ? "" : "s") + " to pets/pets.json. Commit and push to put them on the site.");
+    const n = count + " item" + (count === 1 ? "" : "s");
+    if (!W.target.data) { toast("Saved " + n + " to pets/pets.json. Commit and push to put them on the site."); return; }
+    toast("Saved " + n + " to " + W.dirHandle.name + "/" + FOLDER_FILE + ". Everyone on that folder sees it on their next refresh.");
+    /* a pets.json in a data folder is read as a person's file and fails: offer to remove it */
+    let stray = false;
+    try { await W.dirHandle.getFileHandle(SITE_FILE); stray = true; } catch { }
+    if (stray && confirm("This data folder also has a pets.json (an earlier save under the site's name). The challenge page tries to read it " +
+                         "as a person's file. Delete it? Your art is now in " + FOLDER_FILE + ".")) {
+      try { await W.dirHandle.removeEntry(SITE_FILE); toast("Removed the stray pets.json."); } catch (e) { toast("Could not remove pets.json: " + (e.message || e)); }
+    }
   } catch (e) {
     if (e.name !== "AbortError") toast("Save failed: " + (e.message || e));
   }
@@ -374,6 +408,11 @@ function renderSaveState() {
   const el = $("saveState"), n = Object.values(W.pets).filter(p => p.edited).length;
   el.className = "save-state" + (W.dirty ? " dirty" : "");
   el.textContent = W.dirty ? "Unsaved changes" : W.savedAt ? "Saved " + W.savedAt : "No changes";
+  const t = $("saveTarget");
+  t.textContent = W.dirHandle ? "\u2192 " + W.dirHandle.name + (W.target ? "/" + W.target.file : "") + (W.target && W.target.data ? " (test art)" : "") : "";
+  t.title = W.target && W.target.data ? "A challenge data folder: everyone on it sees this art at once. Delete " + FOLDER_FILE + " there to go back to the site's art."
+                                      : "The repo's pets folder: commit and push to publish.";
+  $("saveBtn").textContent = W.target && W.target.data ? "Save to folder" : "Save to repo";
   $("editedCount").textContent = n ? n + " drawn" : "";
   $("undoBtn").disabled = !hist().u.length;
   $("redoBtn").disabled = !hist().r.length;
@@ -760,6 +799,7 @@ function wire() {
   $("redoBtn").onclick = () => undo(true);
   $("fitBtn").onclick = () => editor.fit();
   $("saveBtn").onclick = saveToRepo;
+  $("folderBtn").onclick = () => pickSaveFolder();
   $("exportBtn").onclick = exportFile;
   $("openBtn").onclick = () => $("openFile").click();
   $("openFile").addEventListener("change", e => { if (e.target.files[0]) openFile(e.target.files[0]); e.target.value = ""; });

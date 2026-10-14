@@ -174,3 +174,25 @@ test("hats: the page's icons use a redrawn hat, and drop it again", () => {
   P.applyDefs({ format: 1, pets: {} });
   assert.equal(A.crownSvg(26, 17, "crown"), built);
 });
+
+test("folder pet art: _pets.json in the data folder is read, never as a person, and replaces the site's art", async () => {
+  const { MemDir, web } = await import("./lib/bridge.mjs");
+  const mem = new MemDir("data"), enc = t => new TextEncoder().encode(t);
+  const art = { format: 1, pets: { "0": { name: "Test Duck", pal: { b: { c: "#123456" } }, swim: [{ t: "ell", x: 0, y: -0.3, rx: 0.5, ry: 0.4, fill: "b" }] } } };
+  web.store.setDir(mem);
+  assert.deepEqual(await web.store.readFolderPets(), { sig: "" }, "no file: nothing to use");
+  mem._f.set(C.FOLDER_PETS_FILE, { bytes: enc("﻿" + JSON.stringify(art)), mtime: 1000 });
+  const r = await web.store.readFolderPets();
+  assert.ok(r.sig && r.obj, "read, BOM and all");
+  P.useFolderDefs(r.obj);
+  assert.equal(P.petSource.from, "folder");
+  assert.equal(C.PET_NAMES[0], "Test Duck");
+  P.useSiteDefs();
+  assert.equal(P.petSource.from, "site");
+  assert.equal(C.PET_NAMES[0], "Duck", "back to the site's art (none loaded here)");
+  mem._f.set(C.FOLDER_PETS_FILE, { bytes: enc("{ not json"), mtime: 2000 });
+  const bad = await web.store.readFolderPets();
+  assert.ok(bad.error && !bad.obj && bad.sig !== r.sig, "a broken file is reported, not used");
+  const list = await web.store.loadAll();
+  assert.equal(list.length, 0); assert.equal(web.model.S.loadFailed, 0, "the loader skips _pets.json");
+});

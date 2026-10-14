@@ -479,6 +479,17 @@ export async function folderSignature() {
   return sig;
 }
 
+/* ---- the folder's own pet art -------------------------------------------- */
+/* { sig } with obj when the folder has a readable FOLDER_PETS_FILE, error when it
+   is there but not JSON. sig changes whenever the file does. */
+export async function readFolderPets() {
+  const h = dir && await fileOrNull(C.FOLDER_PETS_FILE);
+  if (!h) return { sig: "" };
+  const f = await h.getFile(), sig = f.size + "|" + f.lastModified;
+  try { return { sig, obj: JSON.parse(decodeBytes(await f.arrayBuffer())) }; }
+  catch (e) { return { sig, error: e.message || String(e) }; }
+}
+
 /* ---- roster files ------------------------------------------------------- */
 export async function participantExists(name) {
   return !!(await fileOrNull(participantFileName(name)));

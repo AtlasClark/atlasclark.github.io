@@ -3,8 +3,8 @@
    contract (FORMAT_REV 21, UTF-16 LE + BOM) must stay identical while R55 runs on the
    share: R55 deletes any field it does not know on its next write. */
 
-export const REV         = "rev 1.12.0";
-export const APP_VERSION = "web 1.12.0";   /* stamped as writerVersion */
+export const REV         = "rev 1.13.0";
+export const APP_VERSION = "web 1.13.0";   /* stamped as writerVersion */
 /* A folder stays at LEGACY_FORMAT (byte-compatible with R55) until someone upgrades
    it from Settings. Format 22 adds tokensSpent and keeps unknown fields; R55 must
    not be used on a folder after that. */
@@ -45,6 +45,9 @@ export const LIVE_SHOW_MS = 9000;          /* a drop seen later than this shows 
 /* ---- files ---- */
 export const SETTINGS_FILE  = "_settings.json";
 export const REMOVED_SUBDIR = "_removed";
+/* Pet art for this folder only, saved there by the Pet Studio for testing. While it
+   is there it replaces the site's pets/pets.json; delete it to go back. */
+export const FOLDER_PETS_FILE = "_pets.json";
 /* The first page to connect each day copies every .json into _backup/YYYY-MM-DD/,
    before anything is written that day. Older days are cleared after this many. */
 export const BACKUP_SUBDIR    = "_backup";

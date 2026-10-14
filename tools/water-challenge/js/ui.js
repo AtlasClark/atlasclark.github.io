@@ -15,7 +15,7 @@ import { petKindFor, ownsEquipped, graveEquipped, petHueFor, isGrave, gravesOf, 
 import { crownSvg, jesterSvg, hatSvg, drawPortrait, drawCritter, drawHeadstone, drawGoldPile } from "./art.js";
 import * as G from "./glass.js";
 import { diag, dir } from "./store.js";
-import { defs as petDefs, hats as petHats } from "./petdefs.js";
+import { defs as petDefs, hats as petHats, petSource } from "./petdefs.js";
 import { shownKind, hiddenPets, shownBalance, hiddenIds } from "./reveal.js";
 import { shopOpen, balance, spentTotal, spendsOn, earnedTotal, chestWinnings } from "./shop.js";
 import { $, esc, fmt, fmtOz, fmtGal, todayKey, dateKey, prettyTime, clockStamp, has, parseKey, shiftKey } from "./util.js";
@@ -373,6 +373,14 @@ function iconUrl(draw) {
     return c.toDataURL("image/png");
   } catch { return ""; }
 }
+/* Pet art changed: the icon sheet is built again on next use. */
+export function resetIcons() {
+  iconsReady = false;
+  const el = $("petIcons");
+  if (el) el.remove();
+  for (const k of Object.keys(htmlCache)) delete htmlCache[k];
+}
+
 export function ensureIcons() {
   if (iconsReady) return;
   iconsReady = true;
@@ -519,6 +527,9 @@ function renderStatus() {
   if (ui.connected) { pill.className = "sync-pill"; pill.textContent = "synced " + (ui.lastSync || clockStamp()); }
   else { pill.className = "sync-pill bad"; pill.textContent = "offline"; }
   setEl("sbFolder", dir ? esc(dir.name) : "not connected", null);
+  setEl("petArtNote", petSource.from === "folder"
+    ? "This folder uses its own art (" + esc(C.FOLDER_PETS_FILE) + "). Delete that file to go back to the site&rsquo;s art."
+    : "Redraw the pets, the crown and the jester hat.", null);
   setEl("sbMe", S.me ? esc(S.me) + (S.mine ? ' &middot; ' + esc(S.mine) : '') : "set your name", null);
   const mine = S.mine && findParticipant(S.mine), q = $("quickPour");
   q.hidden = !mine || !ui.connected;
@@ -905,8 +916,9 @@ export function showDiag() {
   h.push(rRow("Writes", diag.writes + ' this session' + (diag.lockSteals ? ' &middot; ' + diag.lockSteals + ' stale lock(s) cleared' : '')));
   h.push(rRow("Backup", diag.lastBackup ? esc(C.BACKUP_SUBDIR + '/' + diag.lastBackup) + ' <span class="dim">&middot; ' + C.BACKUP_KEEP_DAYS + ' days kept</span>'
                                         : '<span class="bad">none yet this session</span>'));
-  h.push(rRow("Drawn pets", Object.keys(petDefs).length + Object.keys(petHats).length ? esc([...Object.keys(petDefs).map(k => C.PET_NAMES[k]), ...Object.keys(petHats)].join(", ")) + ' <span class="dim">from pets/pets.json</span>'
-                                                       : '<span class="dim">none &middot; all built-in</span>'));
+  h.push(rRow("Drawn pets", Object.keys(petDefs).length + Object.keys(petHats).length ? esc([...Object.keys(petDefs).map(k => C.PET_NAMES[k]), ...Object.keys(petHats)].join(", ")) + (petSource.from === "folder" ? '' : ' <span class="dim">from pets/pets.json</span>')
+                                                       : '<span class="dim">none &middot; all built-in</span>') +
+    (petSource.from === "folder" ? ' <span class="bad">from this folder&rsquo;s ' + esc(C.FOLDER_PETS_FILE) + ' (test art)</span>' : ''));
   h.push(rRow("Layout", G.dims.cols + ' per row &middot; ' + G.dims.card + 'px cards &middot; ' + G.dims.gw + '&times;' + G.dims.gh + 'px glasses'));
   h.push(rRow("Animation", G.stats.fps + ' fps &middot; ' + G.bubbleCount() + ' bubbles' +
               (G.stats.errors ? ' &middot; <span class="bad">' + G.stats.errors + ' errors, last: ' + esc(G.stats.lastError) + '</span>' : '')));
