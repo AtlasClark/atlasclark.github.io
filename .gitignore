@@ -25,3 +25,7 @@ Kit_Studio/
 *.kitproj
 *.pdf
 *.csv
+
+# Dev notes for Claude Code are local only. Never commit them.
+CLAUDE.md
+README.md
