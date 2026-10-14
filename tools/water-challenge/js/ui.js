@@ -284,8 +284,18 @@ function renderActivity() {
       pets.push({ kind: "roll", p, pet: Number(p.rollKind), fresh: !!p.rollWasNew, ts: t.roll });
     }
     if (p.graveDay === key && Number(p.deadKind) >= 0) pets.push({ kind: "grave", p, pet: Number(p.deadKind), ts: t.grave });
-    const hid = hiddenIds(p);
-    for (const s of spendsOn(p, key)) if (!hid.has(s.id)) pets.push({ kind: "spend", p, s, ts: s.at });
+    /* buys and rerolls one row each; Plinko folded to one row per person (a ball
+       still falling stays out until it lands) */
+    const hid = hiddenIds(p), drops = [];
+    for (const s of spendsOn(p, key)) {
+      if (hid.has(s.id)) continue;
+      if (s.kind === "plinko") drops.push(s); else pets.push({ kind: "spend", p, s, ts: s.at });
+    }
+    if (drops.length === 1) pets.push({ kind: "spend", p, s: drops[0], ts: drops[0].at });
+    else if (drops.length) {
+      drops.sort((a, b) => atOf(a.at) - atOf(b.at));
+      pets.push({ kind: "plinko", p, drops, ts: drops[drops.length - 1].at, from: drops[0].at });
+    }
   }
   pets.sort((a, b) => atOf(b.ts) - atOf(a.ts));
   pours.sort((a, b) => b.at - a.at);
@@ -294,6 +304,8 @@ function renderActivity() {
   const h = pets.map(a => {
     const when = '<span class="t">' + (a.ts ? esc(prettyTime(a.ts)) : "today") + '</span>';
     if (a.kind === "spend") return '<li class="ev-shop">' + spendLine(a.p, a.s, when) + '</li>';
+    if (a.kind === "plinko") return '<li class="ev-shop" title="' + a.drops.length + ' drops, ' + esc(prettyTime(a.from)) + ' to ' +
+                                    esc(prettyTime(a.ts)) + '">' + plinkoLine(a.p, a.drops, key, when) + '</li>';
     if (a.kind === "roll") {
       return '<li class="ev-pet">' + '<span class="tag">' + (a.fresh ? "new pet" : "pet") + '</span>' + when +
              '<strong>' + esc(a.p.name) + '</strong> ' + (a.fresh ? "unlocked the " : "rolled another ") + esc(petLabel(a.pet)) +
@@ -546,6 +558,26 @@ function renderStatus() {
 }
 
 /* ---- shop lines (activity and recap) ----------------------------------- */
+/* "the Crab", "the Crab and the Seal", "the Crab, the Seal and the Hippo", then "... and N more". */
+function petList(ks) {
+  const l = ks.map(k => "the " + esc(petLabel(k)));
+  if (l.length <= 2) return l.join(" and ");
+  if (l.length === 3) return l[0] + ", " + l[1] + " and " + l[2];
+  return l.slice(0, 3).join(", ") + " and " + (l.length - 3) + " more";
+}
+
+/* A person's Plinko drops for the day as one line: what they won, then the rest in counts. */
+function plinkoLine(p, drops, key, when) {
+  const d = shopDay({ spends: drops }, key), bits = [];
+  if (d.fresh.length) bits.push('won ' + petList(d.fresh));
+  if (d.revived.length) bits.push('won ' + petList(d.revived) + ' back from the grave');
+  if (d.chestWon) bits.push('won the Community Chest <span class="rar chest">' + d.chestWon + ' tokens</span>');
+  if (d.chestIn - (d.chestWon ? 1 : 0) > 0) bits.push((d.chestIn - (d.chestWon ? 1 : 0)) + ' into the chest');
+  if (d.repeats) bits.push(d.repeats + ' repeat' + (d.repeats === 1 ? '' : 's'));
+  if (d.empty) bits.push(d.empty + ' returned');
+  return '<span class="tag">plinko</span>' + when + '<strong>' + esc(p.name) + '</strong> dropped ' + d.drops + ' tokens' +
+         (bits.length ? ': ' + bits.join(' &middot; ') : '');
+}
 function spendLine(p, s, when) {
   const k = Number(s.pet), name = '<strong>' + esc(p.name) + '</strong> ';
   if (s.kind === "buy") return '<span class="tag">shop</span>' + when + name + 'bought the ' + esc(petLabel(k)) +
@@ -553,7 +585,8 @@ function spendLine(p, s, when) {
   if (s.kind === "plinko" && s.chest) return '<span class="tag">plinko</span>' + when + name +
     (s.chest.won ? 'won the Community Chest <span class="rar chest">' + s.chest.won + ' tokens</span>' : 'put a token in the Community Chest');
   if (s.kind === "plinko") return '<span class="tag">plinko</span>' + when + name + (k < 0 ? 'landed on an empty rarity' :
-                                  'won ' + (s.fresh ? "the " : "another ") + esc(petLabel(k)) + ' <span class="rar">' + esc(rarityLabel(k)) + '</span>');
+                                  'won ' + (s.fresh ? "the " : "another ") + esc(petLabel(k)) + (s.revived ? ' back from the grave' : '') +
+                                  ' <span class="rar">' + esc(rarityLabel(k)) + '</span>');
   if (s.kind === "reroll") return '<span class="tag">reroll</span>' + when + name + 'rerolled the ' + esc(petLabel(Number(s.from))) +
                                   ' into ' + (k >= 0 ? (s.fresh ? "the " : "another ") + esc(petLabel(k)) : "nothing");
   return '<span class="tag">shop</span>' + when + name + 'spent ' + s.cost;
@@ -613,8 +646,7 @@ function recapHtml() {
      pets only); every drop is counted in the shop strip below instead. */
   const ev = [], shop = [];
   const icon = k => k >= 0 && k < C.PET_COUNT ? '<i class="pi pi-' + k + '"></i>' : '';
-  const names = ks => { const l = ks.map(k => "the " + esc(petLabel(k)));
-    return l.length <= 3 ? l.join(l.length === 2 ? " and " : ", ").replace(/, ([^,]*)$/, " and $1") : l.slice(0, 3).join(", ") + " and " + (l.length - 3) + " more"; };
+  const names = petList;
   for (const p of S.participants) {
     const r = rollOn(p, day), g = graveOn(p, day), d = shopDay(p, day), who = '<strong>' + esc(p.name) + '</strong> ';
     const line = (ic, text) => '<li>' + ic + '<span class="rc-t">' + who + text + '</span></li>';   /* name and text wrap as one */
