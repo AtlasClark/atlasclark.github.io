@@ -13,7 +13,7 @@ import { petKindFor, ownsEquipped, graveEquipped, petHueFor, isGrave, gravesOf, 
          graveLine, petLabel, petName, petRarityOf, petBinIndex, petGridOrder, penFound, penWord,
          penOf, penKinds, pen2Open, penAlive, penBuried,
          hashHue, rarityLabel, undoEffect } from "./pets.js";
-import { crownSvg, jesterSvg, hatSvg, drawPortrait, drawCritter, drawHeadstone, drawGoldPile } from "./art.js";
+import { crownSvg, jesterSvg, hatSvg, drawPortrait, drawCritter, drawHeadstone, drawGoldPile, drawCoin } from "./art.js";
 import * as G from "./glass.js";
 import { diag, dir } from "./store.js";
 import { defs as petDefs, hats as petHats, petSource } from "./petdefs.js";
@@ -412,6 +412,7 @@ export function ensureIcons() {
   }
   css.push(".pi-grave{background-image:url(" + iconUrl(ctx => drawHeadstone(ctx, 30, 50, 26, 210)) + ")}");
   css.push(".pi-hom{background-image:url(" + iconUrl(ctx => drawCritter(ctx, 30, 50, 17, 0, false, false, C.HOMUNCULUS_KIND, 210)) + ")}");
+  css.push(".coin{background:center/contain no-repeat url(" + iconUrl(ctx => drawCoin(ctx, 30, 30, 58)) + ");box-shadow:none}");
   const el = document.createElement("style");
   el.id = "petIcons";
   el.textContent = css.join("\n");

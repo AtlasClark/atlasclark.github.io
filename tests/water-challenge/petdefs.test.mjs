@@ -145,19 +145,24 @@ test("studio import: every built-in pet draws the same from its shapes",
   }
 });
 
-test("studio import: the crown and jester hat draw the same from their shapes",
+test("studio import: each hat and prop draws the same from its studio copy",
      { skip: fs.existsSync(IMPORTER) ? false : "Pet Studio not present" }, async () => {
   const I = await import(pathToFileURL(IMPORTER));
+  const uses = {
+    crown: [0, 11, 26].map(k => c => A.drawCritter(c, 5, 7, 100, -0.2, true, false, k, 140, false)),
+    jester: [0, 11, 26].map(k => c => A.drawCritter(c, 5, 7, 100, -0.2, true, false, k, 140, true)),
+    grave: [0, 140].map(h => c => A.drawHeadstone(c, 5, 7, 100, h)),
+    coin: [c => A.drawCoin(c, 5, 7, 40)]
+  };
   for (const key of P.HAT_KEYS) {
-    const hat = I.importHat(key);
-    assert.ok(Object.values(hat.pal).every(c => !c.hue), key + ": fixed colours only");
-    for (const k of [0, 11, 26]) {
-      const draw = c => A.drawCritter(c, 5, 7, 100, -0.2, true, false, k, 140, key === "jester");
+    const hat = I.importHat(key), keep = P.hats[key];
+    assert.ok(key === "grave" || Object.values(hat.pal).every(c => !c.hue), key + ": fixed colours only");
+    for (const draw of uses[key]) {
       const before = rec(draw);
       P.hats[key] = hat;
       const after = rec(draw);
-      delete P.hats[key];
-      assert.equal(sameDrawing(before, after, 1e-3), "", key + " on " + C.PET_NAMES[k]);
+      P.hats[key] = keep;
+      assert.equal(sameDrawing(before, after, 1e-3), "", key);
     }
   }
 });

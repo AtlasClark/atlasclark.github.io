@@ -2,7 +2,7 @@
    drawCritter / drawPortrait. A swimming glass, a close-up, the drowned pose and
    the Pets-tab icon at four hues. */
 
-import { drawCritter, drawPortrait, crownSvg, jesterSvg } from "../js/art.js";
+import { drawCritter, drawPortrait, crownSvg, jesterSvg, drawHeadstone, drawCoin, drawGoldPile } from "../js/art.js";
 import { UNDERWATER_TINT, SWIM_RANGE, WALL_GAP_R } from "../js/config.js";
 import { bounds } from "./geom.js";
 
@@ -82,6 +82,44 @@ export class Preview {
       this.label("page icons, real sizes", x + boxW / 2, top + gh + 14);
     }
   }
+  /* The headstone in drained glasses and as the Pets-tab mark; the coin in the bank's
+     pile and as the small icons. */
+  drawProp(top, gh) {
+    const { ctx, w: W, app } = this;
+    let x = 14;
+    if (app.kind === "grave") {
+      const gw = Math.min(104, gh * 0.7), r = Math.min(gw * 0.26, 30);
+      [0, 120, 240].forEach((dh, i) => {
+        this.glass(x, top, gw, gh, 0, L => drawHeadstone(L, x + gw / 2, top + gh - 4, r, (app.hue + dh) % 360), i ? "" : "drained glasses");
+        x += gw + 12;
+      });
+      x += 14;
+      const size = Math.min(66, gh - 8), iy = top + (gh - size) / 2;
+      ctx.fillStyle = this.css("--panel-2"); ctx.strokeStyle = this.css("--line");
+      ctx.beginPath(); ctx.roundRect(x, iy, size, size, 12); ctx.fill(); ctx.stroke();
+      ctx.save(); ctx.translate(x, iy); ctx.scale(size / 60, size / 60); drawHeadstone(ctx, 30, 50, 26, 210); ctx.restore();
+      this.label("Pets tab", x + size / 2, top + gh + 14);
+      return;
+    }
+    const pile = this.pile || (this.pile = document.createElement("canvas"));
+    for (const n of [3, 24, 160]) {
+      const pw = Math.min(200, (gh - 6) * 1.6), ph = pw * 150 / 240;
+      if (x + pw > W - 8) break;
+      pile.width = 480; pile.height = 300;
+      const pc = pile.getContext("2d"); pc.setTransform(2, 0, 0, 2, 0, 0);
+      drawGoldPile(pc, 240, 150, n);
+      ctx.drawImage(pile, x, top + (gh - ph) / 2, pw, ph);
+      this.label(n + " tokens", x + pw / 2, top + gh + 14);
+      x += pw + 14;
+    }
+    const cy = top + gh / 2;
+    for (const d of [56, 16, 11]) {
+      if (x + d > W - 8) break;
+      drawCoin(ctx, x + d / 2, cy, d);
+      x += d + 16;
+    }
+    this.label("icons", x - 40, top + gh + 14);
+  }
   css(n) { return css(n); }
 
   label(t, x, y) {
@@ -96,6 +134,7 @@ export class Preview {
     ctx.fillStyle = css("--panel"); ctx.fillRect(0, 0, W, H);
     const k = app.kind, hue = app.hue, crown = app.crown, top = 10, gh = H - 34;
     if (k == null) return;
+    if (app.isProp) { this.drawProp(top, gh); return; }
     if (app.isHat) { this.drawHat(t, top, gh); return; }
 
     /* swimming, at glass size */

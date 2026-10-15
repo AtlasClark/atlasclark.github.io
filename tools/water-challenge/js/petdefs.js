@@ -11,19 +11,22 @@
             { t: "eye", x, y, s? }   a dot, or an X when the pet is dead
    ell/path also carry fill?, stroke?, w (stroke width), cap? ("round"),
    show? ("alive" | "dead"; absent = always).
-   Hats:    "hats": { crown?: { pal, shapes }, jester?: { pal, shapes } }, in units of r with
-   the origin where the pet's crown spot is (the hat's bottom centre). Fixed colours
-   only. They replace the built-in crown and jester on pets and in the page's icons. */
+   Hats and props: "hats": { crown?, jester?, grave?, coin?: { pal, shapes } }. Hats are in
+   units of r with the origin at the pet's crown spot (the hat's bottom centre), the
+   headstone in units of r from the ground under it, the coin 1 unit across about its
+   centre (see propart.js). They replace the built-in ones on pets and in the page's icons.
+   Only the headstone's colours may follow the pet's hue. */
 
 import * as C from "./config.js";
 import { PEN1_ART, EXTRA_ART } from "./pen1art.js";
 import { PEN2_ART } from "./pen2art.js";
+import { PROP_ART } from "./propart.js";
 
 export const PET_DEFS_FORMAT = 1;
 /* A pet may also carry range (0..1): its share of the normal swim range. */
-export const defs = {};            /* kind -> pet, only the redrawn ones */
-export const hats = {};            /* "crown" | "jester" -> { pal, shapes }, only the redrawn ones */
-export const HAT_KEYS = ["crown", "jester"];
+export const defs = {};            /* kind -> pet: the built-in drawing or its replacement */
+export const hats = {};            /* HAT_KEYS -> { pal, shapes }: the built-in drawing or its replacement */
+export const HAT_KEYS = ["crown", "jester", "grave", "coin"];
 export const EYE_INK = "#2a2118";
 
 const SHAPES = { ell: 1, path: 1, eye: 1 };
@@ -50,7 +53,7 @@ function cleanShape(s, pal) {
 }
 
 /* Every pet's built-in drawing (both pens, the Homunculus, the dragon) sits in defs
-   from the start; pets.json can replace any of them. */
+   from the start, and every hat and prop in hats; pets.json can replace any of them. */
 function seedPens() {
   const all = [...PEN1_ART.map((p, i) => [i, p]), ...PEN2_ART.map((p, i) => [C.PEN2_FIRST + i, p]),
                ...Object.entries(EXTRA_ART).map(([k, p]) => [Number(k), p])];
@@ -59,6 +62,11 @@ function seedPens() {
     for (const [n, c] of Object.entries(p.pal)) { const v = cleanColour(c); if (v) pal[n] = v; }
     const swim = p.swim.map(s => cleanShape(s, pal)).filter(Boolean);
     if (swim.length) defs[k] = { pal, swim, portrait: null, crown: p.crown, range: 1 };
+  }
+  for (const [key, h] of Object.entries(PROP_ART)) {
+    const pal = {};
+    for (const [n, c] of Object.entries(h.pal)) { const v = cleanColour(c); if (v) pal[n] = v; }
+    hats[key] = { pal, shapes: h.shapes.map(s => cleanShape(s, pal)).filter(Boolean) };
   }
 }
 
@@ -178,10 +186,10 @@ export function drawShapes(ctx, shapes, r, hue, pal, dead) {
 }
 
 /* ---- hats -------------------------------------------------------------------- */
-export function drawHat(ctx, hat, cx, cy, r) {
+export function drawHat(ctx, hat, cx, cy, r, hue = 0) {
   ctx.save();
   ctx.translate(cx, cy);
-  drawShapes(ctx, hat.shapes, r, 0, hat.pal, false);
+  drawShapes(ctx, hat.shapes, r, hue, hat.pal, false);
   ctx.restore();
 }
 

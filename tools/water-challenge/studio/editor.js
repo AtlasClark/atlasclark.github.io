@@ -500,7 +500,7 @@ export class Editor {
     ctx.lineWidth = 1.5; ctx.strokeStyle = css("--waterline");
     if (hat) {
       ctx.beginPath(); ctx.moveTo(ox - 14, oy); ctx.lineTo(ox + 14, oy); ctx.moveTo(ox, oy - 14); ctx.lineTo(ox, oy + 14); ctx.stroke();
-      ctx.fillStyle = css("--waterline"); ctx.fillText("crown spot", ox + 8, oy + 16);
+      ctx.fillStyle = css("--waterline"); ctx.fillText(app.origin, ox + 8, oy + 16);
     } else {
       ctx.beginPath(); ctx.moveTo(0, oy); ctx.lineTo(W, oy); ctx.stroke();
       ctx.fillStyle = css("--waterline"); ctx.fillText(swimPose ? "waterline" : "anchor", 8, oy - 5);
@@ -512,7 +512,7 @@ export class Editor {
       ctx.fillStyle = css("--headroom"); ctx.fillText("headroom: keep the pet below this line", 8, hy - 5);
     }
     if (swimPose) this.cupWalls(shapes || []);
-    this.forwardArrow(hat ? oy + 0.5 * z : swimPose ? oy + 0.22 * z : oy + 0.9 * z, hat);
+    if (!app.isProp) this.forwardArrow(hat ? oy + 0.5 * z : swimPose ? oy + 0.22 * z : oy + 0.9 * z, hat);
 
     /* selection */
     const sel = this.selected();

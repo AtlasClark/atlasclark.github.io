@@ -5,13 +5,13 @@
 
 import * as C from "../js/config.js";
 import { defs, hats, HAT_KEYS, colourOf, PET_DEFS_FORMAT } from "../js/petdefs.js";
-import { drawPortrait, critterCrown } from "../js/art.js";
+import { drawPortrait, critterCrown, drawHeadstone, drawCoin } from "../js/art.js";
 import { importAll, importHat, basePalette } from "./importer.js";
 import { Editor, TOOL_HINTS } from "./editor.js";
 import { Preview } from "./preview.js";
 import * as G from "./geom.js";
 
-const REV = "studio 1.8.0";
+const REV = "studio 1.9.0";
 const PETS_URL = "../pets/pets.json";
 const $ = id => document.getElementById(id);
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -31,9 +31,12 @@ const W = {
   tryOn: 0                /* the pet shown under a hat while it is edited */
 };
 
-/* Items are pet kinds (0..26) and the two hats ("crown", "jester"). */
-const HAT_NAMES = { crown: "Crown", jester: "Jester hat" };
+/* Items are pet kinds and the hats and props ("crown", "jester", "grave", "coin"). A hat or
+   prop has one drawing; only the hats are worn, and only the headstone takes a pet's hue. */
+const HAT_NAMES = { crown: "Crown", jester: "Jester hat", grave: "Headstone", coin: "Token coin" };
 const isHat = k => HAT_KEYS.includes(k);
+const wears = k => k === "crown" || k === "jester";
+const hued = k => !isHat(k) || k === "grave";
 const ITEMS = () => [...Array(C.PET_MAX).keys(), ...HAT_KEYS];
 function baseName(k) { return isHat(k) ? HAT_NAMES[k] : C.PET_BASE_NAMES[k]; }
 function itemName(k) { return isHat(k) ? HAT_NAMES[k] : C.PET_NAMES[k]; }
@@ -42,7 +45,7 @@ function resetItems() {
   for (const k of ITEMS()) W.pets[k] = { def: G.clone(W.builtin[k]), edited: false };
 }
 function rarityOf(k) {
-  if (isHat(k)) return { name: k === "crown" ? "leader, goal met" : "leader, under goal", i: 0 };
+  if (isHat(k)) return { name: { crown: "leader, goal met", jester: "leader, under goal", grave: "a drowned pet", coin: "tokens" }[k], i: 0 };
   if (k === C.HOMUNCULUS_KIND) return { name: "Full-pen reward", i: 5 };
   if (k === C.MYSTERY_KIND) return { name: "Secret", i: 6 };
   const base = k >= C.PEN2_FIRST ? k - C.PEN2_FIRST : k;
@@ -58,7 +61,9 @@ const app = {
   get shapes() { const d = this.def; return !d ? null : W.pose === "portrait" ? d.portrait : d.swim; },
   get ghost() { const d = this.def; return d && W.pose === "portrait" && !d.portrait ? d.swim : null; },
   get isHat() { return isHat(W.kind); },
-  get tryOn() { const p = W.pets[W.tryOn]; return p && { def: p.def, kind: W.tryOn }; },
+  get tryOn() { const p = wears(W.kind) && W.pets[W.tryOn]; return p ? { def: p.def, kind: W.tryOn } : null; },
+  get isProp() { return isHat(W.kind) && !wears(W.kind); },
+  get origin() { return { grave: "ground", coin: "centre" }[W.kind] || "crown spot"; },
   get pose() { return W.pose; },
   get sel() { return W.sel; },
   get tool() { return W.tool; },
@@ -128,7 +133,8 @@ function syncDefs() {
   }
   for (const key of HAT_KEYS) {
     const p = W.pets[key];
-    if (p && p.edited && p.def.swim.length) hats[key] = { pal: p.def.pal, shapes: p.def.swim }; else delete hats[key];
+    const b = p && p.edited && p.def.swim.length ? p.def : W.builtin[key];
+    if (b) hats[key] = { pal: b.pal, shapes: b.swim };
   }
 }
 
@@ -428,7 +434,8 @@ function renderPetList() {
   const order = [{ pen: "First pen" }, ...C.PET_BINS.map((b, i) => ({ name: b.name, i, kinds: b.kinds })),
                  { name: "Reward and secret", i: 5, kinds: [C.HOMUNCULUS_KIND, C.MYSTERY_KIND] },
                  { pen: "Second pen" }, ...C.PEN2_BINS.map((b, i) => ({ name: b.name, i, kinds: b.kinds })),
-                 { pen: "Hats" }, { name: "Crown and jester", i: 0, kinds: HAT_KEYS }];
+                 { pen: "Hats and props" }, { name: "Crown and jester", i: 0, kinds: ["crown", "jester"] },
+                 { name: "Headstone and coin", i: 0, kinds: ["grave", "coin"] }];
   const el = $("petList");
   if (!el.dataset.built) {
     el.innerHTML = order.map(g => g.pen ? '<div class="pen-head">' + esc(g.pen) + '</div>' : '<div class="rar-head">' + esc(g.name) + '</div>' + g.kinds.map(k =>
@@ -440,7 +447,7 @@ function renderPetList() {
   for (const b of el.querySelectorAll(".pet-item")) {
     const k = itemKey(b.dataset.kind), p = W.pets[k];
     b.classList.toggle("on", k === W.kind);
-    b.querySelector(".nm").innerHTML = esc(itemName(k)) + '<small>' + (isHat(k) ? 'on pets and in icons' : '#' + k + (p.def.portrait ? ' · portrait' : '')) + '</small>';
+    b.querySelector(".nm").innerHTML = esc(itemName(k)) + '<small>' + (isHat(k) ? (wears(k) ? 'on pets and in icons' : k === "grave" ? 'in drained glasses and icons' : 'the bank pile and icons') : '#' + k + (p.def.portrait ? ' · portrait' : '')) + '</small>';
     b.querySelector(".mark").className = "mark" + (p.edited ? " edited" : "");
     b.title = p.edited ? "Drawn in the studio" : "Built-in drawing";
   }
@@ -455,7 +462,12 @@ function drawThumb(k) {
   const ctx = c.getContext("2d");
   ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, 80, 80);
   ctx.setTransform(80 / 60, 0, 0, 80 / 60, 0, 0);
-  try { if (isHat(k)) critterCrown(ctx, 30, 40, 54, k === "jester"); else drawPortrait(ctx, 30, 42, 20, k, iconHue(k)); } catch { }
+  try {
+    if (k === "grave") drawHeadstone(ctx, 30, 52, 46, 210);
+    else if (k === "coin") drawCoin(ctx, 30, 30, 44);
+    else if (isHat(k)) critterCrown(ctx, 30, 40, 54, k === "jester");
+    else drawPortrait(ctx, 30, 42, 20, k, iconHue(k));
+  } catch { }
 }
 
 function renderPanels() {
@@ -581,14 +593,14 @@ function setShapeField(f, v, el) {
 function coloursTab() {
   const pal = app.def.pal, use = {};
   for (const list of [app.def.swim, app.def.portrait || []]) for (const s of list) for (const k of [s.fill, s.stroke]) if (k) use[k] = (use[k] || 0) + 1;
-  const h = isHat(W.kind) ? ['<p class="note">A hat keeps its colours on every pet.</p>'] : ['<div class="row"><label>Test hue</label><input type="range" data-f="hue" min="0" max="359" value="' + W.hue + '"><span class="val">' + W.hue + '</span>' +
+  const h = !hued(W.kind) ? ['<p class="note">' + (wears(W.kind) ? "A hat keeps its colours on every pet." : "The coin keeps its colours everywhere.") + '</p>'] : ['<div class="row"><label>Test hue</label><input type="range" data-f="hue" min="0" max="359" value="' + W.hue + '"><span class="val">' + W.hue + '</span>' +
              '<button type="button" class="btn small" data-act="hue-rand" title="Random hue">&#127922;</button></div><div class="hue-bar"></div>' +
              '<p class="note"><b>Pet colour</b> follows the hue each catch gets in the game, shifted by the amount set. <b>Fixed</b> never changes (beaks, eyes, teeth).</p>'];
   for (const [k, c] of Object.entries(pal)) {
     const sw = colourOf(pal, k, W.hue);
     h.push('<div class="pal-item" data-pk="' + esc(k) + '"><div class="pal-top"><span class="sw" style="background:' + sw + '"></span>' +
       '<input type="text" data-pf="name" data-focus="pn-' + esc(k) + '" value="' + esc(k) + '" title="Colour name">' +
-      (isHat(W.kind) ? '<span class="dim">fixed</span>' :
+      (!hued(W.kind) ? '<span class="dim">fixed</span>' :
        '<select data-pf="kind"><option value="hue"' + (c.hue ? " selected" : "") + '>Pet colour</option><option value="fixed"' + (c.hue ? "" : " selected") + '>Fixed</option></select>') +
       '<span class="use" title="Shapes using it">' + (use[k] || 0) + '</span></div><div class="pal-body">');
     if (c.hue) {
@@ -657,10 +669,15 @@ function hslHex(h, s, l) {
 
 function hatTab() {
   const k = W.kind, p = W.pets[k];
-  return '<h4>' + esc(HAT_NAMES[k]) + '</h4><p class="note">' + (k === "crown" ? "Worn by the day&rsquo;s leader who met their goal." : "Worn by the day&rsquo;s leader who is still under goal.") +
-    ' The origin is each pet&rsquo;s crown spot, so draw the hat sitting on it. The same drawing makes the small icons over the glasses and on the leaderboard.</p>' +
-    '<div class="row"><label>Try on</label><select data-f="tryon">' + [...Array(C.PET_MAX).keys()].map(i =>
-      '<option value="' + i + '"' + (i === W.tryOn ? " selected" : "") + '>' + esc(C.PET_NAMES[i]) + '</option>').join("") + '</select></div>' +
+  const about = {
+    crown: "Worn by the day&rsquo;s leader who met their goal. The origin is each pet&rsquo;s crown spot, so draw the hat sitting on it. The same drawing makes the small icons over the glasses and on the leaderboard.",
+    jester: "Worn by the day&rsquo;s leader who is still under goal. The origin is each pet&rsquo;s crown spot, so draw the hat sitting on it. The same drawing makes the small icons over the glasses and on the leaderboard.",
+    grave: "Stands in a drained glass where a pet drowned, and marks buried pets on the Pets tab. The origin is the ground under it, in units of the pet&rsquo;s size. Pet colours take a tint of the drowned pet&rsquo;s hue.",
+    coin: "One token, face on: 1 unit across, origin at its centre. The bank&rsquo;s gold pile lays it flat in a heap; the shop and history use it as the small coin icon."
+  }[k];
+  return '<h4>' + esc(HAT_NAMES[k]) + '</h4><p class="note">' + about + '</p>' +
+    (wears(k) ? '<div class="row"><label>Try on</label><select data-f="tryon">' + [...Array(C.PET_MAX).keys()].map(i =>
+      '<option value="' + i + '"' + (i === W.tryOn ? " selected" : "") + '>' + esc(C.PET_NAMES[i]) + '</option>').join("") + '</select></div>' : '') +
     '<div class="sep"></div><h4>Start over</h4><div class="btns">' +
     '<button type="button" class="btn small" data-act="clear">Clear drawing</button>' +
     '<button type="button" class="btn small danger" data-act="reset"' + (p.edited ? '' : ' disabled') + '>Back to built-in</button></div>';
@@ -749,7 +766,7 @@ function act(a, el) {
       return;
     }
     case "hue-rand": W.hue = Math.floor(Math.random() * 360); renderPanels(); editor.redraw(); return;
-    case "pal-add": return change(() => { let n = 1; while (d.pal["colour" + n]) n++; d.pal["colour" + n] = isHat(W.kind) ? { c: "#9aa5ad" } : { hue: 1, dh: 0, s: 62, l: 58, a: 1 }; });
+    case "pal-add": return change(() => { let n = 1; while (d.pal["colour" + n]) n++; d.pal["colour" + n] = !hued(W.kind) ? { c: "#9aa5ad" } : { hue: 1, dh: 0, s: 62, l: 58, a: 1 }; });
     case "port-copy": return change(() => { d.portrait = G.clone(d.swim); W.pose = "portrait"; W.sel.clear(); });
     case "port-blank": return change(() => { d.portrait = []; W.pose = "portrait"; W.sel.clear(); });
     case "port-del": if (confirm("Remove this pet's portrait drawing?")) change(() => { d.portrait = null; W.sel.clear(); }); return;
@@ -779,7 +796,7 @@ function setKind(k) {
   renderAll();
   editor.fit();
 }
-function setPose(p) { if (isHat(W.kind) && p === "portrait") { toast("A hat has one drawing."); return; } W.pose = p; W.sel.clear(); editor.cancelDraft(); renderAll(); editor.fit(); }
+function setPose(p) { if (isHat(W.kind) && p === "portrait") { toast("A hat or prop has one drawing."); return; } W.pose = p; W.sel.clear(); editor.cancelDraft(); renderAll(); editor.fit(); }
 
 let toastTimer = 0;
 function toast(msg) {
