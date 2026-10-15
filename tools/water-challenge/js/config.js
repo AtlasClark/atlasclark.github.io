@@ -3,8 +3,8 @@
    contract (FORMAT_REV 21, UTF-16 LE + BOM) must stay identical while R55 runs on the
    share: R55 deletes any field it does not know on its next write. */
 
-export const REV         = "rev 1.16.2";
-export const APP_VERSION = "web 1.16.2";   /* stamped as writerVersion */
+export const REV         = "rev 1.17.0";
+export const APP_VERSION = "web 1.17.0";   /* stamped as writerVersion */
 /* A folder stays at LEGACY_FORMAT (byte-compatible with R55) until someone upgrades
    it from Settings. Format 22 adds tokensSpent and keeps unknown fields; R55 must
    not be used on a folder after that. */
@@ -57,7 +57,7 @@ export const BACKUP_KEEP_DAYS = 14;
    Every file the page is made of. When a new version is out, these are re-fetched
    past the browser cache before reloading, so old and new modules never mix. */
 export const SITE_FILES = ["./", "app.css",
-  "js/app.js", "js/art.js", "js/config.js", "js/glass.js", "js/guard.js", "js/live.js", "js/model.js", "js/petdefs.js",
+  "js/app.js", "js/art.js", "js/bottle.js", "js/config.js", "js/glass.js", "js/guard.js", "js/live.js", "js/model.js", "js/petdefs.js",
   "js/pets.js", "js/plinko.js", "js/radial.js", "js/reveal.js", "js/shop.js", "js/shopui.js", "js/store.js", "js/ui.js", "js/util.js", "pets/pets.json"];
 export const VERSION_CHECK_MS = 300000;
 
@@ -128,9 +128,13 @@ export const GRAVE_LINES = [
   "I would not have done this to you."
 ];
 
-/* ---- legacy bottle entries (sync removed; history still shows them) ---- */
-export const HIDRATE_TAG   = "hidrate";
-export const HIDRATE_LABEL = "bottle";
+/* ---- bottle sync (js/bottle.js) ---- */
+export const HIDRATE_TAG       = "hidrate";     /* "by" on bottle entries */
+export const HIDRATE_LABEL     = "bottle";      /* how the activity list shows it */
+export const BOTTLE_USER       = "rclark";      /* the one username that sees and runs the sync, as in R55 */
+export const BOTTLE_BUCKET_MIN = 5;             /* sips grouped into 5-minute entries, as in R55 */
+export const BOTTLE_SIP_LIMIT  = 500;
+export const BOTTLE_TIMEOUT_MS = 20000;
 
 /* ---- locks (interoperate with the HTA's sidecar .lock files) ---- */
 export const LOCK_RETRIES  = 12;

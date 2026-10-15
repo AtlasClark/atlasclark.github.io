@@ -17,7 +17,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; worker-src 'none'; frame-src 'none'; form-action 'none'; base-uri 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self' https://*.workers.dev; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; worker-src 'none'; frame-src 'none'; form-action 'none'; base-uri 'none'">
 <meta name="referrer" content="no-referrer">
 <meta name="robots" content="noindex">
 <title>Atlas Water Challenge</title>
@@ -62,6 +62,27 @@
       <div class="sp-title sp-gap">Roster</div>
       <p class="hint">Away hides a glass and pauses streaks and the year target.</p>
       <div id="rosterList" class="roster"></div>
+      <div id="bottleBox" hidden>
+        <div class="sp-title sp-gap">Bottle sync</div>
+        <p class="hint" id="bottleNote"></p>
+        <label class="field-label" for="bRelay">Relay address</label>
+        <input id="bRelay" class="txt bottle-txt" type="url" placeholder="https://hidrate-relay.you.workers.dev" spellcheck="false" autocomplete="off">
+        <label class="field-label" for="bKey">Relay key</label>
+        <div class="bottle-row"><input id="bKey" class="txt bottle-txt" type="password" spellcheck="false" autocomplete="off">
+          <button type="button" id="bNewKey" class="btn muted" title="Make a new random key to paste into the Worker's RELAY_KEY secret">New key</button></div>
+        <div class="bottle-row"><button type="button" id="bSaveRelay" class="btn muted">Save</button>
+          <button type="button" id="bTest" class="btn muted">Test</button>
+          <a class="btn muted btn-link" href="bottle/hidrate-worker.js" target="_blank" rel="noopener" title="The Worker code, with the set-up steps at the top">Relay set-up &#8599;</a></div>
+        <div id="bOut">
+          <label class="field-label" for="bEmail">Hidrate sign-in</label>
+          <input id="bEmail" class="txt bottle-txt" type="email" placeholder="email" autocomplete="username">
+          <input id="bPass" class="txt bottle-txt" type="password" placeholder="password (not kept)" autocomplete="current-password">
+          <button type="button" id="bSignIn" class="btn primary">Sign in</button>
+        </div>
+        <div id="bIn" class="bottle-row" hidden><span class="hint" id="bWho"></span>
+          <button type="button" id="bSignOut" class="btn muted">Sign out</button>
+          <button type="button" id="bSyncNow" class="btn primary">Sync now</button></div>
+      </div>
       <div class="sp-title sp-gap">Pet art</div>
       <p class="hint" id="petArtNote">Redraw the pets, the crown and the jester hat.</p>
       <a class="btn muted btn-link" href="studio/" target="_blank" rel="noopener">Open Pet Studio &#8599;</a>
@@ -94,6 +115,7 @@
       <div class="control-panel slim">
         <p class="pour-hint"><b>Right-click a glass</b> to log water <span class="dim">(press and hold on touch)</span></p>
         <button type="button" id="quickPour" class="btn primary quick" hidden></button>
+        <button type="button" id="bottleSync" class="btn muted" hidden title="Pull today's sips from your HidrateSpark bottle">Sync bottle</button>
         <div class="newp">
           <label class="field-label" for="pname">New participant</label>
           <input id="pname" class="txt pname" type="text" placeholder="Enter a name" autocomplete="off">

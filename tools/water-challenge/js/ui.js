@@ -21,7 +21,7 @@ import { shopOpen, balance, spentTotal, spendsOn, earnedTotal, chestWinnings, sh
 import { $, esc, fmt, fmtOz, fmtGal, todayKey, dateKey, prettyTime, clockStamp, has, parseKey, shiftKey } from "./util.js";
 
 /* Set by app.js: the Shop tab renders from shopui.js, which imports this module. */
-export const uiHooks = { renderShop: null };
+export const uiHooks = { renderShop: null, bottle: null };
 
 export const ui = { tab: "today", amount: C.DEFAULT_AMOUNT, connected: false, lastSync: "",
                     armed: "" };   /* eid of the pour whose undo is waiting for a second click */
@@ -708,6 +708,7 @@ export function render() {
   renderTeamBar();
   renderStaleWarning();
   renderStatus();
+  if (uiHooks.bottle) uiHooks.bottle();
 }
 
 export function setTab(name) {

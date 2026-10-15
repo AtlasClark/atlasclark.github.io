@@ -10,6 +10,7 @@ import { reconcilePets, equipPet } from "./pets.js";
 import * as G from "./glass.js";
 import { startLive, onLive, emit } from "./live.js";
 import { loadPetDefs, useFolderDefs, useSiteDefs } from "./petdefs.js";
+import { bottleOn, bottleCfg, signedIn, loadBottle, setRelay, newRelayKey, pingRelay, signIn, signOut, fetchSips, applySips } from "./bottle.js";
 import { openRadial, wireRadial } from "./radial.js";
 import { initShop, renderShop, shopTabChanged, openShopFor } from "./shopui.js";
 import { ui, render, setTab, setMsg, showBanner, tickMasks, relayout, forceRebuild, resetIcons,
@@ -510,7 +511,7 @@ async function upgradeFormat() {
   fillSettings();
 }
 
-function openSettings() { fillSettings(); $("settingsPanel").hidden = false; $("cog").setAttribute("aria-expanded", "true"); $("goalVal").focus(); }
+function openSettings() { fillSettings(); fillBottle(); $("settingsPanel").hidden = false; $("cog").setAttribute("aria-expanded", "true"); $("goalVal").focus(); }
 function closeSettings() { $("settingsPanel").hidden = true; $("cog").setAttribute("aria-expanded", "false"); }
 
 /* ---- events ------------------------------------------------------------- */
@@ -524,6 +525,7 @@ function wire() {
   $("tab-shop").onclick = () => tab("shop");
   $("bankShop").onclick = () => { openShopFor($("bankShop").dataset.name); closeOverlays(); tab("shop"); };
   uiHooks.renderShop = renderShop;
+  uiHooks.bottle = bottleView;
   initShop({ settle, guard, askConfirm, pollSoon });
   $("cog").onclick = () => $("settingsPanel").hidden ? openSettings() : closeSettings();
   $("applySettings").onclick = applySettings;
@@ -532,6 +534,7 @@ function wire() {
   $("pname").addEventListener("keydown", e => { if (e.key === "Enter") addParticipant(); });
   $("addP").onclick = addParticipant;
   $("quickPour").onclick = () => { if (S.mine) addWater(S.mine, ui.amount); };
+  wireBottle();
   $("sbMe").onclick = () => askIdentity(false);
   $("sbDiag").onclick = showDiag;
   $("sbFolder").onclick = () => { if (ui.connected) showGate("reconnect"); else showGate(store.dir ? "reconnect" : "pick"); $("gateClose").hidden = !ui.connected; };
@@ -607,6 +610,82 @@ function wire() {
   $("updateBtn").onclick = () => { $("updateBtn").disabled = true; freshReload(); };
 }
 
+/* ---- bottle sync ----------------------------------------------------------- */
+/* Shown only for BOTTLE_USER; see bottle.js. Sips fill "your glass" (S.mine). */
+function bottleView() {
+  const on = bottleOn(), cfg = bottleCfg(), mine = S.mine && findParticipant(S.mine);
+  $("bottleBox").hidden = !on;
+  $("bottleSync").hidden = !(on && signedIn() && mine && ui.connected);
+  if (!on) return;
+  $("bOut").hidden = signedIn(); $("bIn").hidden = !signedIn();
+  $("bWho").textContent = signedIn() ? "Signed in as " + (cfg.email || "you") : "";
+  $("bottleNote").textContent = !mine ? "Link your glass first: click your name in the status bar." :
+    "Fills " + mine.name + "'s glass, on Sync now only. The relay address, relay key and Hidrate session stay in this browser.";
+}
+
+function fillBottle() {
+  const cfg = bottleCfg();
+  $("bRelay").value = cfg.relay || ""; $("bKey").value = cfg.key || ""; $("bKey").type = "password";
+  $("bEmail").value = cfg.email || ""; $("bPass").value = "";
+  bottleView();
+}
+
+async function syncBottle() {
+  if (!bottleOn() || !guard()) return;
+  const mine = S.mine && findParticipant(S.mine);
+  if (!mine) { setMsg("Link your glass first: click your name in the status bar.", false); return; }
+  for (const b of [$("bottleSync"), $("bSyncNow")]) b.disabled = true;
+  try {
+    const sips = await fetchSips();
+    let res = null;
+    await store.serial(async () => {
+      const p = findParticipant(mine.name), snap = p.entries.slice();
+      res = applySips(p, sips, todayKey());
+      if (!res.added && !res.grown && !res.removed.length) return;
+      if (!(await store.saveParticipant(p, res.removed))) { p.entries = snap; res.busy = true; return; }
+      if (res.oz > 0) { G.pour(p.name, res.oz, p.color); emit("pour", { name: p.name, oz: res.oz, color: p.color }); }
+      await settle();
+    });
+    setMsg(res.busy ? mine.name + "'s file is busy. Try again." :
+           res.oz > 0 ? "Bottle: +" + fmt(res.oz) + " oz from " + sips.length + " sip" + (sips.length === 1 ? "" : "s") + " today." :
+           sips.length ? "Bottle: up to date (" + sips.length + " sip" + (sips.length === 1 ? "" : "s") + " today)." : "Bottle: no sips yet today.", !res.busy);
+  } catch (e) {
+    store.diagNote("bottle sync: " + (e.message || e));
+    setMsg("Bottle sync: " + (e.message || e), false);
+  } finally {
+    for (const b of [$("bottleSync"), $("bSyncNow")]) b.disabled = false;
+    bottleView();
+  }
+}
+
+function wireBottle() {
+  const relayIn = () => setRelay($("bRelay").value, $("bKey").value);
+  $("bNewKey").onclick = () => { $("bKey").type = "text"; $("bKey").value = newRelayKey(); $("bKey").select();
+    setMsg("New relay key: copy it into the Worker's RELAY_KEY secret, then Save here.", true); };
+  $("bSaveRelay").onclick = async () => {
+    try { await relayIn(); $("bKey").type = "password"; setMsg("Relay saved in this browser.", true); } catch (e) { setMsg(e.message, false); }
+  };
+  $("bTest").onclick = async () => {
+    try {
+      await relayIn();
+      const r = await pingRelay();
+      setMsg(!r.configured ? "The relay answers, but its secrets aren't set yet." :
+             !r.keyOk ? "The relay answers, but the relay key doesn't match its RELAY_KEY." : "The relay answers and the key matches.", !!(r.configured && r.keyOk));
+    } catch (e) { setMsg("Relay test: " + e.message, false); }
+  };
+  $("bSignIn").onclick = async () => {
+    const pass = $("bPass").value;
+    $("bPass").value = "";                                       /* never kept, not even in the field */
+    try { await relayIn(); await signIn($("bEmail").value, pass); setMsg("Signed in to Hidrate.", true); }
+    catch (e) { setMsg("Hidrate sign-in: " + e.message, false); }
+    bottleView();
+  };
+  $("bPass").addEventListener("keydown", e => { if (e.key === "Enter") $("bSignIn").click(); });
+  $("bSignOut").onclick = async () => { await signOut(); setMsg("Signed out of Hidrate in this browser.", true); bottleView(); };
+  $("bSyncNow").onclick = syncBottle;
+  $("bottleSync").onclick = syncBottle;
+}
+
 /* ---- updates ------------------------------------------------------------ */
 /* The revision on the site, read past every cache. "" when it can't be read. */
 async function siteRev() {
@@ -641,6 +720,7 @@ async function checkVersion(atBoot) {
 /* ---- boot --------------------------------------------------------------- */
 async function boot() {
   await loadPetDefs();
+  await loadBottle();
   initTheme();
   wire();
   try { const a = Number(localStorage.getItem("awc-amount")); if (a > 0) ui.amount = a; } catch { }
