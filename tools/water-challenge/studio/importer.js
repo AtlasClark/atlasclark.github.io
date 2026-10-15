@@ -1,11 +1,11 @@
-/* Pet Studio importer: turns the built-in pets in art.js into editable shapes.
-   Each pet is drawn on a recording context (at r = 100, then scaled to units of r)
-   twice with different hues, to tell colourable parts from fixed ones, and once dead,
-   to find what only shows alive or dead. The eye dot and the dead X become one "eye". */
+/* Pet Studio importer. Every pet is shapes already (pen1art.js, pen2art.js); the crown
+   and jester hat are code drawings in art.js, turned into shapes here: each is drawn on
+   a recording context (at r = 100, then scaled to units of r). */
 
-import { drawCritter, drawPortrait, critterCrown, PET_CROWN } from "../js/art.js";
-import { defs, hats, EYE_INK } from "../js/petdefs.js";
+import { critterCrown } from "../js/art.js";
+import { hats, EYE_INK } from "../js/petdefs.js";
 import { PET_MAX, PEN2_FIRST, PET_COUNT } from "../js/config.js";
+import { PEN1_ART, EXTRA_ART } from "../js/pen1art.js";
 import { PEN2_ART } from "../js/pen2art.js";
 
 const R = 100, HUE_A = 0, HUE_B = 137;
@@ -143,73 +143,11 @@ function toShapes(recA, recB, keyOf) {
   });
 }
 
-/* Alive and dead drawings merged in order: marks in both always show, the rest
-   show alive or dead only. */
-function mergeLives(alive, dead) {
-  const sig = s => JSON.stringify(s);
-  const A = alive.map(sig), D = dead.map(sig), n = A.length, m = D.length;
-  const L = Array.from({ length: n + 1 }, () => new Int32Array(m + 1));
-  for (let i = n - 1; i >= 0; i--) for (let j = m - 1; j >= 0; j--)
-    L[i][j] = A[i] === D[j] ? L[i + 1][j + 1] + 1 : Math.max(L[i + 1][j], L[i][j + 1]);
-  const out = [];
-  let i = 0, j = 0;
-  while (i < n || j < m) {
-    if (i < n && j < m && A[i] === D[j]) { out.push(alive[i]); i++; j++; }
-    else if (i < n && (j >= m || L[i + 1][j] >= L[i][j + 1])) out.push(Object.assign({}, alive[i++], { show: "alive" }));
-    else out.push(Object.assign({}, dead[j++], { show: "dead" }));
-  }
-  return out;
-}
-
-const near = (a, b, t = 2e-4) => Math.abs(a - b) < t;
-function isDot(s, inkKey) {
-  return s.t === "ell" && s.fill === inkKey && !s.stroke && near(s.rx, s.ry) && s.rx > 0 &&
-         near(s.a0, 0) && near(s.a1, 6.2832) && !s.chord && !s.rot;
-}
-function isCross(s, inkKey, x, y, k) {
-  if (s.t !== "path" || s.stroke !== inkKey || s.fill || s.d.length !== 4 || !near(s.w, 0.07 * k)) return false;
-  const e = 0.11 * k, want = [["M", x - e, y - e], ["L", x + e, y + e], ["M", x + e, y - e], ["L", x - e, y + e]];
-  return s.d.every((c, i) => c[0] === want[i][0] && near(c[1], want[i][1]) && near(c[2], want[i][2]));
-}
-
-/* An eye dot of the critterEye size (0.08r) becomes an eye; so does its dead X. */
-function mergeEyes(shapes, inkKey, portrait) {
-  const out = shapes.slice();
-  for (let i = 0; i < out.length; i++) {
-    const s = out[i];
-    if (!s || !isDot(s, inkKey) || !near(s.rx, 0.08) || (!portrait && s.show !== "alive")) continue;
-    if (portrait) { out[i] = { t: "eye", x: s.x, y: s.y }; continue; }
-    const j = out.findIndex(o => o && o.show === "dead" && isCross(o, inkKey, s.x, s.y, 1));
-    if (j < 0) continue;
-    out[i] = { t: "eye", x: s.x, y: s.y };
-    out[j] = null;
-  }
-  return out.filter(Boolean);
-}
-
-/* One built-in pet as a Studio pet. */
+/* One built-in pet as a Studio pet: every pet is shapes already (pen1art.js, pen2art.js). */
 export function importBuiltin(k) {
-  if (k >= PEN2_FIRST && k < PEN2_FIRST + PET_COUNT) {          /* already shapes: its own drawing */
-    const a = JSON.parse(JSON.stringify(PEN2_ART[k - PEN2_FIRST]));
-    return { crown: a.crown, pal: a.pal, swim: a.swim, portrait: null };
-  }
-  const keep = defs[k];
-  delete defs[k];
-  try {
-    const crit = (hue, dead) => record(ctx => drawCritter(ctx, 0, 0, R, 0, false, dead, k, hue));
-    const port = hue => record(ctx => drawPortrait(ctx, 0, 0, R, k, hue));
-    const pal = basePalette(), keyOf = palKeeper(pal);
-    const aliveA = crit(HUE_A, false), aliveB = crit(HUE_B, false), deadA = crit(HUE_A, true), deadB = crit(HUE_B, true);
-    const alive = toShapes(aliveA, aliveB, keyOf), dead = toShapes(deadA, deadB, keyOf);
-    const swim = mergeEyes(mergeLives(alive, dead), "ink", false);
-    const pA = port(HUE_A);
-    let portrait = null;
-    if (JSON.stringify(pA) !== JSON.stringify(aliveA)) portrait = mergeEyes(toShapes(pA, port(HUE_B), keyOf), "ink", true);
-    const c = PET_CROWN[k] || [0, -1];
-    return { crown: [c[0], c[1]], pal, swim, portrait };
-  } finally {
-    if (keep) defs[k] = keep;
-  }
+  const art = k < PET_COUNT ? PEN1_ART[k] : k >= PEN2_FIRST && k < PEN2_FIRST + PET_COUNT ? PEN2_ART[k - PEN2_FIRST] : EXTRA_ART[k];
+  const a = JSON.parse(JSON.stringify(art));
+  return { crown: a.crown, pal: a.pal, swim: a.swim, portrait: null };
 }
 
 /* The built-in crown or jester hat, around the crown spot. */

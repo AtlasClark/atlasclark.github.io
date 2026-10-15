@@ -205,7 +205,7 @@ test("identity: usernames come from the data, and a near-miss is caught", () => 
 
 test("walls: each pet's reach is measured, and its drawing stays inside the glass facing either way", async () => {
   const e = G.critterExtent(0);
-  assert.ok(Math.abs(e.left - 1.18) < 0.01 && Math.abs(e.right - 0.52) < 0.01, "the duck: beak 1.18 r ahead, tail 0.52 r behind");
+  assert.ok(Math.abs(e.left - 0.88) < 0.01 && Math.abs(e.right - 0.66) < 0.01, "the duck: bill 0.88 r ahead, tail 0.66 r behind");
   assert.ok(G.critterExtent(C.MYSTERY_KIND).right > 1.4, "the dragon's tail reaches far behind");
   for (const [n, w] of [[8, 343], [8, 748], [3, 1300]]) {                /* narrowest and widest glasses */
     G.applyLayout(G.pickLayout(n, w));

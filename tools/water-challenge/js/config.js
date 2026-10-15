@@ -3,8 +3,8 @@
    contract (FORMAT_REV 21, UTF-16 LE + BOM) must stay identical while R55 runs on the
    share: R55 deletes any field it does not know on its next write. */
 
-export const REV         = "rev 1.18.0";
-export const APP_VERSION = "web 1.18.0";   /* stamped as writerVersion */
+export const REV         = "rev 1.19.0";
+export const APP_VERSION = "web 1.19.0";   /* stamped as writerVersion */
 /* A folder stays at LEGACY_FORMAT (byte-compatible with R55) until someone upgrades
    it from Settings. Format 22 adds tokensSpent and keeps unknown fields; R55 must
    not be used on a folder after that. */
@@ -57,7 +57,7 @@ export const BACKUP_KEEP_DAYS = 14;
    Every file the page is made of. When a new version is out, these are re-fetched
    past the browser cache before reloading, so old and new modules never mix. */
 export const SITE_FILES = ["./", "app.css",
-  "js/app.js", "js/art.js", "js/bottle.js", "js/config.js", "js/glass.js", "js/guard.js", "js/live.js", "js/model.js", "js/pen2art.js", "js/petdefs.js",
+  "js/app.js", "js/art.js", "js/bottle.js", "js/config.js", "js/glass.js", "js/guard.js", "js/live.js", "js/model.js", "js/pen1art.js", "js/pen2art.js", "js/petdefs.js",
   "js/pets.js", "js/plinko.js", "js/radial.js", "js/reveal.js", "js/shop.js", "js/shopui.js", "js/store.js", "js/ui.js", "js/util.js", "pets/pets.json"];
 export const VERSION_CHECK_MS = 300000;
 
@@ -127,7 +127,6 @@ export const HOMUNCULUS_KIND  = 25;
 export const MYSTERY_KIND     = 26;
 export const MYSTERY_CHANCE   = 0.006;
 export const PET_MAX          = PEN2_FIRST + 25;   /* every kind: two pens, the reward, the dragon */
-export const HOMUNCULUS_STYLE = "ball";
 export const PET_NO_PET       = -1;
 export const JOKE_KIND        = 5;
 export const GRAVE_LINES = [

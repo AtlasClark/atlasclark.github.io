@@ -31,8 +31,9 @@ test("pets.json: bad pets and shapes are dropped, names apply and reset", () => 
   assert.equal(C.PET_BASE_NAMES[0], "Duck");
   assert.deepEqual(P.applyDefs({ format: 2, pets: {} }), [], "a newer format is not read");
   assert.equal(C.PET_NAMES[0], "Duck", "names go back when the file no longer renames");
-  assert.deepEqual(Object.keys(P.defs).map(Number).filter(k => k < C.PEN2_FIRST), [], "no first-pen drawings left");
-  assert.equal(Object.keys(P.defs).length, C.PET_COUNT, "the second pen's own drawings are always there");
+  const pens = Object.keys(P.defs).map(Number);
+  assert.equal(pens.length, C.PET_MAX, "every pet's built-in drawing is always there");
+  assert.notEqual(P.defs[0].swim.length, 2, "the duck is back to its built-in drawing");
 });
 
 test("pets.json: the committed file is valid", () => {

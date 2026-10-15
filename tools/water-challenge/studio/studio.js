@@ -11,7 +11,7 @@ import { Editor, TOOL_HINTS } from "./editor.js";
 import { Preview } from "./preview.js";
 import * as G from "./geom.js";
 
-const REV = "studio 1.7.0";
+const REV = "studio 1.8.0";
 const PETS_URL = "../pets/pets.json";
 const $ = id => document.getElementById(id);
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -122,7 +122,7 @@ function syncDefs() {
   for (let k = 0; k < C.PET_MAX; k++) {
     const p = W.pets[k];
     if (p && p.edited && p.def.swim.length) defs[k] = p.def;
-    else if (k >= C.PEN2_FIRST && W.builtin[k]) defs[k] = W.builtin[k];     /* the second pen has no code drawing */
+    else if (W.builtin[k]) defs[k] = W.builtin[k];                      /* no pet has a code drawing */
     else delete defs[k];
     C.PET_NAMES[k] = (p && p.edited && p.def.name) || baseName(k);
   }

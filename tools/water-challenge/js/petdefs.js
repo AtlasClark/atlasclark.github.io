@@ -1,5 +1,5 @@
-/* Drawn pets. pets/pets.json holds the pets redrawn in the Pet Studio
-   (.dev/pet-studio, local only); a pet not in it keeps its built-in drawing in art.js.
+/* Drawn pets. Every pet starts from its built-in drawing (pen1art.js, pen2art.js);
+   pets/pets.json holds the pets redrawn in the Pet Studio and replaces them.
 
    A pet:   { name?, crown: [x, y], pal: { key: colour }, swim: [shape], portrait?: [shape] }
    Units are the pet's size r. Origin is the waterline anchor, y grows down, the pet
@@ -16,6 +16,7 @@
    only. They replace the built-in crown and jester on pets and in the page's icons. */
 
 import * as C from "./config.js";
+import { PEN1_ART, EXTRA_ART } from "./pen1art.js";
 import { PEN2_ART } from "./pen2art.js";
 
 export const PET_DEFS_FORMAT = 1;
@@ -48,15 +49,17 @@ function cleanShape(s, pal) {
   return s;
 }
 
-/* The second pen has no built-in code drawing: its drawings (pen2art.js) sit in defs
-   from the start, and pets.json can replace them like any other. */
-function seedPen2(clean) {
-  PEN2_ART.forEach((p, i) => {
+/* Every pet's built-in drawing (both pens, the Homunculus, the dragon) sits in defs
+   from the start; pets.json can replace any of them. */
+function seedPens() {
+  const all = [...PEN1_ART.map((p, i) => [i, p]), ...PEN2_ART.map((p, i) => [C.PEN2_FIRST + i, p]),
+               ...Object.entries(EXTRA_ART).map(([k, p]) => [Number(k), p])];
+  for (const [k, p] of all) {
     const pal = {};
-    for (const [n, c] of Object.entries(p.pal)) { const v = clean.colour(c); if (v) pal[n] = v; }
-    const swim = p.swim.map(s => clean.shape(s, pal)).filter(Boolean);
-    if (swim.length) defs[C.PEN2_FIRST + i] = { pal, swim, portrait: null, crown: p.crown, range: 1 };
-  });
+    for (const [n, c] of Object.entries(p.pal)) { const v = cleanColour(c); if (v) pal[n] = v; }
+    const swim = p.swim.map(s => cleanShape(s, pal)).filter(Boolean);
+    if (swim.length) defs[k] = { pal, swim, portrait: null, crown: p.crown, range: 1 };
+  }
 }
 
 /* Checks a pets.json object and puts its pets in defs. Bad shapes are dropped and
@@ -66,7 +69,7 @@ export function applyDefs(obj) {
   for (const k of Object.keys(defs)) delete defs[k];
   for (const k of Object.keys(hats)) delete hats[k];
   C.PET_NAMES.splice(0, C.PET_NAMES.length, ...C.PET_BASE_NAMES);
-  seedPen2({ colour: cleanColour, shape: cleanShape });
+  seedPens();
   const took = [];
   if (!obj || typeof obj.pets !== "object" || Number(obj.format) > PET_DEFS_FORMAT) return took;
   for (const [key, p] of Object.entries(obj.pets)) {
@@ -226,4 +229,4 @@ export function hatSvgFrom(hat, w, h, cls) {
          parts.join("") + '</svg>';
 }
 
-applyDefs({ format: PET_DEFS_FORMAT, pets: {} });          /* the second pen, before any pets.json */
+applyDefs({ format: PET_DEFS_FORMAT, pets: {} });          /* the built-in pens, before any pets.json */
