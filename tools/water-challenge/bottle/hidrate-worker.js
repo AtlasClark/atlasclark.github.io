@@ -11,8 +11,8 @@
    - Stores and logs nothing.
 
    Set up (Cloudflare dashboard, free plan):
-   1. Workers & Pages > Create > Create Worker. Name it (e.g. hidrate-relay) > Deploy.
-   2. Edit code: replace everything with this file > Deploy.
+   1. Workers & Pages > Create > "Start with Hello World!". Name it (e.g. hidrate-relay) > Deploy.
+   2. Edit code (the </> button): replace all of the sample code with this file > Deploy.
    3. Settings > Variables and Secrets > Add, type Secret, three times:
         HIDRATE_APP_ID      Hidrate's app id     (HIDRATE_APP_ID in the R55 HTA)
         HIDRATE_CLIENT_KEY  Hidrate's client key (HIDRATE_CLIENT_KEY in the R55 HTA)
