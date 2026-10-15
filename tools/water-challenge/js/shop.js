@@ -7,7 +7,7 @@ import * as C from "./config.js";
 import { S, tokensEarned, capBonus } from "./model.js";
 import { saveParticipant, petKindFor } from "./store.js";
 import { has, todayKey, localStamp } from "./util.js";
-import { applyRoll, dayRng, grantHomunculus, isGrave, petBinIndex } from "./pets.js";
+import { applyRoll, dayRng, grantHomunculus, isGrave, petBinIndex, penOf, binsFor, rollPen, pen2Open } from "./pets.js";
 
 export const shopOpen = () => S.folderFormat >= C.FORMAT_REV;
 export const spentTotal = p => (p.spends || []).reduce((a, s) => a + (Number(s.cost) || 0), 0);
@@ -47,7 +47,7 @@ export function rerollBlock(p) {
   if (p.rerollDay === key) return "Already rerolled today.";
   /* A new pen species today plus the full-pen reward means today's roll completed
      the pen; taking it back would leave the reward unearned. */
-  if (p.rollWasNew && Number(p.rollKind) < C.PET_COUNT && has(p.pets, C.HOMUNCULUS_KIND)) {
+  if (p.rollWasNew && penOf(Number(p.rollKind)) === 1 && has(p.pets, C.HOMUNCULUS_KIND)) {
     return "Today's roll completed the pen.";
   }
   if (balance(p) < C.REROLL_COST) return "Needs " + C.REROLL_COST + " token.";
@@ -98,7 +98,7 @@ export const chestOdds = () => slotOdds().get(C.CHEST) || 0;
 /* What a rarity can give on Plinko: species they don't have alive (unowned or
    buried) first; once every one is alive, any of them (a duplicate). */
 export function plinkoPool(bin, p) {
-  const kinds = C.PET_BINS[bin].kinds, missing = kinds.filter(k => !has(p.pets, k));
+  const kinds = binsFor(rollPen(p))[bin].kinds, missing = kinds.filter(k => !has(p.pets, k));
   return missing.length ? missing : kinds.slice();
 }
 
@@ -149,7 +149,8 @@ function give(p, k, hue) {
 /* ---- buying ---------------------------------------------------------------- */
 export function buyBlock(p, k) {
   if (!shopOpen()) return "Needs format " + C.FORMAT_REV + " (Settings › Data format).";
-  if (!(k >= 0 && k < C.PET_COUNT)) return "Not for sale.";
+  if (penOf(k) === 0) return "Not for sale.";
+  if (penOf(k) === 2 && !pen2Open(p)) return "Opens with the second pen.";
   if (has(p.pets, k)) return "Already owned.";
   if (balance(p) < priceOf(k)) return "Needs " + priceOf(k) + " tokens.";
   return "";

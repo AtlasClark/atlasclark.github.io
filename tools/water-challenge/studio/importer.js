@@ -5,7 +5,8 @@
 
 import { drawCritter, drawPortrait, critterCrown, PET_CROWN } from "../js/art.js";
 import { defs, hats, EYE_INK } from "../js/petdefs.js";
-import { PET_MAX } from "../js/config.js";
+import { PET_MAX, PEN2_FIRST, PET_COUNT } from "../js/config.js";
+import { PEN2_ART } from "../js/pen2art.js";
 
 const R = 100, HUE_A = 0, HUE_B = 137;
 const rnd = v => Math.round(v * 1e5) / 1e5;
@@ -188,6 +189,10 @@ function mergeEyes(shapes, inkKey, portrait) {
 
 /* One built-in pet as a Studio pet. */
 export function importBuiltin(k) {
+  if (k >= PEN2_FIRST && k < PEN2_FIRST + PET_COUNT) {          /* already shapes: its own drawing */
+    const a = JSON.parse(JSON.stringify(PEN2_ART[k - PEN2_FIRST]));
+    return { crown: a.crown, pal: a.pal, swim: a.swim, portrait: null };
+  }
   const keep = defs[k];
   delete defs[k];
   try {

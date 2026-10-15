@@ -7,7 +7,7 @@ import * as store from "./store.js";
 import { shopOpen, balance, spentTotal, priceOf, rerollBlock, reroll, plinkoBlock, plinkoPlay, plinkoOdds, chestOdds, buyBlock, buy, chestWinnings } from "./shop.js";
 import { landed as landedIds, setFlying, HOLD_MS, hiddenPets, shownBalance, shownChest, anyPending } from "./reveal.js";
 import { onLive, emit } from "./live.js";
-import { petLabel, petGridOrder, rarityLabel, petBinIndex, isGrave, announce } from "./pets.js";
+import { petLabel, petGridOrder, rarityLabel, petBinIndex, isGrave, announce, penOf, pen2Open, penAlive } from "./pets.js";
 import { PlinkoBoard } from "./plinko.js";
 import { $, esc, has, todayKey, prettyTime, localStamp, bus } from "./util.js";
 import { setMsg, ensureIcons, ui, render } from "./ui.js";
@@ -33,6 +33,10 @@ export function initShop(h) {
   });
   $("plinkoDrop").addEventListener("click", dropToken);
   $("rerollBox").addEventListener("click", e => { if (e.target.closest("#rerollBtn")) doReroll(); });
+  $("buyPens").addEventListener("click", e => {
+    const b = e.target.closest("[data-pen]");
+    if (b) { ui.shopPen = Number(b.dataset.pen); renderShop(); }
+  });
   $("buyGrid").addEventListener("click", e => {
     const c = e.target.closest("[data-buy]");
     if (c) doBuy(Number(c.dataset.buy));
@@ -87,7 +91,7 @@ export function renderShop() {
   const rb = rerollBlock(p), k = Number(p.rollKind), rolledToday = p.petRollDay === todayKey() && k >= 0;
   $("rerollBox").innerHTML =
     (rolledToday
-      ? '<div class="reroll-now">' + (k < C.PET_COUNT ? '<i class="pi pi-' + k + '"></i>' : '') +
+      ? '<div class="reroll-now">' + (penOf(k) > 0 ? '<i class="pi pi-' + k + '"></i>' : '') +
         '<div><span class="dim">Today\'s roll</span><br><b>' + esc(petLabel(k)) + '</b> <span class="rar">' + esc(rarityLabel(k)) + '</span>' +
         (p.rerollDay === todayKey() ? ' <span class="pill">rerolled</span>' : '') + '</div></div>'
       : '') +
@@ -99,7 +103,12 @@ export function renderShop() {
   clearTimeout(holdTimer);
   if (anyPending()) holdTimer = setTimeout(render, HOLD_MS);
   const h = [];
-  for (const kind of petGridOrder()) {
+  /* both pens once the second is open, one tab each */
+  const twoPens = pen2Open(p), pen = twoPens ? (ui.shopPen || 2) : 1;
+  $("buyPens").hidden = !twoPens;
+  if (twoPens) $("buyPens").innerHTML = [1, 2].map(x => '<button type="button" class="pen-tab' + (x === pen ? ' on' : '') + '" data-pen="' + x + '">' +
+    (x === 1 ? 'First pen' : 'Second pen') + ' <b>' + penAlive(p, x) + '</b></button>').join("");
+  for (const kind of petGridOrder(pen)) {
     const held = hidden.has(kind), owned = has(p.pets, kind) && !held, buried = isGrave(p, kind) || (held && hidden.get(kind));
     const why = held ? (balance(p) < priceOf(kind) ? "Needs " + priceOf(kind) + " tokens." : "") : buyBlock(p, kind), price = priceOf(kind);
     const state = owned ? "owned" : why ? "short" : "can";

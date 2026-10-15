@@ -575,7 +575,7 @@ function drawCritter(ctx, x, y, r, ang, crowned, dead, kind, hue, jester) {
     critterEye(ctx, r * 0.10, -r * 0.38, r, dead);
   }
 
-  if (crowned) { critterCrown(ctx, r * PET_CROWN[k][0], r * PET_CROWN[k][1], r, jester); }
+  if (crowned) { const c = PET_CROWN[k] || [0, -1]; critterCrown(ctx, r * c[0], r * c[1], r, jester); }
   ctx.restore();
 }
 

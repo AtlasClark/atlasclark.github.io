@@ -36,17 +36,29 @@ export function petHueFor(p) {
   return hashHue(p.name + k);
 }
 
+/* ---- the two pens ---- */
+export const penOf = k => (k >= 0 && k < C.PET_COUNT) ? 1 : (k >= C.PEN2_FIRST && k < C.PEN2_FIRST + C.PET_COUNT) ? 2 : 0;
+export const penKinds = pen => Array.from({ length: C.PET_COUNT }, (_, i) => (pen === 2 ? C.PEN2_FIRST : 0) + i);
+export const binsFor = pen => pen === 2 ? C.PEN2_BINS : C.PET_BINS;
+/* Open for good once earned, at format 22 only (the HTA knows one pen). */
+export const pen2Open = p => S.folderFormat >= C.FORMAT_REV && !!(p && p.pen2);
+/* The pen new pets come from: the second once it is open (the first is complete). */
+export const rollPen = p => pen2Open(p) ? 2 : 1;
+export const penAlive = (p, pen) => penKinds(pen).filter(k => has(p.pets, k)).length;
+export const penBuried = (p, pen) => penKinds(pen).filter(k => isGrave(p, k)).length;
+const baseKind = k => penOf(k) === 2 ? k - C.PEN2_FIRST : k;
+
 export function petRarityOf(kind) {
-  for (const b of C.PET_BINS) if (b.kinds.includes(kind)) return b;
+  for (const b of C.PET_BINS) if (b.kinds.includes(baseKind(kind))) return b;
   return C.PET_BINS[0];
 }
 export function petBinIndex(kind) {
-  const i = C.PET_BINS.findIndex(b => b.kinds.includes(kind));
+  const i = C.PET_BINS.findIndex(b => b.kinds.includes(baseKind(kind)));
   return i < 0 ? 0 : i;
 }
-export function petGridOrder() {
+export function petGridOrder(pen = 1) {
   const order = [];
-  for (const b of C.PET_BINS) order.push(...b.kinds);
+  for (const b of binsFor(pen)) order.push(...b.kinds);
   return order;
 }
 
@@ -107,7 +119,7 @@ function rollPetKind(p, rnd) {
   const avail = [];
   let totalW = 0;
   const last = (p && p.lastRoll !== undefined && p.lastRoll !== null) ? Number(p.lastRoll) : C.PET_NO_PET;
-  for (const b of C.PET_BINS) {
+  for (const b of binsFor(rollPen(p))) {
     const pool = binPool(b, p);
     if (pool.length) { avail.push({ w: b.weight, pool }); totalW += b.weight; }
   }
@@ -134,7 +146,7 @@ export function todaysPet(p) {
 function petsList(p) {
   return Object.keys(p.pets || {}).map(Number).sort((a, b) => a - b);
 }
-const drownable = k => k >= 0 && k < C.PET_COUNT;
+const drownable = k => penOf(k) > 0;
 
 /* Same victim on every machine: a hash of name and date, not Math.random. */
 export function pickVictim(p) {
@@ -304,10 +316,20 @@ export async function syncHomunculus(p) {
   return false;
 }
 
+/* The second pen opens, for good, the first time all 25 are alive at once. */
+export async function openPen2(p) {
+  if (!aliveRule() || p.pen2 || !penComplete(p)) return false;
+  p.pen2 = todayKey();
+  if (!(await saveParticipant(p, null))) { delete p.pen2; return false; }
+  bus.msg(p.name + " opened the second pen: " + C.PET_COUNT + " new pets to find. Rolls and Plinko come from it now.", true);
+  return true;
+}
+
 export async function reconcilePets() {
   if (!C.EGG_ENABLED) return;
   const key = todayKey();
   for (const p of S.participants) if (await syncHomunculus(p)) bus.petReset(p.name);
+  for (const p of S.participants) await openPen2(p);
   for (const p of S.participants) {
     if (!isActive(p)) continue;
     const total = totalOn(p, key), goal = personalGoal(p, key);
@@ -324,6 +346,7 @@ export async function reconcilePets() {
       if (dead) bus.drown(p.name, dead.kind, dead.hue);
     }
     if (await syncHomunculus(p)) bus.petReset(p.name);
+    await openPen2(p);
   }
 }
 

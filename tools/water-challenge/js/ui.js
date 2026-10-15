@@ -11,6 +11,7 @@ import { S, personalGoal, capFor, totalOn, metGoal, pastCap, atCap, dayScoreFor,
          duplicateNames, isAway, openAwaySince, goalForDate, petEventTimes, allDateKeys } from "./model.js";
 import { petKindFor, ownsEquipped, graveEquipped, petHueFor, isGrave, gravesOf, petsOwned,
          graveLine, petLabel, petName, petRarityOf, petBinIndex, petGridOrder, penFound, penWord,
+         penOf, penKinds, pen2Open, penAlive, penBuried,
          hashHue, rarityLabel, undoEffect } from "./pets.js";
 import { crownSvg, jesterSvg, hatSvg, drawPortrait, drawCritter, drawHeadstone, drawGoldPile } from "./art.js";
 import * as G from "./glass.js";
@@ -23,7 +24,7 @@ import { $, esc, fmt, fmtOz, fmtGal, todayKey, dateKey, prettyTime, clockStamp, 
 /* Set by app.js: the Shop tab renders from shopui.js, which imports this module. */
 export const uiHooks = { renderShop: null, bottle: null };
 
-export const ui = { tab: "today", amount: C.DEFAULT_AMOUNT, connected: false, lastSync: "",
+export const ui = { tab: "today", amount: C.DEFAULT_AMOUNT, connected: false, lastSync: "", petPen: {}, shopPen: 0,
                     armed: "" };   /* eid of the pour whose undo is waiting for a second click */
 
 /* ---- DOM helpers -------------------------------------------------------- */
@@ -98,6 +99,12 @@ function streakPips(s, brief) {
   return bits.join(brief ? "" : "<br>");
 }
 
+
+/* "Oct 15" from a day key. */
+function prettyDate(key) {
+  const d = parseKey(key);
+  return d ? d.toLocaleDateString("en-US", { month: "short", day: "numeric" }) : String(key || "");
+}
 
 /* ---- glasses ------------------------------------------------------------ */
 let ordered = [], renderedSig = "";
@@ -400,7 +407,7 @@ export function ensureIcons() {
   if (iconsReady) return;
   iconsReady = true;
   const css = [];
-  for (let k = 0; k < C.PET_COUNT; k++) {
+  for (const k of [...penKinds(1), ...penKinds(2)]) {
     css.push(".pi-" + k + "{background-image:url(" + iconUrl(ctx => drawPortrait(ctx, 30, 42, 20, k, hashHue(C.PET_BASE_NAMES[k] + k))) + ")}");
   }
   css.push(".pi-grave{background-image:url(" + iconUrl(ctx => drawHeadstone(ctx, 30, 50, 26, 210)) + ")}");
@@ -414,18 +421,27 @@ export function ensureIcons() {
 function renderPets() {
   if (!S.participants.length) { setHtml("pets", '<p class="empty-state">Nobody on the roster yet.</p>'); return; }
   ensureIcons();
-  const order = petGridOrder(), h = [];
+  const h = [];
   h.push('<div class="pet-legend">');
   C.PET_BINS.forEach((b, i) => h.push('<span><i class="pl r' + i + '"></i>' + esc(b.name) + ' &middot; ' + b.weight + '%</span>'));
   h.push('<span><i class="pl grave"></i>Buried &middot; ' + (shopOpen() ? 'buy it back or win it on Plinko' : 'gone for good') + '</span>');
   h.push('<span class="pl-note">Reach your goal to roll. Click a pet to wear it; click again to take it off.</span></div>');
   h.push('<div class="pet-cards">');
   for (const p of S.participants) {
-    const mine = shownKind(p), n = ja(p.name), held = hiddenPets(p), backSoon = [...held.values()].filter(Boolean).length;
+    const mine = shownKind(p), n = ja(p.name), held = hiddenPets(p);
+    /* the second pen gets a tab once it is open; until then a card shows one pen */
+    const open = pen2Open(p), pen = open ? (ui.petPen[p.name] || 2) : 1, order = petGridOrder(pen);
+    const inPen = k => penOf(k) === pen, heldHere = [...held.keys()].filter(inPen);
+    const alive = penAlive(p, pen) - heldHere.length, buried = penBuried(p, pen) + heldHere.filter(k => held.get(k)).length;
     h.push('<div class="pet-card" data-name="' + n + '">');
     h.push('<div class="pet-head"><i class="dot" style="background:' + p.color + '"></i>' + esc(p.name) +
-           '<span class="pet-count">' + (petsOwned(p) - held.size) + ' / ' + C.PET_COUNT +
-           (gravesOf(p) + backSoon ? '<b class="graven"> &middot; ' + (gravesOf(p) + backSoon) + ' buried</b>' : '') + '</span></div>');
+           '<span class="pet-count">' + alive + ' / ' + C.PET_COUNT +
+           (buried ? '<b class="graven"> &middot; ' + buried + ' buried</b>' : '') + '</span></div>');
+    if (open) {
+      h.push('<div class="pen-tabs" role="tablist">' + [1, 2].map(x =>
+        '<button type="button" role="tab" class="pen-tab' + (x === pen ? ' on' : '') + '" aria-selected="' + (x === pen) + '" data-act="pen" data-pen="' + x + '">' +
+        (x === 1 ? 'First pen' : 'Second pen') + ' <b>' + penAlive(p, x) + '</b></button>').join("") + '</div>');
+    }
     h.push('<div class="pet-grid">');
     for (const k of order) {
       const rar = petRarityOf(k), buried = isGrave(p, k) || held.get(k) === true, owned = !buried && has(p.pets, k) && !held.has(k);
@@ -438,6 +454,7 @@ function renderPets() {
              '<span class="pn">' + (buried || owned ? esc(C.PET_NAMES[k]) : "???") + '</span></div>');
     }
     h.push('</div>');
+    if (pen === 2) { h.push('<p class="pen-note">Opened ' + esc(prettyDate(p.pen2)) + '. New pets come from here now.</p></div>'); continue; }
     const got = has(p.pets, C.HOMUNCULUS_KIND);
     h.push('<div class="pet-reward' + (got ? ' won" data-act="equip" data-kind="' + C.HOMUNCULUS_KIND + '" role="button" tabindex="0"' : '"') +
            ' title="' + (got ? esc(C.PET_NAMES[C.HOMUNCULUS_KIND]) + ' &middot; every one of them at once'
@@ -645,7 +662,7 @@ function recapHtml() {
   /* Pets: what changed in each pen. Plinko is folded to one line per person (new
      pets only); every drop is counted in the shop strip below instead. */
   const ev = [], shop = [];
-  const icon = k => k >= 0 && k < C.PET_COUNT ? '<i class="pi pi-' + k + '"></i>' : '';
+  const icon = k => penOf(k) > 0 ? '<i class="pi pi-' + k + '"></i>' : '';
   const names = petList;
   for (const p of S.participants) {
     const r = rollOn(p, day), g = graveOn(p, day), d = shopDay(p, day), who = '<strong>' + esc(p.name) + '</strong> ';
@@ -950,7 +967,7 @@ export function showDiag() {
          '<th class="n">Goal</th><th class="n">Cap</th><th class="n">Today</th><th class="n">Pets</th><th>Wearing</th><th></th></tr>');
   for (const p of S.participants) {
     h.push('<tr><td>' + esc(p.name) + '</td><td class="n">' + fmt(currentGoalFor(p)) + '</td><td class="n">' + fmt(capFor(p, key)) +
-           '</td><td class="n">' + fmt(totalOn(p, key)) + '</td><td class="n">' + petsOwned(p) + '/' + C.PET_COUNT +
+           '</td><td class="n">' + fmt(totalOn(p, key)) + '</td><td class="n">' + penAlive(p, 1) + '/' + C.PET_COUNT + (pen2Open(p) ? ' + ' + penAlive(p, 2) + '/' + C.PET_COUNT : '') +
            (gravesOf(p) ? ' <span class="dim">+' + gravesOf(p) + '&dagger;</span>' : '') + '</td><td>' + esc(petName(petKindFor(p))) + '</td><td>' +
            (goalForDate(p, key) === null ? '<span class="pill">default goal</span> ' : '') +
            (p.petRollDay === key ? '<span class="pill good">rolled</span> ' : '') +

@@ -31,7 +31,8 @@ test("pets.json: bad pets and shapes are dropped, names apply and reset", () => 
   assert.equal(C.PET_BASE_NAMES[0], "Duck");
   assert.deepEqual(P.applyDefs({ format: 2, pets: {} }), [], "a newer format is not read");
   assert.equal(C.PET_NAMES[0], "Duck", "names go back when the file no longer renames");
-  assert.equal(Object.keys(P.defs).length, 0);
+  assert.deepEqual(Object.keys(P.defs).map(Number).filter(k => k < C.PEN2_FIRST), [], "no first-pen drawings left");
+  assert.equal(Object.keys(P.defs).length, C.PET_COUNT, "the second pen's own drawings are always there");
 });
 
 test("pets.json: the committed file is valid", () => {
@@ -122,10 +123,10 @@ test("studio import: every built-in pet draws the same from its shapes",
      { skip: fs.existsSync(IMPORTER) ? false : "Pet Studio not present" }, async () => {
   const I = await import(pathToFileURL(IMPORTER));
   const r = 100, same = (draw, def, k, what) => {
-    const before = rec(draw);
+    const keep = P.defs[k], before = rec(draw);
     P.defs[k] = def;
     const after = rec(draw);
-    delete P.defs[k];
+    if (keep) P.defs[k] = keep; else delete P.defs[k];
     const why = sameDrawing(before, after, 1e-3);
     assert.equal(why, "", C.PET_NAMES[k] + " (" + k + ") " + what + ": " + why);
   };

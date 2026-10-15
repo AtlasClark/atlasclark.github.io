@@ -403,6 +403,12 @@ li.pour.armed .undo-x { opacity: 1; background: #c4434f; color: #fff; }
 .pet-count { float: right; font-size: 11.5px; font-weight: 700; color: var(--faint); margin-left: 14px; }
 .graven { color: var(--fainter); font-weight: 700; }
 .pet-grid { display: grid; grid-template-columns: repeat(5, 60px); gap: 4px; }
+.pen-tabs { display: flex; gap: 4px; margin: -2px 0 8px; }
+.pen-tab { flex: 1; padding: 4px 8px; border: 1px solid var(--chip-line); border-radius: 999px; background: none; color: var(--muted);
+  font: inherit; font-size: 11.5px; font-weight: 700; cursor: pointer; }
+.pen-tab b { margin-left: 3px; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.pen-tab.on { background: var(--accent-soft); border-color: var(--accent); color: var(--accent-ink); }
+.pen-note { margin: 8px 0 0; font-size: 11.5px; color: var(--faint); }
 .pc { height: 74px; border-radius: 10px; text-align: center; background: var(--pc-bg); box-shadow: inset 0 0 0 2px var(--r0); padding-top: 2px; transition: background .12s, transform .12s; }
 .pc.r1 { box-shadow: inset 0 0 0 2px var(--r1); } .pc.r2 { box-shadow: inset 0 0 0 2px var(--r2); }
 .pc.r3 { box-shadow: inset 0 0 0 2px var(--r3); } .pc.r4 { box-shadow: inset 0 0 0 2px var(--r4); }

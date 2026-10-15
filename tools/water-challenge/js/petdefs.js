@@ -16,6 +16,7 @@
    only. They replace the built-in crown and jester on pets and in the page's icons. */
 
 import * as C from "./config.js";
+import { PEN2_ART } from "./pen2art.js";
 
 export const PET_DEFS_FORMAT = 1;
 /* A pet may also carry range (0..1): its share of the normal swim range. */
@@ -47,6 +48,17 @@ function cleanShape(s, pal) {
   return s;
 }
 
+/* The second pen has no built-in code drawing: its drawings (pen2art.js) sit in defs
+   from the start, and pets.json can replace them like any other. */
+function seedPen2(clean) {
+  PEN2_ART.forEach((p, i) => {
+    const pal = {};
+    for (const [n, c] of Object.entries(p.pal)) { const v = clean.colour(c); if (v) pal[n] = v; }
+    const swim = p.swim.map(s => clean.shape(s, pal)).filter(Boolean);
+    if (swim.length) defs[C.PEN2_FIRST + i] = { pal, swim, portrait: null, crown: p.crown, range: 1 };
+  });
+}
+
 /* Checks a pets.json object and puts its pets in defs. Bad shapes are dropped and
    a pet with nothing left is ignored, so a broken file can never stop the page.
    Returns the kinds taken. */
@@ -54,6 +66,7 @@ export function applyDefs(obj) {
   for (const k of Object.keys(defs)) delete defs[k];
   for (const k of Object.keys(hats)) delete hats[k];
   C.PET_NAMES.splice(0, C.PET_NAMES.length, ...C.PET_BASE_NAMES);
+  seedPen2({ colour: cleanColour, shape: cleanShape });
   const took = [];
   if (!obj || typeof obj.pets !== "object" || Number(obj.format) > PET_DEFS_FORMAT) return took;
   for (const [key, p] of Object.entries(obj.pets)) {
@@ -212,3 +225,5 @@ export function hatSvgFrom(hat, w, h, cls) {
   return '<svg class="' + cls + '" width="' + w + '" height="' + h + '" viewBox="' + vb + '" preserveAspectRatio="xMidYMax meet" aria-hidden="true">' +
          parts.join("") + '</svg>';
 }
+
+applyDefs({ format: PET_DEFS_FORMAT, pets: {} });          /* the second pen, before any pets.json */

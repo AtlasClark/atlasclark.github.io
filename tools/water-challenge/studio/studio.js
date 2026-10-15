@@ -11,7 +11,7 @@ import { Editor, TOOL_HINTS } from "./editor.js";
 import { Preview } from "./preview.js";
 import * as G from "./geom.js";
 
-const REV = "studio 1.6.0";
+const REV = "studio 1.7.0";
 const PETS_URL = "../pets/pets.json";
 const $ = id => document.getElementById(id);
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -45,8 +45,9 @@ function rarityOf(k) {
   if (isHat(k)) return { name: k === "crown" ? "leader, goal met" : "leader, under goal", i: 0 };
   if (k === C.HOMUNCULUS_KIND) return { name: "Full-pen reward", i: 5 };
   if (k === C.MYSTERY_KIND) return { name: "Secret", i: 6 };
-  const b = C.PET_BINS.findIndex(x => x.kinds.includes(k));
-  return { name: b >= 0 ? C.PET_BINS[b].name : "?", i: b };
+  const base = k >= C.PEN2_FIRST ? k - C.PEN2_FIRST : k;
+  const b = C.PET_BINS.findIndex(x => x.kinds.includes(base));
+  return { name: (b >= 0 ? C.PET_BINS[b].name : "?") + (k >= C.PEN2_FIRST ? " · second pen" : ""), i: b };
 }
 function iconHue(k) { let h = 0; const n = baseName(k) + k; for (let i = 0; i < n.length; i++) h = (h * 31 + n.charCodeAt(i)) % 360; return h; }
 
@@ -120,7 +121,9 @@ function changed() {
 function syncDefs() {
   for (let k = 0; k < C.PET_MAX; k++) {
     const p = W.pets[k];
-    if (p && p.edited && p.def.swim.length) defs[k] = p.def; else delete defs[k];
+    if (p && p.edited && p.def.swim.length) defs[k] = p.def;
+    else if (k >= C.PEN2_FIRST && W.builtin[k]) defs[k] = W.builtin[k];     /* the second pen has no code drawing */
+    else delete defs[k];
     C.PET_NAMES[k] = (p && p.edited && p.def.name) || baseName(k);
   }
   for (const key of HAT_KEYS) {
@@ -422,12 +425,13 @@ function renderSaveState() {
 }
 
 function renderPetList() {
-  const order = [...C.PET_BINS.map((b, i) => ({ name: b.name, i, kinds: b.kinds })),
+  const order = [{ pen: "First pen" }, ...C.PET_BINS.map((b, i) => ({ name: b.name, i, kinds: b.kinds })),
                  { name: "Reward and secret", i: 5, kinds: [C.HOMUNCULUS_KIND, C.MYSTERY_KIND] },
-                 { name: "Hats", i: 0, kinds: HAT_KEYS }];
+                 { pen: "Second pen" }, ...C.PEN2_BINS.map((b, i) => ({ name: b.name, i, kinds: b.kinds })),
+                 { pen: "Hats" }, { name: "Crown and jester", i: 0, kinds: HAT_KEYS }];
   const el = $("petList");
   if (!el.dataset.built) {
-    el.innerHTML = order.map(g => '<div class="rar-head">' + esc(g.name) + '</div>' + g.kinds.map(k =>
+    el.innerHTML = order.map(g => g.pen ? '<div class="pen-head">' + esc(g.pen) + '</div>' : '<div class="rar-head">' + esc(g.name) + '</div>' + g.kinds.map(k =>
       '<button type="button" class="pet-item" data-kind="' + k + '"><canvas width="80" height="80"></canvas>' +
       '<span class="nm"></span><span class="mark"></span></button>').join("")).join("");
     el.dataset.built = "1";

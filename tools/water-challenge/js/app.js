@@ -578,6 +578,8 @@ function wire() {
     }
   };
   const equipFrom = e => {
+    const tab = e.target.closest("[data-act=pen]"), tabCard = e.target.closest(".pet-card");
+    if (tab && tabCard) { ui.petPen[tabCard.dataset.name] = Number(tab.dataset.pen); render(); return; }
     const t = e.target.closest("[data-act=equip]"), card = e.target.closest(".pet-card");
     if (!t || !card || !guard()) return;
     store.serial(async () => { await equipPet(card.dataset.name, Number(t.dataset.kind)); await settle(); });

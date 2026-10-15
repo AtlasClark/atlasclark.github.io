@@ -3,8 +3,8 @@
    contract (FORMAT_REV 21, UTF-16 LE + BOM) must stay identical while R55 runs on the
    share: R55 deletes any field it does not know on its next write. */
 
-export const REV         = "rev 1.17.1";
-export const APP_VERSION = "web 1.17.1";   /* stamped as writerVersion */
+export const REV         = "rev 1.18.0";
+export const APP_VERSION = "web 1.18.0";   /* stamped as writerVersion */
 /* A folder stays at LEGACY_FORMAT (byte-compatible with R55) until someone upgrades
    it from Settings. Format 22 adds tokensSpent and keeps unknown fields; R55 must
    not be used on a folder after that. */
@@ -57,7 +57,7 @@ export const BACKUP_KEEP_DAYS = 14;
    Every file the page is made of. When a new version is out, these are re-fetched
    past the browser cache before reloading, so old and new modules never mix. */
 export const SITE_FILES = ["./", "app.css",
-  "js/app.js", "js/art.js", "js/bottle.js", "js/config.js", "js/glass.js", "js/guard.js", "js/live.js", "js/model.js", "js/petdefs.js",
+  "js/app.js", "js/art.js", "js/bottle.js", "js/config.js", "js/glass.js", "js/guard.js", "js/live.js", "js/model.js", "js/pen2art.js", "js/petdefs.js",
   "js/pets.js", "js/plinko.js", "js/radial.js", "js/reveal.js", "js/shop.js", "js/shopui.js", "js/store.js", "js/ui.js", "js/util.js", "pets/pets.json"];
 export const VERSION_CHECK_MS = 300000;
 
@@ -92,13 +92,25 @@ export const CARD_ORDER   = "rank";
 
 /* ---- pets ---- */
 export const EGG_ENABLED = true;
+/* The second pen (format 22 only): kinds PEN2_FIRST .. PEN2_FIRST + 24, opened for
+   good the first time all 25 first-pen pets are alive at once. Kind PEN2_FIRST + i
+   has first-pen kind i's rarity; drawings in js/pen2art.js. */
+export const PEN2_FIRST = 27;
+export const PEN2_NAMES = [
+  "Tadpole","Starfish","Clam","Dolphin","Manta Ray","Old Boot",
+  "Shrimp","Guppy","Sea Urchin","Hermit Crab","Koi",
+  "Seahorse","Lobster","Squid","Puffin","Walrus",
+  "Orca","Hammerhead","Anglerfish","Manatee","Polar Bear",
+  "Kraken","Leafy Sea Dragon","Coelacanth","Kelpie"
+];
 export const PET_NAMES = [
   "Duck","Frog","Turtle","Whale","Octopus","???",
   "Goldfish","Crab","Snail","Penguin","Seal",
   "Swan","Jellyfish","Beaver","Hippo","Pufferfish",
   "Shark","Alligator","Flamingo","Platypus","Otter",
   "Narwhal","Axolotl","Nessie","Cat in a Ring",
-  "Homunculus","Dragon"
+  "Homunculus","Dragon",
+  ...PEN2_NAMES
 ];
 /* PET_NAMES can be renamed by pets/pets.json; these never change (icon hues use them). */
 export const PET_BASE_NAMES = PET_NAMES.slice();
@@ -109,11 +121,12 @@ export const PET_BINS = [
   { name: "Epic",     weight: 5,  kinds: [21, 22, 23, 24] },
   { name: "???",      weight: 1,  kinds: [5] }
 ];
-export const PET_COUNT        = 25;
+export const PEN2_BINS = PET_BINS.map(b => ({ name: b.name, weight: b.weight, kinds: b.kinds.map(k => k + PEN2_FIRST) }));
+export const PET_COUNT        = 25;                /* per pen */
 export const HOMUNCULUS_KIND  = 25;
 export const MYSTERY_KIND     = 26;
 export const MYSTERY_CHANCE   = 0.006;
-export const PET_MAX          = 27;
+export const PET_MAX          = PEN2_FIRST + 25;   /* every kind: two pens, the reward, the dragon */
 export const HOMUNCULUS_STYLE = "ball";
 export const PET_NO_PET       = -1;
 export const JOKE_KIND        = 5;

@@ -261,13 +261,14 @@ test("full-pen reward at format 22: needs all 25 alive, goes when one drowns, co
   assert.ok(own(p, C.HOMUNCULUS_KIND), "all 25 alive: granted");
 
   p.equippedPet = C.HOMUNCULUS_KIND;                                    /* wearing it past the cap */
-  const e = { eid: "c:h", ts: day + "T13:00:00", date: day, oz: M.capFor(p, day) + 10, by: "test" };
-  p.entries.push(e);
+  const g = { eid: "c:g", ts: day + "T12:00:00", date: day, oz: M.personalGoal(p, day) + 1, by: "test" };   /* the goal, kept */
+  const e = { eid: "c:h", ts: day + "T13:00:00", date: day, oz: M.capFor(p, day), by: "test" };
+  p.entries.push(g, e);
   await web.store.saveParticipant(p, null);
   await web.pets.reconcilePets();
-  const dead = Number(p.deadKind);
-  assert.ok(dead >= 0 && dead < C.PET_COUNT, "a pen pet drowned, not the reward itself");
-  assert.ok(!own(p, C.HOMUNCULUS_KIND), "and the reward went with it");
+  const dead = Number(p.deadKind), pen = web.pets.penOf(dead);
+  assert.ok(pen > 0, "a pen pet drowned, not the reward itself");
+  assert.equal(own(p, C.HOMUNCULUS_KIND), pen !== 1, "the reward goes only with a first-pen pet");
 
   p.entries = p.entries.filter(x => x.eid !== e.eid);                   /* undo: the pet is revived */
   await web.store.saveParticipant(p, [e.eid]);
@@ -370,4 +371,36 @@ test("recap: a shop day folds into counts per person", () => {
   assert.equal(d.chestIn, 2); assert.equal(d.chestWon, 12);
   assert.equal(d.buys.length, 1); assert.equal(d.rerolls.length, 1);
   assert.equal(d.spent, 6 + 35 + 1, "every token that day");
+});
+
+test("second pen: opens for good once all 25 are alive; rolls, Plinko and the shop follow it", { skip: skipReason }, async () => {
+  const { S, day, M, mem } = await fresh();
+  const p = S.participants.find(x => M.isActive(x)), P = web.pets;
+  assert.equal(P.pen2Open(p), false);
+  assert.equal(shop.buyBlock(p, C.PEN2_FIRST), "Opens with the second pen.");
+  wholePen(p);
+  await web.store.saveParticipant(p, null);
+  await web.pets.reconcilePets();
+  assert.ok(P.pen2Open(p), "opened");
+  assert.equal(p.pen2, day);
+  const file = JSON.parse(mem.text(web.store.participantFileName(p.name)));
+  assert.equal(file.pen2, day, "saved in the person's file");
+  assert.equal(P.rollPen(p), 2);
+  for (let i = 0; i < 300; i++) { const d = shop.plinkoDrop(p); if (!d.chest && d.kind >= 0) assert.equal(P.penOf(d.kind), 2, "Plinko gives second-pen pets"); }
+  const k = P.todaysPet(p);
+  assert.ok(k === C.MYSTERY_KIND || P.penOf(k) === 2, "the daily roll comes from the second pen");
+  delete p.pets["3"]; p.graves["3"] = 1;                                 /* a first-pen pet drowns later */
+  await web.store.saveParticipant(p, null, ["3"]);
+  await web.pets.reconcilePets();
+  assert.ok(P.pen2Open(p), "stays open");
+  assert.equal(shop.priceOf(C.PEN2_FIRST + 21), shop.priceOf(21), "same price by rarity");
+  assert.equal(P.petBinIndex(C.PEN2_FIRST + 5), P.petBinIndex(5), "the Old Boot is the second pen's ???");
+});
+
+test("second pen: never at format 21, so the HTA's rolls are untouched", { skip: skipReason }, async () => {
+  const { S, M } = await fresh(false);
+  const p = S.participants.find(x => M.isActive(x));
+  wholePen(p); p.pen2 = "2026-01-01";
+  assert.equal(web.pets.pen2Open(p), false);
+  assert.equal(web.pets.rollPen(p), 1);
 });
