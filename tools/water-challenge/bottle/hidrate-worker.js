@@ -1,4 +1,4 @@
-/* Hidrate relay for the Atlas Water Challenge: a Cloudflare Worker (rev 1.0).
+/* Hidrate relay for the Atlas Water Challenge: a Cloudflare Worker (rev 1.1).
 
    Why: Hidrate's API only accepts its app key in the X-Parse-Client-Key header, and
    its server tells browsers not to send that header (CORS). The challenge page asks
@@ -7,20 +7,20 @@
    Safe by design:
    - Answers only the challenge page's origin, and only callers with the relay key.
    - Forwards only login, today's sips and the session check, and only to Hidrate.
-   - Hidrate's app id and client key live in the Worker's encrypted secrets, not here.
+   - Hidrate's app id and client key are the public ones from the open API notes; a
+     HIDRATE_APP_ID / HIDRATE_CLIENT_KEY secret, if set, replaces them.
    - Stores and logs nothing.
 
    Set up (Cloudflare dashboard, free plan):
    1. Workers & Pages > Create > "Start with Hello World!". Name it (e.g. hidrate-relay) > Deploy.
    2. Edit code (the </> button): replace all of the sample code with this file > Deploy.
-   3. Settings > Variables and Secrets > Add, type Secret, three times:
-        HIDRATE_APP_ID      Hidrate's app id     (HIDRATE_APP_ID in the R55 HTA)
-        HIDRATE_CLIENT_KEY  Hidrate's client key (HIDRATE_CLIENT_KEY in the R55 HTA)
-        RELAY_KEY           the relay key the challenge page made for you
+   3. Settings > Variables and Secrets > Add, type Secret:
+        RELAY_KEY   the relay key the challenge page made for you (Bottle sync > New key)
    4. Copy the Worker's address (https://<name>.<you>.workers.dev) into the page:
       Settings > Bottle sync > Relay address, then Test. */
 
 const UPSTREAM = "https://www.hidrateapp.com/parse";
+const APP_ID = "a5Il6d0n6WWkLQwBzlxvpF5P7PEkUYkX045CRgwM", CLIENT_KEY = "mWasknCNtr9dSQGPwUBWb5u4Ilf8Qkeqkwz9Q4eL";
 const ORIGINS = ["https://atlasclark.github.io", "http://localhost:5517", "http://127.0.0.1:5517"];
 const PATHS = { "/parse/login": "POST", "/parse/classes/Sip": "GET", "/parse/users/me": "GET" };
 
@@ -47,15 +47,15 @@ export default {
     if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: cors });
 
     const url = new URL(request.url);
-    const ready = !!(env.HIDRATE_APP_ID && env.HIDRATE_CLIENT_KEY && env.RELAY_KEY);
+    const appId = env.HIDRATE_APP_ID || APP_ID, clientKey = env.HIDRATE_CLIENT_KEY || CLIENT_KEY, ready = !!env.RELAY_KEY;
     if (url.pathname === "/ping") {
-      return reply(200, { ok: true, relay: "1.0", configured: ready, keyOk: sameKey(request.headers.get("X-Relay-Key") || "", env.RELAY_KEY) });
+      return reply(200, { ok: true, relay: "1.1", configured: ready, keyOk: sameKey(request.headers.get("X-Relay-Key") || "", env.RELAY_KEY) });
     }
-    if (!ready) return reply(500, { error: "the relay is missing its secrets (see the set-up notes)" });
+    if (!ready) return reply(500, { error: "the relay has no RELAY_KEY secret yet (see the set-up notes)" });
     if (!sameKey(request.headers.get("X-Relay-Key") || "", env.RELAY_KEY)) return reply(401, { error: "relay key wrong or missing" });
     if (PATHS[url.pathname] !== request.method) return reply(404, { error: "not relayed" });
 
-    const headers = { "X-Parse-Application-Id": env.HIDRATE_APP_ID, "X-Parse-Client-Key": env.HIDRATE_CLIENT_KEY };
+    const headers = { "X-Parse-Application-Id": appId, "X-Parse-Client-Key": clientKey };
     const token = request.headers.get("X-Parse-Session-Token");
     if (token) headers["X-Parse-Session-Token"] = token;
     if (request.headers.get("X-Parse-Revocable-Session")) headers["X-Parse-Revocable-Session"] = "1";

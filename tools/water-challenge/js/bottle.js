@@ -1,7 +1,7 @@
 /* Bottle sync: HidrateSpark sips into your glass, as the R55 HTA did, for
    BOTTLE_USER only. The browser can't call Hidrate itself (its API wants a header
    browsers may not send), so requests go through your Cloudflare Worker relay
-   (bottle/hidrate-worker.js), which holds Hidrate's app keys. This browser keeps the
+   (bottle/hidrate-worker.js), which adds Hidrate's app keys. This browser keeps the
    relay address, the relay key and the Hidrate session token in IndexedDB; the
    password is used once to sign in and never kept. Sync runs only on Sync now. */
 

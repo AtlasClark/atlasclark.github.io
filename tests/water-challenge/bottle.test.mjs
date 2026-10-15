@@ -68,7 +68,7 @@ test("relay: only the challenge page, only with the relay key", async () => {
   r = await run("https://relay.test/parse/login", { headers: H() });
   assert.equal(r.res.status, 404, "login only as POST");
   r = await run("https://relay.test/parse/classes/Sip", { headers: H() }, {});
-  assert.equal(r.res.status, 500, "no secrets set");
+  assert.equal(r.res.status, 500, "no RELAY_KEY set: refuses everything");
 });
 
 test("relay: preflight and ping answer the page", async () => {
@@ -77,9 +77,15 @@ test("relay: preflight and ping answer the page", async () => {
   assert.equal(r.res.headers.get("Access-Control-Allow-Origin"), PAGE);
   assert.match(r.res.headers.get("Access-Control-Allow-Headers"), /X-Relay-Key/);
   r = await run("https://relay.test/ping", { headers: H() });
-  assert.deepEqual(JSON.parse(r.body), { ok: true, relay: "1.0", configured: true, keyOk: true });
+  assert.deepEqual(JSON.parse(r.body), { ok: true, relay: "1.1", configured: true, keyOk: true });
   r = await run("https://relay.test/ping", { headers: { Origin: PAGE, "X-Relay-Key": "relay-secre" } });
   assert.equal(JSON.parse(r.body).keyOk, false);
+});
+
+test("relay: the built-in public app keys are used unless secrets replace them", async () => {
+  const r = await run("https://relay.test/parse/classes/Sip", { headers: H() }, { RELAY_KEY: "relay-secret" });
+  assert.equal(r.res.status, 200);
+  assert.ok(r.seen[0].opts.headers["X-Parse-Application-Id"].length > 20 && r.seen[0].opts.headers["X-Parse-Client-Key"].length > 20);
 });
 
 test("relay: adds Hidrate's client-key header and passes the answer back", async () => {

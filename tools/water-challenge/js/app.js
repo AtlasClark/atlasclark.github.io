@@ -669,7 +669,7 @@ function wireBottle() {
     try {
       await relayIn();
       const r = await pingRelay();
-      setMsg(!r.configured ? "The relay answers, but its secrets aren't set yet." :
+      setMsg(!r.configured ? "The relay answers, but its RELAY_KEY secret isn't set yet." :
              !r.keyOk ? "The relay answers, but the relay key doesn't match its RELAY_KEY." : "The relay answers and the key matches.", !!(r.configured && r.keyOk));
     } catch (e) { setMsg("Relay test: " + e.message, false); }
   };
