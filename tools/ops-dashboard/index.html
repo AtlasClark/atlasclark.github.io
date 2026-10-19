@@ -260,8 +260,8 @@
     display: flex; flex-direction: column; gap: 9px; transition: transform .12s, border-color .15s;
     position: relative;
   }
-  .sow-timer {
-    position: absolute; top: 11px; right: 13px; text-align: right;
+  .sow-timer {   /* in the header row, after the Edit/Delete buttons */
+    position: relative; flex-shrink: 0; margin: -4px 4px 0 0; text-align: right;
     font-family: 'Cascadia Code', Consolas, monospace; line-height: 1.15;
   }
   .sow-timer .lbl { display: block; font-size: 8.5px; letter-spacing: 1.2px; font-weight: 800; color: var(--text-faint); font-family: var(--font); }
@@ -1547,18 +1547,18 @@ function renderSows() {
     const barColor = s.status === "Closed" ? "var(--green)" : late ? "var(--red)" : "var(--grad)";
     const open = s.status === "Open";
     return `<div class="sow-card" data-id="${s.id}" style="--sow-c:${SOW_COLORS[s.status]}" ondblclick="openSowModal('${s.id}')">
-      <div class="sow-timer ${open ? "live" : "done"}" data-live="${open ? 1 : 0}" data-start="${sowStartMs(s)}"
-           title="${open ? "Time open since " + fmtDate(s.start) : "Total time open (closed " + (s.closedAt ? new Date(s.closedAt).toLocaleDateString() : "—") + ")"}">
-        <span class="lbl">${open ? "OPEN" : "TOTAL"}</span><span class="t">${fmtElapsed(sowElapsedMs(s))}</span>
-      </div>
       <div class="sow-top">
-        <div style="flex:1;padding-right:96px">
+        <div style="flex:1;min-width:0">
           ${s.number ? `<div class="sow-num">${esc(s.number)}</div>` : ""}
           <h4>${esc(s.title)}</h4>
         </div>
         <div class="kcard-menu">
           <button class="icon-btn" title="Edit" onclick="openSowModal('${s.id}')">✎</button>
           <button class="icon-btn" title="Delete" onclick="deleteSow('${s.id}')">🗑</button>
+        </div>
+        <div class="sow-timer ${open ? "live" : "done"}" data-live="${open ? 1 : 0}" data-start="${sowStartMs(s)}"
+             title="${open ? "Time open since " + fmtDate(s.start) : "Total time open (closed " + (s.closedAt ? new Date(s.closedAt).toLocaleDateString() : "—") + ")"}">
+          <span class="lbl">${open ? "OPEN" : "TOTAL"}</span><span class="t">${fmtElapsed(sowElapsedMs(s))}</span>
         </div>
       </div>
       ${s.client ? `<div class="sow-client">🏢 ${esc(s.client)}</div>` : ""}
@@ -1947,7 +1947,7 @@ document.getElementById("importFile").addEventListener("change", e => {
    The file handle is remembered in IndexedDB; after a browser restart
    you click the 💾 button once to re-grant write access.
    ===================================================================== */
-const REV = "rev 1.0.0";   // site port of local build 2026-10-09-o
+const REV = "rev 1.0.1";   // site port of local build 2026-10-09-o
 const LS_BACKUP_TS = "atlas_ops_last_backup";
 let backupHandle = null, backupTimer = null, backupPaused = false, backupError = "";
 
