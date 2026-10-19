@@ -1,0 +1,536 @@
+<!DOCTYPE html>
+<!--
+  Work Instructions — Atlas Devices tools
+  Scope: build step-by-step work instructions from screenshots. Paste (Ctrl+V),
+  drop or choose images; each image is one step. Annotate with arrows, lines,
+  boxes, ellipses, highlights, freehand, text, numbered callouts, pixelate
+  (redact) and spotlight; crop. Each step has a title, instructions and an
+  optional note / tip / caution / warning. Document info holds title, number,
+  revision, product, author, purpose, tools, safety and a revision history.
+  Export: PNG (one step, copy to clipboard), PDF, one-file HTML, and a .zip wiki
+  bundle (Markdown + HTML + PDF + images/).
+
+  All data stays on this machine: the working document and its images autosave
+  to this browser's IndexedDB; projects save to .wiproj files you keep. Nothing
+  is committed — .gitignore blocks *.wiproj, *.zip, *.pdf and Work_Instructions/.
+
+  The CSP below blocks all network requests from scripts; the page loads
+  nothing from other hosts (fonts in fonts/, SIL OFL 1.1; jsPDF in vendor/, MIT).
+  Bump REV in js/app.js on each change.
+-->
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' blob: data:; worker-src 'none'; frame-src 'none'; form-action 'none'; base-uri 'none'">
+<meta name="referrer" content="no-referrer">
+<meta name="robots" content="noindex">
+<title>Work Instructions</title>
+<meta name="theme-color" content="#0B0C0A">
+<link rel="icon" type="image/png" href="../../assets/brand/favicon-64.png">
+<style>
+  @font-face { font-family: "Geist"; src: url("fonts/Geist-Variable.woff2") format("woff2"); font-weight: 100 900; font-display: swap; }
+  @font-face { font-family: "Geist Mono"; src: url("fonts/GeistMono-Variable.woff2") format("woff2"); font-weight: 100 900; font-display: swap; }
+  /* ===== Atlas Devices brand tokens — mirrored from atlasclark.github.io ===== */
+  :root {
+    --font: "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    --mono: "Geist Mono", ui-monospace, "SFMono-Regular", Consolas, monospace;
+    --radius-sm: 10px;
+    --lime: #D0DD2B;
+    --on-lime: #10110E;
+    --wordmark-src: url("../../assets/brand/wordmark.png");
+  }
+  [data-theme="light"] {
+    --bg: #F3F3EE; --bg2: #ECECE5; --surface: #FBFBF8; --surface2: #F3F3EE;
+    --border: #DCDCD3; --text: #10110E; --ink-2: #3A3B35; --text-dim: #5E5F57; --text-faint: #9A9B91;
+    --input-bg: #FBFBF8; --hover: #EEEEE7; --sel: rgba(140,152,0,.14);
+    --accent-text: #5F6A00; --stage: #E6E6DE; --stage-dot: rgba(16,17,14,.10);
+    --shadow-lg: 0 24px 60px rgba(16,17,14,.16);
+    --green: #3E8A4E; --yellow: #A87A06; --red: #B8402F;
+    color-scheme: light;
+  }
+  [data-theme="dark"] {
+    --bg: #0B0C0A; --bg2: #10110E; --surface: #131411; --surface2: #1A1B17;
+    --border: #24251F; --text: #ECEDE6; --ink-2: #B9BAB1; --text-dim: #9C9D94; --text-faint: #65665E;
+    --input-bg: #10110E; --hover: #1B1C18; --sel: rgba(208,221,43,.10);
+    --accent-text: #D0DD2B; --stage: #070806; --stage-dot: rgba(236,237,230,.07);
+    --shadow-lg: 0 24px 70px rgba(0,0,0,.55);
+    --green: #86C98F; --yellow: #E2C14E; --red: #EE7B68;
+    color-scheme: dark;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body {
+    font-family: var(--font); font-size: 14px; -webkit-font-smoothing: antialiased;
+    background: var(--bg); color: var(--text);
+    display: flex; flex-direction: column; overflow: hidden;
+  }
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 6px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--text-faint); }
+  ::selection { background: var(--lime); color: var(--on-lime); }
+  :focus-visible { outline: 2px solid var(--accent-text); outline-offset: 2px; }
+  [hidden] { display: none !important; }
+
+  /* ===== Top bar ===== */
+  .topbar {
+    position: relative; z-index: 30; display: flex; align-items: center; gap: 18px;
+    padding: 0 20px; min-height: 60px; flex-wrap: wrap;
+    background: color-mix(in srgb, var(--bg) 86%, transparent);
+    border-bottom: 1px solid var(--border);
+  }
+  a.brand { color: inherit; text-decoration: none; }
+  .brand { display: flex; align-items: center; gap: 14px; font-weight: 500; font-size: 17px; flex-shrink: 0; }
+  .brand .wordmark {
+    display: none; width: 132px; aspect-ratio: 900 / 152; background: var(--text);
+    -webkit-mask: var(--wordmark-src) center / contain no-repeat; mask: var(--wordmark-src) center / contain no-repeat;
+  }
+  .has-wm .brand .wordmark { display: block; }
+  .has-wm .brand .wm-text { display: none; }
+  .wm-text { font: 600 15px var(--font); letter-spacing: .06em; }
+  .wm-text b { font-weight: 400; margin-left: 5px; color: var(--text-dim); }
+  .brand .div { width: 1px; height: 18px; background: var(--border); }
+  .brand-lbl {
+    display: flex; align-items: center; gap: 9px;
+    font: 500 12px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--text-dim);
+  }
+  .pulse { width: 7px; height: 7px; border-radius: 50%; background: var(--lime); animation: brandPulse 2.4s ease-out infinite; flex-shrink: 0; }
+  @keyframes brandPulse {
+    0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--lime) 70%, transparent); }
+    70%, 100% { box-shadow: 0 0 0 9px transparent; }
+  }
+  .doc-id { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 220px; }
+  .doc-id input { border-color: transparent; background: transparent; }
+  .doc-id input:hover { border-color: var(--border); }
+  .doc-id input:focus { border-color: var(--ink-2); background: var(--input-bg); }
+  #docTitle { flex: 1; min-width: 120px; max-width: 460px; font-size: 15px; font-weight: 500; }
+  #docNo { width: 130px; font-family: var(--mono); font-size: 12.5px; color: var(--accent-text); font-weight: 600; }
+  .topbar .actions { display: flex; gap: 8px; margin-left: auto; align-items: center; }
+
+  /* ===== Buttons / inputs ===== */
+  .btn {
+    border: 1px solid var(--border); background: var(--surface); color: var(--text);
+    font-family: inherit; font-size: 13px; font-weight: 500; height: 36px; padding: 0 13px;
+    border-radius: var(--radius-sm); cursor: pointer; display: inline-flex; align-items: center; gap: 7px;
+    white-space: nowrap; transition: transform .15s, border-color .15s, background-color .15s, color .15s;
+  }
+  .btn:hover { border-color: var(--ink-2); transform: translateY(-1px); }
+  .btn:disabled { opacity: .45; cursor: default; transform: none; border-color: var(--border); }
+  .btn svg { width: 15px; height: 15px; flex-shrink: 0; }
+  .btn-icon { width: 36px; padding: 0; justify-content: center; }
+  .btn-sm { height: 30px; padding: 0 10px; font-size: 12.5px; border-radius: 8px; }
+  .btn-sm.btn-icon { width: 30px; padding: 0; }
+  .btn-primary, .btn-primary:hover { background: var(--text); color: var(--bg); border: 1px solid var(--text); }
+  .btn-primary:hover { background: var(--lime); border-color: var(--lime); color: var(--on-lime); }
+  .btn-danger:hover { border-color: var(--red); color: var(--red); background: transparent; }
+  .icon-btn {
+    border: none; background: transparent; color: var(--text-dim); cursor: pointer;
+    font-size: 13px; padding: 3px 6px; border-radius: 6px; font-family: inherit;
+  }
+  .icon-btn:hover { background: var(--hover); color: var(--text); }
+  input, select, textarea {
+    font-family: var(--font); font-size: 13.5px; color: var(--text);
+    background: var(--input-bg); border: 1px solid var(--border); border-radius: var(--radius-sm);
+    padding: 7px 11px; outline: none; transition: border .15s;
+  }
+  input, select { height: 36px; }
+  textarea { resize: vertical; line-height: 1.5; min-height: 70px; }
+  input:focus, select:focus, textarea:focus { border-color: var(--ink-2); }
+  input::placeholder, textarea::placeholder { color: var(--text-faint); }
+
+  /* ===== Menus ===== */
+  .menu-wrap { position: relative; }
+  .menu {
+    position: absolute; right: 0; top: calc(100% + 6px); z-index: 50; min-width: 290px;
+    background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 6px;
+    box-shadow: var(--shadow-lg); animation: pop .14s ease;
+  }
+  .menu button {
+    all: unset; box-sizing: border-box; display: grid; grid-template-columns: 22px 1fr; gap: 2px 10px; width: 100%;
+    padding: 9px 10px; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 500;
+  }
+  .menu button:hover, .menu button:focus-visible { background: var(--hover); }
+  .menu button .ic { grid-row: span 2; color: var(--accent-text); font: 600 12px var(--mono); padding-top: 1px; }
+  .menu button small { color: var(--text-faint); font-size: 11.5px; font-weight: 400; }
+  .menu hr { border: none; border-top: 1px dashed var(--border); margin: 5px 4px; }
+
+  /* ===== Layout ===== */
+  main { flex: 1; min-height: 0; display: grid; grid-template-columns: 240px minmax(0, 1fr) 330px; }
+  .panel { min-height: 0; display: flex; flex-direction: column; background: var(--surface); }
+  .grp-lbl { font: 500 10.5px var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--text-faint); }
+
+  /* Steps list */
+  .steps { border-right: 1px solid var(--border); }
+  .steps-head { display: flex; align-items: center; justify-content: space-between; padding: 14px 14px 10px; }
+  .steps-head span:last-child { font: 400 11px var(--mono); color: var(--text-faint); }
+  #stepList { list-style: none; flex: 1; min-height: 0; overflow-y: auto; padding: 0 10px 10px; display: flex; flex-direction: column; gap: 6px; }
+  .st-item {
+    display: grid; grid-template-columns: 22px 1fr; gap: 6px 8px; padding: 8px; border-radius: 10px;
+    border: 1px solid transparent; cursor: pointer; user-select: none;
+  }
+  .st-item:hover { background: var(--hover); }
+  .st-item.on { background: var(--sel); border-color: color-mix(in srgb, var(--accent-text) 45%, var(--border)); }
+  .st-item.drop-before { box-shadow: 0 -2px 0 var(--accent-text); }
+  .st-item.drop-after { box-shadow: 0 2px 0 var(--accent-text); }
+  .st-item .n { font: 600 12px var(--mono); color: var(--text-dim); padding-top: 2px; text-align: center; }
+  .st-item.on .n { color: var(--accent-text); }
+  .st-item .t { font-size: 12.5px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .st-item .t.ph { color: var(--text-faint); font-weight: 400; }
+  .st-item .th {
+    grid-column: 2; aspect-ratio: 16 / 10; border-radius: 6px; overflow: hidden; background: var(--surface2);
+    border: 1px solid var(--border); display: grid; place-items: center;
+  }
+  .st-item .th canvas { max-width: 100%; max-height: 100%; display: block; }
+  .st-item .th span { font: 400 10.5px var(--mono); color: var(--text-faint); }
+  .steps-foot { display: flex; gap: 6px; padding: 10px; border-top: 1px solid var(--border); }
+  .steps-foot .btn { flex: 1; justify-content: center; }
+
+  /* Center: tools + stage */
+  .center { min-width: 0; min-height: 0; display: flex; flex-direction: column; }
+  .tools {
+    display: flex; align-items: center; gap: 6px; padding: 8px 12px; flex-wrap: wrap;
+    border-bottom: 1px solid var(--border); background: var(--surface);
+  }
+  .tools .vsep { width: 1px; height: 22px; background: var(--border); margin: 0 4px; }
+  .tools .spacer { flex: 1; }
+  .tool {
+    width: 34px; height: 34px; display: grid; place-items: center; border-radius: 9px; cursor: pointer;
+    border: 1px solid transparent; background: transparent; color: var(--ink-2); position: relative;
+  }
+  .tool svg { width: 18px; height: 18px; }
+  .tool:hover { background: var(--hover); color: var(--text); }
+  .tool[aria-pressed="true"] { background: var(--text); color: var(--bg); }
+  .tool:disabled { opacity: .35; cursor: default; background: transparent; }
+  .swatches { display: flex; gap: 4px; align-items: center; }
+  .sw {
+    width: 20px; height: 20px; border-radius: 50%; cursor: pointer; border: 2px solid var(--surface);
+    box-shadow: 0 0 0 1px var(--border); padding: 0;
+  }
+  .sw[aria-pressed="true"] { box-shadow: 0 0 0 2px var(--text); }
+  .sw-custom { position: relative; overflow: hidden; background: conic-gradient(#E5322D, #F5D90A, #2FA84F, #2F6FED, #C2338C, #E5322D); }
+  .sw-custom input { position: absolute; inset: -6px; opacity: 0; cursor: pointer; width: 40px; height: 40px; }
+  .seg { display: inline-flex; border: 1px solid var(--border); border-radius: 9px; overflow: hidden; }
+  .seg button {
+    all: unset; cursor: pointer; padding: 0 9px; height: 30px; display: grid; place-items: center;
+    font: 500 11px var(--mono); color: var(--text-dim); border-right: 1px solid var(--border);
+  }
+  .seg button:last-child { border-right: none; }
+  .seg button:hover { background: var(--hover); color: var(--text); }
+  .seg button[aria-pressed="true"] { background: var(--text); color: var(--bg); }
+  .seg button:focus-visible { outline: 2px solid var(--accent-text); outline-offset: -2px; }
+  .lvl-dot { display: block; border-radius: 50%; background: currentColor; }
+  #zoomLbl { font: 500 11px var(--mono); color: var(--text-dim); min-width: 46px; text-align: center; cursor: pointer; }
+
+  .stage {
+    position: relative; flex: 1; min-height: 0; overflow: hidden; background-color: var(--stage);
+    background-image: radial-gradient(var(--stage-dot) 1px, transparent 1px); background-size: 18px 18px;
+  }
+  .stage canvas { position: absolute; inset: 0; display: block; touch-action: none; }
+  .text-ed {
+    position: absolute; z-index: 5; resize: none; overflow: hidden; white-space: pre; min-height: 0;
+    font-family: "Geist", "Segoe UI", Arial, sans-serif; font-weight: 600; line-height: 1.25;
+    border: 1.5px dashed var(--lime); border-radius: 4px; outline: none;
+  }
+  .empty {
+    position: absolute; inset: 0; display: grid; place-items: center; padding: 24px; pointer-events: none;
+  }
+  .stage.has-img .empty { display: none; }
+  .empty-card {
+    pointer-events: auto; text-align: center; max-width: 460px; padding: 34px 30px; border-radius: 18px;
+    border: 1.5px dashed color-mix(in srgb, var(--text-faint) 70%, transparent); background: color-mix(in srgb, var(--surface) 80%, transparent);
+  }
+  .empty-card .big { width: 54px; height: 54px; margin: 0 auto 14px; color: var(--accent-text); }
+  .empty-card h2 { font-size: 19px; font-weight: 500; letter-spacing: -.01em; margin-bottom: 8px; }
+  .empty-card p { color: var(--text-dim); line-height: 1.55; font-size: 13.5px; }
+  .empty-card .keys { margin-top: 14px; display: flex; flex-wrap: wrap; justify-content: center; gap: 6px 14px; font: 400 11.5px var(--mono); color: var(--text-faint); }
+  kbd { font: 500 11px var(--mono); padding: 2px 6px; border: 1px solid var(--border); border-radius: 5px; color: var(--text-dim); background: var(--surface); }
+  .empty-card .btn { margin-top: 18px; }
+
+  /* Inspector */
+  .insp { border-left: 1px solid var(--border); overflow-y: auto; }
+  .insp-head { display: flex; align-items: center; justify-content: space-between; padding: 14px 16px 8px; gap: 8px; }
+  .insp-head .grp-lbl b { color: var(--accent-text); font-weight: 600; }
+  .insp-head .row { display: flex; gap: 2px; }
+  .insp-body { padding: 4px 16px 18px; display: flex; flex-direction: column; gap: 14px; }
+  .field { display: flex; flex-direction: column; gap: 6px; }
+  .field > label, .field > .lbl { font: 500 10.5px var(--mono); text-transform: uppercase; letter-spacing: .08em; color: var(--text-faint); }
+  .field input, .field select, .field textarea { width: 100%; }
+  #stText { min-height: 150px; }
+  #stNote { min-height: 64px; }
+  .seg.note button { padding: 0 8px; }
+  .imginfo { font: 400 11.5px var(--mono); color: var(--text-dim); }
+  .btn-row { display: flex; flex-wrap: wrap; gap: 6px; }
+  .hint { font-size: 12px; color: var(--text-faint); line-height: 1.5; }
+  .insp-empty { padding: 30px 18px; color: var(--text-faint); font: 400 12px var(--mono); line-height: 1.7; }
+
+  /* ===== Modal ===== */
+  .overlay {
+    position: fixed; inset: 0; background: color-mix(in srgb, var(--bg) 70%, transparent);
+    backdrop-filter: blur(4px); display: none; align-items: flex-start; justify-content: center;
+    z-index: 100; padding: 6vh 16px;
+  }
+  .overlay.open { display: flex; }
+  .modal {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 16px;
+    width: 560px; max-width: 100%; max-height: 88vh; overflow-y: auto; box-shadow: var(--shadow-lg);
+    animation: pop .18s ease;
+  }
+  .modal.wide { width: 780px; }
+  @keyframes pop { from { transform: translateY(10px) scale(.98); opacity: 0; } }
+  .modal-head { display: flex; align-items: center; padding: 16px 20px; border-bottom: 1px solid var(--border); position: sticky; top: 0; background: var(--surface); z-index: 1; }
+  .modal-head h3 { font-size: 15.5px; font-weight: 500; letter-spacing: -.01em; flex: 1; }
+  .modal-body { padding: 18px 20px; display: flex; flex-direction: column; gap: 13px; font-size: 13.5px; line-height: 1.5; }
+  .modal-body p { color: var(--text-dim); }
+  .modal-foot { display: flex; justify-content: flex-end; gap: 9px; padding: 14px 20px; border-top: 1px dashed var(--border); flex-wrap: wrap; }
+  .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .field-row.three { grid-template-columns: 1fr 1fr 1fr; }
+  .hist-tbl { width: 100%; border-collapse: collapse; }
+  .hist-tbl th { text-align: left; font: 500 10px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--text-faint); padding: 0 4px 6px; }
+  .hist-tbl td { padding: 3px 4px; }
+  .hist-tbl input { width: 100%; height: 32px; font-size: 13px; }
+  .hist-tbl td:first-child input { font-family: var(--mono); }
+  .keys-tbl { display: grid; grid-template-columns: auto 1fr auto 1fr; gap: 7px 12px; font-size: 13px; color: var(--text-dim); align-items: center; }
+
+  /* ===== Preview ===== */
+  .preview-ov { position: fixed; inset: 0; z-index: 90; background: var(--bg2); display: flex; flex-direction: column; }
+  .pv-bar { display: flex; align-items: center; gap: 10px; padding: 10px 20px; border-bottom: 1px solid var(--border); background: var(--surface); }
+  .pv-bar .grow { flex: 1; }
+  .pv-scroll { flex: 1; overflow: auto; padding: 28px 16px 60px; }
+  .pv-scroll .wi-doc { box-shadow: var(--shadow-lg); border-radius: 6px; }
+
+  /* drop target */
+  body.drag::after {
+    content: "Drop images to add steps, or a .wiproj project to open it"; position: fixed; inset: 12px; z-index: 300;
+    display: grid; place-items: center; border: 2px dashed var(--accent-text); border-radius: 16px;
+    background: color-mix(in srgb, var(--bg) 82%, transparent); font: 500 14px var(--mono); color: var(--accent-text);
+  }
+
+  /* ===== Toast ===== */
+  #toasts { position: fixed; bottom: 44px; right: 20px; display: flex; flex-direction: column; gap: 8px; z-index: 200; }
+  .toast {
+    background: var(--surface); border: 1px solid var(--border); border-left: 3px solid var(--lime);
+    padding: 11px 16px; border-radius: 10px; font-size: 13px; font-weight: 500; box-shadow: var(--shadow-lg);
+    animation: slidein .25s ease; max-width: 420px;
+  }
+  .toast.warn { border-left-color: var(--yellow); }
+  .toast.err { border-left-color: var(--red); }
+  @keyframes slidein { from { transform: translateX(30px); opacity: 0; } }
+
+  /* ===== Status bar ===== */
+  .statusbar {
+    position: relative; z-index: 20; display: flex; align-items: center; gap: 12px;
+    min-height: 28px; padding: 0 20px; border-top: 1px solid var(--border);
+    background: color-mix(in srgb, var(--bg) 86%, transparent);
+    font: 400 11px var(--mono); letter-spacing: .04em; color: var(--text-faint);
+    white-space: nowrap; overflow: hidden;
+  }
+  .statusbar > span { flex-shrink: 0; }
+  .statusbar #stats, .statusbar #saveStat { flex-shrink: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .statusbar .grow { flex: 1; }
+  .statusbar .sep { width: 1px; height: 12px; background: var(--border); }
+  .statusbar .rev { color: var(--accent-text); }
+  .statusbar .warn { color: var(--yellow); }
+
+  @media (max-width: 1100px) {
+    main { grid-template-columns: 200px minmax(0, 1fr) 280px; }
+  }
+  @media (max-width: 820px) {
+    body { overflow: auto; height: auto; }
+    main { grid-template-columns: 1fr; }
+    .steps { border-right: none; border-bottom: 1px solid var(--border); max-height: 240px; }
+    .stage { min-height: 60vh; }
+    .insp { border-left: none; border-top: 1px solid var(--border); }
+    .topbar { padding: 8px 16px; }
+    .doc-id { order: 3; flex-basis: 100%; }
+    .statusbar { padding: 0 16px; }
+    .statusbar .hide-sm { display: none; }
+    .field-row, .field-row.three { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="../../" title="Atlas Devices Tools, home">
+      <span class="wordmark" role="img" aria-label="Atlas Devices"></span>
+      <span class="wm-text">ATLAS<b>DEVICES</b></span>
+      <span class="div"></span>
+      <div class="brand-lbl"><span class="pulse"></span>Work Instructions</div>
+    </a>
+    <div class="doc-id">
+      <input id="docNo" placeholder="WI-0000" autocomplete="off" spellcheck="false" title="Document number" aria-label="Document number">
+      <input id="docTitle" placeholder="Untitled work instruction" autocomplete="off" title="Document title" aria-label="Document title">
+    </div>
+    <div class="actions">
+      <button class="btn" id="infoBtn" title="Title, revision, purpose, tools, safety, revision history">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6M8 13h8M8 17h5"/></svg>Document
+      </button>
+      <button class="btn" id="previewBtn" title="See the whole document as it exports (Ctrl+P)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>Preview
+      </button>
+      <div class="menu-wrap">
+        <button class="btn" id="projBtn" aria-haspopup="true" aria-expanded="false">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>Project
+        </button>
+        <div class="menu" id="projMenu" hidden role="menu">
+          <button data-act="save" role="menuitem"><span class="ic">S</span>Save project file<small>.wiproj with all images. Ctrl+S</small></button>
+          <button data-act="open" role="menuitem"><span class="ic">O</span>Open project file<small>Replaces the document in this browser. Ctrl+O</small></button>
+          <hr>
+          <button data-act="new" role="menuitem"><span class="ic">+</span>New document<small>Clears this browser's working copy</small></button>
+          <button data-act="keys" role="menuitem"><span class="ic">?</span>Keyboard shortcuts<small>Tools, undo, steps</small></button>
+        </div>
+      </div>
+      <div class="menu-wrap">
+        <button class="btn btn-primary" id="expBtn" aria-haspopup="true" aria-expanded="false">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M7 10l5 5 5-5M4 20h16"/></svg>Export
+        </button>
+        <div class="menu" id="expMenu" hidden role="menu">
+          <button data-act="bundle" role="menuitem"><span class="ic">ZIP</span>Wiki bundle<small>Markdown + HTML + PDF + images/ in one .zip</small></button>
+          <button data-act="pdf" role="menuitem"><span class="ic">PDF</span>PDF document<small>Title block, steps, page numbers</small></button>
+          <button data-act="html" role="menuitem"><span class="ic">HTM</span>HTML page<small>One file, images inside</small></button>
+          <button data-act="md" role="menuitem"><span class="ic">MD</span>Copy Markdown<small>Image links point to images/step-NN.png</small></button>
+          <hr>
+          <button data-act="png" role="menuitem"><span class="ic">PNG</span>PNG of this step<small>Annotated and cropped. Ctrl+E</small></button>
+          <button data-act="copy" role="menuitem"><span class="ic">⧉</span>Copy this step's image<small>Paste it into the wiki editor. Ctrl+Shift+C</small></button>
+          <button data-act="pngs" role="menuitem"><span class="ic">ZIP</span>All step images<small>step-01.png, step-02.png … in a .zip</small></button>
+        </div>
+      </div>
+      <button class="btn btn-icon" id="themeBtn" title="Toggle light / dark theme" aria-label="Toggle color theme">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="4.5"/><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M5.3 18.7l1.4-1.4M17.3 6.7l1.4-1.4"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <main>
+    <!-- Steps -->
+    <aside class="panel steps" aria-label="Steps">
+      <div class="steps-head"><span class="grp-lbl">Steps</span><span id="stepTotal"></span></div>
+      <ol id="stepList"></ol>
+      <div class="steps-foot">
+        <button class="btn btn-sm" id="addStepBtn" title="Add an empty step after this one (Ctrl+Enter)">＋ Step</button>
+        <button class="btn btn-sm" id="addImgBtn" title="Choose image files. Each image is one step.">Images…</button>
+      </div>
+    </aside>
+
+    <!-- Editor -->
+    <section class="center">
+      <div class="tools" id="tools" role="toolbar" aria-label="Annotation tools">
+        <button class="tool" data-tool="select" title="Select / move (V)" aria-pressed="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M5 3l13 8.2-5.6 1.2L9.6 18z"/></svg></button>
+        <button class="tool" data-tool="arrow" title="Arrow (A) — Shift snaps to 45°"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 19L19 5M10 5h9v9"/></svg></button>
+        <button class="tool" data-tool="line" title="Line (L)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 19L19 5"/></svg></button>
+        <button class="tool" data-tool="rect" title="Box (R) — Shift for square"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><rect x="4" y="6" width="16" height="12" rx="2"/></svg></button>
+        <button class="tool" data-tool="ellipse" title="Ellipse (E) — Shift for circle"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><ellipse cx="12" cy="12" rx="8.5" ry="6.5"/></svg></button>
+        <button class="tool" data-tool="hl" title="Highlight (H)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><rect x="3" y="8" width="18" height="8" rx="1.5" fill="currentColor" opacity=".35" stroke="none"/><path d="M3 19h18"/></svg></button>
+        <button class="tool" data-tool="pen" title="Freehand (P)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 16c2.5 0 2.8-7 5.6-7s2.6 9 5.4 9 2.8-11 6-11"/></svg></button>
+        <button class="tool" data-tool="text" title="Text (T) — box style with Fill"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M5 7V5h14v2M12 5v14M9 19h6"/></svg></button>
+        <button class="tool" data-tool="num" title="Numbered callout (N) — counts up"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M10.2 9.2L12.5 7.6V16.5"/></svg></button>
+        <span class="vsep"></span>
+        <button class="tool" data-tool="blur" title="Pixelate — hide names, serials, passwords (B)"><svg viewBox="0 0 24 24" fill="currentColor"><rect x="4" y="4" width="5" height="5" rx=".6"/><rect x="9.5" y="9.5" width="5" height="5" rx=".6" opacity=".55"/><rect x="15" y="4" width="5" height="5" rx=".6" opacity=".75"/><rect x="4" y="15" width="5" height="5" rx=".6" opacity=".45"/><rect x="15" y="15" width="5" height="5" rx=".6"/></svg></button>
+        <button class="tool" data-tool="spot" title="Spotlight — dim all but this area (S)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="16" rx="2" fill="currentColor" opacity=".28" stroke="none"/><rect x="8" y="8.5" width="8" height="7" rx="1.2" fill="var(--surface)"/></svg></button>
+        <button class="tool" data-tool="crop" title="Crop (C) — drag the area to keep"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2v16h16M2 6h16v16"/></svg></button>
+        <button class="btn btn-sm" id="uncropBtn" hidden title="Show the whole image again">Reset crop</button>
+        <span class="vsep"></span>
+        <div class="swatches" id="swatches" aria-label="Colour"></div>
+        <span class="vsep"></span>
+        <div class="seg" id="lvlSeg" aria-label="Size" title="Size: line width, text size, callout size (1–4)"></div>
+        <div class="seg"><button id="fillBtn" aria-pressed="false" title="Fill: solid box / ellipse, boxed text (F)">Fill</button></div>
+        <span class="spacer"></span>
+        <button class="tool" id="undoBtn" title="Undo (Ctrl+Z)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14L4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg></button>
+        <button class="tool" id="redoBtn" title="Redo (Ctrl+Y)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M15 14l5-5-5-5"/><path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13"/></svg></button>
+        <button class="tool" id="delBtn" title="Delete selected annotation (Del)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg></button>
+        <span class="vsep"></span>
+        <button class="tool" id="zoomOut" title="Zoom out (−)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M6 12h12"/></svg></button>
+        <span id="zoomLbl" title="Click: fit to window (0). Wheel zooms; Space + drag pans.">100%</span>
+        <button class="tool" id="zoomIn" title="Zoom in (+)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M6 12h12M12 6v12"/></svg></button>
+      </div>
+      <div class="stage" id="stage">
+        <div class="empty">
+          <div class="empty-card">
+            <svg class="big" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="9" width="38" height="30" rx="4"/><path d="M5 31l10-9 8 7 6-5 14 11"/><circle cx="33" cy="18" r="3.5"/></svg>
+            <h2 id="emptyTitle">Paste a screenshot</h2>
+            <p id="emptyText">Press <kbd>Ctrl</kbd>+<kbd>V</kbd> to paste, or drop image files here. Each image becomes one step.</p>
+            <div class="keys"><span><kbd>Win</kbd>+<kbd>Shift</kbd>+<kbd>S</kbd> capture an area</span><span>PNG · JPG · WebP · GIF · BMP</span></div>
+            <button class="btn btn-primary" id="emptyPick">Choose images…</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Step inspector -->
+    <aside class="panel insp" aria-label="Step details">
+      <div class="insp-head">
+        <span class="grp-lbl">Step <b id="stepNo">–</b> of <b id="stepCnt">0</b></span>
+        <div class="row">
+          <button class="icon-btn" id="upBtn" title="Move step up (Alt+↑)" aria-label="Move step up">▲</button>
+          <button class="icon-btn" id="downBtn" title="Move step down (Alt+↓)" aria-label="Move step down">▼</button>
+          <button class="icon-btn" id="dupBtn" title="Duplicate step" aria-label="Duplicate step">⧉</button>
+          <button class="icon-btn" id="rmBtn" title="Delete step" aria-label="Delete step">✕</button>
+        </div>
+      </div>
+      <div class="insp-empty" id="inspEmpty">No steps yet. Paste a screenshot or press ＋ Step.</div>
+      <div class="insp-body" id="inspBody">
+        <div class="field"><label for="stTitle">Title</label><input id="stTitle" placeholder="e.g. Open the Settings page" autocomplete="off"></div>
+        <div class="field"><label for="stText">Instructions</label>
+          <textarea id="stText" placeholder="What to do in this step.&#10;- Start a line with - for a bullet&#10;1. or with 1. for a numbered list"></textarea>
+        </div>
+        <div class="field"><span class="lbl">Callout box</span>
+          <div class="seg note" id="noteSeg">
+            <button data-k="none" aria-pressed="true">None</button><button data-k="note">Note</button><button data-k="tip">Tip</button><button data-k="caution">Caution</button><button data-k="warning">Warning</button>
+          </div>
+          <textarea id="stNote" placeholder="Callout text" hidden></textarea>
+        </div>
+        <div class="field"><span class="lbl">Image</span>
+          <div class="imginfo" id="imgInfo"></div>
+          <div class="btn-row">
+            <button class="btn btn-sm" id="setImgBtn">Add image…</button>
+            <button class="btn btn-sm" id="copyImgBtn">Copy</button>
+            <button class="btn btn-sm" id="pngBtn">Save PNG</button>
+            <button class="btn btn-sm btn-danger" id="rmImgBtn">Remove</button>
+          </div>
+          <p class="hint">Paste with a step open: an empty step takes the image; otherwise a new step is added after it.</p>
+        </div>
+      </div>
+    </aside>
+  </main>
+
+  <div class="overlay" id="overlay">
+    <div class="modal" id="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+      <div class="modal-head"><h3 id="modalTitle"></h3><button class="icon-btn" id="modalX" style="font-size:17px" aria-label="Close">✕</button></div>
+      <div class="modal-body" id="modalBody"></div>
+      <div class="modal-foot" id="modalFoot"></div>
+    </div>
+  </div>
+
+  <div class="preview-ov" id="previewOv" hidden>
+    <div class="pv-bar">
+      <span class="grp-lbl">Preview</span>
+      <span class="hint">This is what HTML, Markdown and the wiki bundle contain. The PDF has the same content.</span>
+      <span class="grow"></span>
+      <button class="btn btn-sm" id="pvPdf">Export PDF</button>
+      <button class="btn btn-sm btn-primary" id="pvClose">Close (Esc)</button>
+    </div>
+    <div class="pv-scroll" id="pvScroll"></div>
+  </div>
+
+  <footer class="statusbar">
+    <span title="This page has no network access. Images and text stay in this browser until you export or save a project file.">Local only</span>
+    <span class="sep hide-sm"></span>
+    <span id="stats"></span>
+    <span class="grow"></span>
+    <span class="hide-sm" id="saveStat"></span>
+    <span class="sep hide-sm"></span>
+    <span class="rev" id="rev"></span>
+  </footer>
+
+  <input type="file" id="imgFile" accept="image/png,image/jpeg,image/webp,image/gif,image/bmp" multiple hidden>
+  <input type="file" id="oneImgFile" accept="image/png,image/jpeg,image/webp,image/gif,image/bmp" hidden>
+  <input type="file" id="projFile" accept=".wiproj,.json" hidden>
+  <div id="toasts"></div>
+
+  <script src="vendor/jspdf.umd.min.js"></script>
+  <script src="js/draw.js"></script>
+  <script src="js/editor.js"></script>
+  <script src="js/export.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>

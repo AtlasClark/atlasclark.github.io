@@ -28,3 +28,8 @@ Kit_Studio/
 
 CLAUDE.md
 README.md
+
+# Work Instructions projects and exports are local only. Never commit them.
+Work_Instructions/
+*.wiproj
+*.zip
