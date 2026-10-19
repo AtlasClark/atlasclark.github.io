@@ -30,6 +30,23 @@ test("format 21: every file and the settings serialise exactly as R55 writes the
   assert.equal(strip(mem.text("_settings.json")), strip(disk.get(DIR + "\\_settings.json")));
 });
 
+test("settings: the folder's title and tagline are saved when set, read back, and left out when cleared", { skip: skipReason }, async () => {
+  const { S, mem } = await setup();
+  S.settings.title = 'Acme "Hydro" Cup'; S.settings.tagline = "Sip happens.";
+  await web.store.saveSettings();
+  const o = JSON.parse(mem.text("_settings.json"));
+  assert.equal(o.title, 'Acme "Hydro" Cup'); assert.equal(o.tagline, "Sip happens.");
+  S.settings.title = S.settings.tagline = "x";
+  await web.store.loadSettings();
+  assert.equal(S.settings.title, 'Acme "Hydro" Cup'); assert.equal(S.settings.tagline, "Sip happens.");
+  S.settings.title = S.settings.tagline = "";
+  await web.store.saveSettings();
+  const txt = mem.text("_settings.json");
+  assert.ok(!txt.includes('"title"') && !txt.includes('"tagline"'), "unset: nothing written");
+  await web.store.loadSettings();
+  assert.equal(S.settings.title, ""); assert.equal(S.settings.tagline, "");
+});
+
 test("format 21: extra fields are never written, even when present in memory", { skip: skipReason }, async () => {
   const { S } = await setup();
   const p = S.participants[0];

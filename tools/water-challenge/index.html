@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <!--
-  Atlas Water Challenge (web) - Atlas Devices tools
+  Water Challenge (web) - Atlas Devices tools
   Scope: browser port of the team water-tracking game (Atlas_Water_Challenge_R55.hta).
   Each person's glass fills toward a personal daily goal set from their own history;
   reaching it rolls a pet, passing twice the goal drowns one. Leaderboard, streaks,
@@ -20,7 +20,7 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self' https://*.workers.dev; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; worker-src 'none'; frame-src 'none'; form-action 'none'; base-uri 'none'">
 <meta name="referrer" content="no-referrer">
 <meta name="robots" content="noindex">
-<title>Atlas Water Challenge</title>
+<title>Water Challenge</title>
 <meta name="theme-color" content="#dff3ff" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#07131f" media="(prefers-color-scheme: dark)">
 <link rel="icon" href="img/app-icon.ico">
@@ -37,13 +37,17 @@
       <button type="button" id="themeBtn" class="icon-btn theme-btn" title="Theme"><span aria-hidden="true"></span></button>
     </div>
     <div class="hdr-mid">
-      <p class="eyebrow">Drink responsibly. Brag irresponsibly.</p>
-      <h1>Atlas Water Challenge</h1>
+      <p class="eyebrow" id="appTagline">Drink responsibly. Brag irresponsibly.</p>
+      <h1 id="appTitle">Water Challenge</h1>
     </div>
     <div class="hdr-right"><span id="syncPill" class="sync-pill bad">offline</span></div>
 
     <div id="settingsPanel" class="settings-panel" hidden>
       <div class="sp-title">Challenge settings</div>
+      <label class="field-label" for="titleVal">Title</label>
+      <input id="titleVal" class="txt brand-txt" type="text" maxlength="40" spellcheck="false" placeholder="Water Challenge">
+      <label class="field-label" for="taglineVal">Tagline</label>
+      <input id="taglineVal" class="txt brand-txt" type="text" maxlength="80" placeholder="Drink responsibly. Brag irresponsibly.">
       <label class="field-label" for="goalVal">Default goal</label>
       <input id="goalVal" class="txt amount" type="text" inputmode="decimal"><span class="unit">fl oz</span>
       <label class="field-label" for="annualVal">Yearly goal per person</label>

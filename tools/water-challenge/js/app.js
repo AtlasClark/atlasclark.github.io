@@ -461,6 +461,7 @@ async function applySettings() {
   if (!guard()) return;
   const g = Number($("goalVal").value), a = Number($("annualVal").value);
   const sd = trim($("startVal").value), iv = trim($("idleVal").value);
+  const ti = trim($("titleVal").value).slice(0, C.TITLE_MAX), tg = trim($("taglineVal").value).slice(0, C.TAGLINE_MAX);
   if (!isFinite(g) || g <= 0) { setMsg("Default goal must be above zero.", false); return; }
   if (!isFinite(a) || a <= 0) { setMsg("Yearly goal must be above zero.", false); return; }
   if (sd && !parseKey(sd)) { setMsg("Start date must be YYYY-MM-DD.", false); return; }
@@ -469,13 +470,15 @@ async function applySettings() {
   }
   const dailyChanged = g !== currentGoal(), annualChanged = a !== currentAnnualGoal();
   const startChanged = sd !== "" && sd !== challengeStart(), idleChanged = iv !== "" && Number(iv) !== currentIdleMax();
-  if (!dailyChanged && !annualChanged && !startChanged && !idleChanged) { setMsg("Nothing changed.", true); closeSettings(); return; }
+  const titleChanged = ti !== (S.settings.title || ""), tagChanged = tg !== (S.settings.tagline || "");
+  if (!dailyChanged && !annualChanged && !startChanged && !idleChanged && !titleChanged && !tagChanged) { setMsg("Nothing changed.", true); closeSettings(); return; }
   await store.serial(async () => {
     const old = { ...S.settings };
     S.settings.annualGoalOz = a;
     if (startChanged) S.settings.startDate = sd;
     if (idleChanged) S.settings.idleSkipDays = Number(iv);
     if (dailyChanged) S.settings.dailyGoalOz = g;
+    S.settings.title = ti; S.settings.tagline = tg;
     if (!(await store.saveSettings())) {
       S.settings = old;
       setMsg("Couldn't save settings. Try again.", false);
@@ -487,6 +490,8 @@ async function applySettings() {
     if (dailyChanged) bits.push("Default goal: " + fmt(g) + " oz.");
     if (annualChanged) bits.push("Yearly goal: " + fmtOz(a) + " oz.");
     if (startChanged) bits.push("Year: " + sd + " to " + challengeEnd() + ".");
+    if (titleChanged) bits.push("Title: " + (ti || C.DEFAULT_TITLE) + ".");
+    if (tagChanged) bits.push("Tagline " + (tg ? "set." : "back to the default."));
     if (idleChanged) bits.push("Streak grace: " + currentIdleMax() + " day" + (currentIdleMax() === 1 ? "" : "s") + ".");
     setMsg(bits.join("  "), true);
     await refresh();

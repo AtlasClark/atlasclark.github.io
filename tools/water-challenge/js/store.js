@@ -340,6 +340,8 @@ export async function loadSettings() {
     if (Number(o.formatRev) > 0) s.formatRev = Math.floor(Number(o.formatRev));
     if (o.upgradedAt) s.upgradedAt = String(o.upgradedAt);
     if (o.upgradedBy) s.upgradedBy = String(o.upgradedBy);
+    if (typeof o.title === "string") s.title = o.title.trim().slice(0, C.TITLE_MAX);
+    if (typeof o.tagline === "string") s.tagline = o.tagline.trim().slice(0, C.TAGLINE_MAX);
     if (o.minGoalOz === undefined || o.goalFactor === undefined || o.minGoalDays === undefined ||
         o.dropTopDay === undefined || o.goalWindowDays === undefined || o.legacyFlatUntil === undefined) {
       await saveSettings();
@@ -366,6 +368,8 @@ export async function saveSettings() {
         ',\n  "upgradedAt": ' + q(S.settings.upgradedAt || "") +
         ',\n  "upgradedBy": ' + q(S.settings.upgradedBy || "")
       : '') +
+    (S.settings.title ? ',\n  "title": ' + q(S.settings.title) : '') +       /* only when set: unset stays R55's bytes */
+    (S.settings.tagline ? ',\n  "tagline": ' + q(S.settings.tagline) : '') +
     ',\n  "updatedBy": ' + q(S.me) +
     ',\n  "updatedAt": ' + q(localStamp(new Date())) + '\n}\n';
   try {

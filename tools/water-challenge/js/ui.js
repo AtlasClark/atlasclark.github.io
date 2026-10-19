@@ -715,8 +715,17 @@ function recapShop(shop) {
 }
 
 /* ---- the whole page ----------------------------------------------------- */
+/* The folder's own heading, tagline and tab title. */
+function renderBrand() {
+  const t = S.settings.title || C.DEFAULT_TITLE, g = S.settings.tagline || C.DEFAULT_TAGLINE;
+  if ($("appTitle").textContent !== t) $("appTitle").textContent = t;
+  if ($("appTagline").textContent !== g) $("appTagline").textContent = g;
+  if (document.title !== t) document.title = t;
+}
+
 export function render() {
   maskEls = [];
+  renderBrand();
   G.setActive(ui.tab === "today");
   if (ui.tab === "today") {
     renderGlasses(); renderLeaderboard(); renderActivity();
@@ -1022,6 +1031,8 @@ export function showDiag() {
 
 /* ---- settings panel ----------------------------------------------------- */
 export function fillSettings() {
+  $("titleVal").value = S.settings.title || "";
+  $("taglineVal").value = S.settings.tagline || "";
   $("goalVal").value = currentGoal();
   $("annualVal").value = currentAnnualGoal();
   $("startVal").value = challengeStart();

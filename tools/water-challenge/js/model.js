@@ -21,7 +21,7 @@ export function defaultSettings() {
            startDate: "", idleSkipDays: C.STREAK_MAX_IDLE_RUN,
            minGoalOz: 40, goalFactor: 0.9, minGoalDays: 3, dropTopDay: true,
            goalWindowDays: 30, legacyFlatUntil: C.LEGACY_FLAT_UNTIL,
-           legacyGoalOz: 0, formatRev: C.LEGACY_FORMAT, upgradedAt: "", upgradedBy: "" };
+           legacyGoalOz: 0, formatRev: C.LEGACY_FORMAT, upgradedAt: "", upgradedBy: "", title: "", tagline: "" };
 }
 
 let dayIndex = null, goalMemo = {}, dailyMemo = {};

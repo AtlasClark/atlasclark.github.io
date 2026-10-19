@@ -3,8 +3,8 @@
    contract (FORMAT_REV 21, UTF-16 LE + BOM) must stay identical while R55 runs on the
    share: R55 deletes any field it does not know on its next write. */
 
-export const REV         = "rev 1.20.0";
-export const APP_VERSION = "web 1.20.0";   /* stamped as writerVersion */
+export const REV         = "rev 1.21.0";
+export const APP_VERSION = "web 1.21.0";   /* stamped as writerVersion */
 /* A folder stays at LEGACY_FORMAT (byte-compatible with R55) until someone upgrades
    it from Settings. Format 22 adds tokensSpent and keeps unknown fields; R55 must
    not be used on a folder after that. */
@@ -63,6 +63,12 @@ export const VERSION_CHECK_MS = 300000;
 
 /* ---- goals (fallbacks; live values come from _settings.json) ---- */
 export const GOAL_OZ           = 128;
+/* The heading and the line above it, until a folder sets its own (_settings.json
+   "title" / "tagline", written only when set). */
+export const DEFAULT_TITLE     = "Water Challenge";
+export const DEFAULT_TAGLINE   = "Drink responsibly. Brag irresponsibly.";
+export const TITLE_MAX         = 40;
+export const TAGLINE_MAX       = 80;
 export const ANNUAL_GOAL_OZ    = 20800;
 export const YEAR_DAYS         = 365;
 export const LEGACY_FLAT_UNTIL = "2026-09-14";
