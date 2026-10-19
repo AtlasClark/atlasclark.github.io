@@ -7,12 +7,13 @@
   (redact) and spotlight; crop. Each step has a title, instructions and an
   optional note / tip / caution / warning. Document info holds title, number,
   revision, product, author, purpose, tools, safety and a revision history.
-  Export: PNG (one step, copy to clipboard), PDF, one-file HTML, and a .zip wiki
-  bundle (Markdown + HTML + PDF + images/).
+  Export: PNG (one step, copy to clipboard), PDF, Word .docx (imports as a
+  Confluence Cloud page, images included), one-file HTML, and a .zip wiki
+  bundle (Markdown + HTML + PDF + .docx + images/).
 
   All data stays on this machine: the working document and its images autosave
   to this browser's IndexedDB; projects save to .wiproj files you keep. Nothing
-  is committed — .gitignore blocks *.wiproj, *.zip, *.pdf and Work_Instructions/.
+  is committed — .gitignore blocks *.wiproj, *.zip, *.pdf, *.docx and Work_Instructions/.
 
   The CSP below blocks all network requests from scripts; the page loads
   nothing from other hosts (fonts in fonts/, SIL OFL 1.1; jsPDF in vendor/, MIT).
@@ -385,7 +386,8 @@
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M7 10l5 5 5-5M4 20h16"/></svg>Export
         </button>
         <div class="menu" id="expMenu" hidden role="menu">
-          <button data-act="bundle" role="menuitem"><span class="ic">ZIP</span>Wiki bundle<small>Markdown + HTML + PDF + images/ in one .zip</small></button>
+          <button data-act="docx" role="menuitem"><span class="ic">DOC</span>Word for Confluence<small>.docx with images inside. In Confluence: Create &gt; More actions &gt; Templates and import &gt; Import &gt; Word document</small></button>
+          <button data-act="bundle" role="menuitem"><span class="ic">ZIP</span>Wiki bundle<small>Markdown + HTML + PDF + Word + images/ in one .zip</small></button>
           <button data-act="pdf" role="menuitem"><span class="ic">PDF</span>PDF document<small>Title block, steps, page numbers</small></button>
           <button data-act="html" role="menuitem"><span class="ic">HTM</span>HTML page<small>One file, images inside</small></button>
           <button data-act="md" role="menuitem"><span class="ic">MD</span>Copy Markdown<small>Image links point to images/step-NN.png</small></button>

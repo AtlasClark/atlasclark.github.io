@@ -8,7 +8,7 @@
 (function () {
   "use strict";
   const WI = window.WI, X = WI.exp;
-  const REV = "rev 1.0.0";
+  const REV = "rev 1.1.0";
   const LS_UI = "workInstr.ui";
   const $ = id => document.getElementById(id);
   const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -545,7 +545,7 @@
     document.addEventListener("keydown", e => { if (e.key === "Escape" && !m.hidden) { close(); btn.focus(); } });
   }
   menu("projBtn", "projMenu", a => ({ save: saveProject, open: () => $("projFile").click(), new: newDocument, keys: keysDialog })[a]());
-  menu("expBtn", "expMenu", a => ({ bundle: exportBundle, pdf: exportPdf, html: exportHtml, md: copyMarkdown, png: exportPng, copy: copyImage, pngs: exportPngs })[a]());
+  menu("expBtn", "expMenu", a => ({ docx: exportDocx, bundle: exportBundle, pdf: exportPdf, html: exportHtml, md: copyMarkdown, png: exportPng, copy: copyImage, pngs: exportPngs })[a]());
 
   // ---------- files ----------
   function baseName() {
@@ -622,6 +622,16 @@
     catch (e) { toast("Copy failed: " + (e.message || e), "err"); }
   }
   const u8 = async blob => new Uint8Array(await blob.arrayBuffer());
+  async function pngList(cvs) {
+    const out = [];
+    for (const c of cvs) out.push(c ? { data: await u8(await X.toBlob(c)), w: c.width, h: c.height } : null);
+    return out;
+  }
+  function exportDocx() {
+    if (!needSteps()) return;
+    busy("Word export", () => saveFile(baseName() + ".docx", async () => X.docx(doc, await pngList(canvases())),
+      "Word document", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", ".docx"));
+  }
   async function imageFiles(cvs) {
     const out = [];
     for (let i = 0; i < cvs.length; i++) if (cvs[i]) out.push({ name: "images/" + X.imgName(i), data: await u8(await X.toBlob(cvs[i])) });
@@ -636,7 +646,8 @@
       const files = [
         { name: base + ".md", data: enc.encode(X.markdown(doc, path)) },
         { name: base + ".html", data: enc.encode(X.htmlFile(doc, path)) },
-        { name: base + ".pdf", data: new Uint8Array(X.pdf(doc, canvases(2000)).output("arraybuffer")) }
+        { name: base + ".pdf", data: new Uint8Array(X.pdf(doc, canvases(2000)).output("arraybuffer")) },
+        { name: base + ".docx", data: await u8(X.docx(doc, await pngList(cvs))) }
       ].concat(await imageFiles(cvs));
       return X.zip(files);
     }, "ZIP archive", "application/zip", ".zip"));

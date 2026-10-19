@@ -1,8 +1,9 @@
 /*
   Work Instructions — export
   Scope: flattens each step to a PNG canvas and builds the outputs: PNG,
-  PDF (jsPDF), one-file HTML, Markdown, and a .zip wiki bundle (Markdown +
-  HTML + PDF + images/). All in memory; the caller saves the result.
+  PDF (jsPDF), Word .docx (Confluence Cloud import), one-file HTML, Markdown,
+  and a .zip wiki bundle (Markdown + HTML + PDF + .docx + images/). All in
+  memory; the caller saves the result.
 */
 (function () {
   "use strict";
@@ -329,5 +330,147 @@
     return new Blob([...parts, ...central, end], { type: "application/zip" });
   }
 
-  WI.exp = { stepCanvas, toBlob, docHtml, htmlFile, markdown, pdf, zip, imgName, DOC_CSS, blocks };
+  // ---------- Word .docx ----------
+  // For Confluence Cloud: Create > More actions > Templates and import > Import > Word document.
+  // Headings use built-in styles (heading 1-3) so they import as page headings. Callouts are
+  // one-cell tables with a bold label, so the meaning stays if the shading is dropped.
+  const xe = s => String(s == null ? "" : s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]))
+    .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F￾￿]/g, "");
+  const W_NS = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
+  const XML = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n';
+  const NOTE_HEX = { note: ["5B7BD5", "EEF2FB"], tip: ["2F9E5B", "EBF7F0"], caution: ["D49A00", "FDF5DF"], warning: ["CC3B2B", "FCEBE8"] };
+  const CONTENT_TW = 9360;      // 6.5 in between 1 in margins
+  const EMU_PX = 9525, MAX_W = 5943600, MAX_H = 6858000;
+
+  function wRun(text, o) {
+    o = o || {};
+    const rp = (o.b ? "<w:b/>" : "") + (o.color ? '<w:color w:val="' + o.color + '"/>' : "");
+    return "<w:r>" + (rp ? "<w:rPr>" + rp + "</w:rPr>" : "") + '<w:t xml:space="preserve">' + xe(text) + "</w:t></w:r>";
+  }
+  const wLines = (arr, o) => arr.map((l, i) => (i ? "<w:r><w:br/></w:r>" : "") + wRun(l, o)).join("");
+  const wPara = (inner, ppr) => "<w:p>" + (ppr ? "<w:pPr>" + ppr + "</w:pPr>" : "") + inner + "</w:p>";
+  const wHead = (lvl, text) => wPara(wRun(text), '<w:pStyle w:val="Heading' + lvl + '"/>');
+
+  // prefix: runs put before the first paragraph (callout label)
+  function wText(text, ctx, prefix) {
+    const bl = blocks(text), out = [];
+    if (prefix && (!bl.length || bl[0].kind !== "p")) out.push(wPara(prefix));
+    bl.forEach((b, i) => {
+      if (b.kind === "p") { out.push(wPara((i === 0 && prefix ? prefix : "") + wLines(b.lines))); return; }
+      const id = b.kind === "ul" ? 1 : ctx.newList();
+      b.items.forEach(it => out.push(wPara(wRun(it), '<w:pStyle w:val="ListParagraph"/><w:numPr><w:ilvl w:val="0"/><w:numId w:val="' + id + '"/></w:numPr>')));
+    });
+    return out.join("");
+  }
+
+  // rows: [[cellXml…]…]; o.header bolds and repeats row 1; o.fill / o.edge colour a callout
+  function wTable(rows, widths, o) {
+    o = o || {};
+    const sum = widths.reduce((a, b) => a + b, 0);
+    const tc = (c, w) => '<w:tc><w:tcPr><w:tcW w:w="' + w + '" w:type="dxa"/>' +
+      (o.edge ? '<w:tcBorders><w:left w:val="single" w:sz="24" w:space="0" w:color="' + o.edge + '"/></w:tcBorders>' : "") +
+      (o.fill ? '<w:shd w:val="clear" w:color="auto" w:fill="' + o.fill + '"/>' : "") + "</w:tcPr>" + (c || "<w:p/>") + "</w:tc>";
+    return '<w:tbl><w:tblPr><w:tblStyle w:val="TableGrid"/><w:tblW w:w="' + sum + '" w:type="dxa"/><w:tblLayout w:type="fixed"/></w:tblPr>' +
+      "<w:tblGrid>" + widths.map(w => '<w:gridCol w:w="' + w + '"/>').join("") + "</w:tblGrid>" +
+      rows.map((r, ri) => "<w:tr>" + (o.header && !ri ? "<w:trPr><w:tblHeader/></w:trPr>" : "") + r.map((c, ci) => tc(c, widths[ci])).join("") + "</w:tr>").join("") +
+      "</w:tbl>";
+  }
+
+  function wImage(rid, id, px, alt) {
+    let cx = px.w * EMU_PX, cy = px.h * EMU_PX;
+    const k = Math.min(1, MAX_W / cx, MAX_H / cy);
+    cx = Math.round(cx * k); cy = Math.round(cy * k);
+    return wPara('<w:r><w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0"><wp:extent cx="' + cx + '" cy="' + cy + '"/>' +
+      '<wp:docPr id="' + id + '" name="Picture ' + id + '" descr="' + xe(alt) + '"/>' +
+      '<wp:cNvGraphicFramePr><a:graphicFrameLocks noChangeAspect="1"/></wp:cNvGraphicFramePr>' +
+      '<a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:pic>' +
+      '<pic:nvPicPr><pic:cNvPr id="' + id + '" name="image' + id + '.png"/><pic:cNvPicPr/></pic:nvPicPr>' +
+      '<pic:blipFill><a:blip r:embed="' + rid + '"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill>' +
+      '<pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="' + cx + '" cy="' + cy + '"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr>' +
+      "</pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r>", '<w:spacing w:before="120" w:after="240"/>');
+  }
+
+  // pngs[i]: { data: Uint8Array, w, h } or null
+  function docx(doc, pngs) {
+    const m = doc.meta, body = [], rels = [], media = [];
+    let lists = 0;
+    const ctx = { newList: () => 2 + lists++ };
+    body.push(wHead(1, m.title || "Untitled work instruction"));
+    const rows = metaRows(m);
+    if (rows.length) body.push(wTable(rows.map(r => [wPara(wRun(r[0], { b: true })), wPara(wRun(r[1]))]), [2400, CONTENT_TW - 2400]));
+    sections(m).forEach(([k, v]) => body.push(wHead(2, k), wText(v, ctx)));
+    if (doc.steps.length) body.push(wHead(2, "Procedure"));
+    doc.steps.forEach((s, i) => {
+      body.push(wHead(3, "Step " + (i + 1) + (s.title ? ": " + s.title : "")));
+      body.push(wText(s.text, ctx));
+      if (s.noteKind && NOTE[s.noteKind] && s.note.trim()) {
+        const [edge, fill] = NOTE_HEX[s.noteKind];
+        body.push(wTable([[wText(s.note, ctx, wRun(NOTE[s.noteKind] + ": ", { b: true, color: edge }))]], [CONTENT_TW], { fill, edge }));
+      }
+      if (pngs[i]) {
+        const n = media.length + 1, rid = "rIdImg" + n;
+        media.push({ name: "word/media/image" + n + ".png", data: pngs[i].data });
+        rels.push('<Relationship Id="' + rid + '" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/image' + n + '.png"/>');
+        body.push(wImage(rid, n, pngs[i], "Step " + (i + 1) + (s.title ? ": " + s.title : "")));
+      } else body.push(wPara(""));
+    });
+    const hist = (doc.history || []).filter(r => Object.values(r).some(v => String(v || "").trim()));
+    if (hist.length) {
+      const b = t => wPara(wRun(t, { b: true }));
+      body.push(wHead(2, "Revision history"), wTable([[b("Rev"), b("Date"), b("By"), b("Change")]]
+        .concat(hist.map(r => [r.rev, r.date, r.by, r.change].map(v => wPara(wRun(v))))), [1000, 1500, 1500, CONTENT_TW - 4000], { header: true }));
+    }
+    body.push(wPara(""));
+    const pg = m.page === "a4" ? '<w:pgSz w:w="11906" w:h="16838"/>' : '<w:pgSz w:w="12240" w:h="15840"/>';
+    const document = XML + '<w:document ' + W_NS + ' xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"' +
+      ' xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"' +
+      ' xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"><w:body>' + body.join("") +
+      "<w:sectPr>" + pg + '<w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440" w:header="720" w:footer="720" w:gutter="0"/></w:sectPr></w:body></w:document>';
+
+    const border = s => "<w:" + s + ' w:val="single" w:sz="4" w:space="0" w:color="BFBFBF"/>';
+    const hStyle = (n, sz) => '<w:style w:type="paragraph" w:styleId="Heading' + n + '"><w:name w:val="heading ' + n + '"/><w:basedOn w:val="Normal"/><w:next w:val="Normal"/><w:qFormat/>' +
+      '<w:pPr><w:keepNext/><w:spacing w:before="' + (n === 1 ? 0 : 280) + '" w:after="120"/><w:outlineLvl w:val="' + (n - 1) + '"/></w:pPr><w:rPr><w:b/><w:sz w:val="' + sz + '"/></w:rPr></w:style>';
+    const styles = XML + "<w:styles " + W_NS + ">" +
+      '<w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii="Calibri" w:hAnsi="Calibri" w:eastAsia="Calibri" w:cs="Calibri"/><w:sz w:val="22"/><w:szCs w:val="22"/><w:lang w:val="en-US"/></w:rPr></w:rPrDefault>' +
+      '<w:pPrDefault><w:pPr><w:spacing w:after="120" w:line="264" w:lineRule="auto"/></w:pPr></w:pPrDefault></w:docDefaults>' +
+      '<w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/><w:qFormat/></w:style>' +
+      hStyle(1, 40) + hStyle(2, 30) + hStyle(3, 26) +
+      '<w:style w:type="paragraph" w:styleId="ListParagraph"><w:name w:val="List Paragraph"/><w:basedOn w:val="Normal"/><w:qFormat/><w:pPr><w:spacing w:after="40"/><w:ind w:left="720"/><w:contextualSpacing/></w:pPr></w:style>' +
+      '<w:style w:type="table" w:styleId="TableGrid"><w:name w:val="Table Grid"/><w:tblPr><w:tblBorders>' + ["top", "left", "bottom", "right", "insideH", "insideV"].map(border).join("") +
+      '</w:tblBorders><w:tblCellMar><w:top w:w="80" w:type="dxa"/><w:left w:w="120" w:type="dxa"/><w:bottom w:w="80" w:type="dxa"/><w:right w:w="120" w:type="dxa"/></w:tblCellMar></w:tblPr></w:style>' +
+      "</w:styles>";
+    const lvl = (fmt, text) => '<w:lvl w:ilvl="0"><w:start w:val="1"/><w:numFmt w:val="' + fmt + '"/><w:lvlText w:val="' + text + '"/><w:lvlJc w:val="left"/><w:pPr><w:ind w:left="720" w:hanging="360"/></w:pPr></w:lvl>';
+    let nums = '<w:num w:numId="1"><w:abstractNumId w:val="0"/></w:num>';
+    for (let k = 0; k < lists; k++) nums += '<w:num w:numId="' + (k + 2) + '"><w:abstractNumId w:val="1"/><w:lvlOverride w:ilvl="0"><w:startOverride w:val="1"/></w:lvlOverride></w:num>';
+    const numbering = XML + "<w:numbering " + W_NS + ">" +
+      '<w:abstractNum w:abstractNumId="0"><w:multiLevelType w:val="singleLevel"/>' + lvl("bullet", "•") + "</w:abstractNum>" +
+      '<w:abstractNum w:abstractNumId="1"><w:multiLevelType w:val="singleLevel"/>' + lvl("decimal", "%1.") + "</w:abstractNum>" +
+      nums + "</w:numbering>";
+    const now = new Date().toISOString().replace(/\.\d+Z$/, "Z");
+    const core = XML + '<cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/"' +
+      ' xmlns:dcterms="http://purl.org/dc/terms/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">' +
+      "<dc:title>" + xe(m.title || "Work instruction") + "</dc:title><dc:creator>" + xe(m.author || "") + "</dc:creator>" +
+      '<dcterms:created xsi:type="dcterms:W3CDTF">' + now + '</dcterms:created><dcterms:modified xsi:type="dcterms:W3CDTF">' + now + "</dcterms:modified></cp:coreProperties>";
+    const OD = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/";
+    const parts = {
+      "[Content_Types].xml": XML + '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">' +
+        '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Default Extension="png" ContentType="image/png"/>' +
+        '<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>' +
+        '<Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/>' +
+        '<Override PartName="/word/numbering.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.numbering+xml"/>' +
+        '<Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/></Types>',
+      "_rels/.rels": XML + '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+        '<Relationship Id="rId1" Type="' + OD + 'officeDocument" Target="word/document.xml"/>' +
+        '<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/></Relationships>',
+      "word/_rels/document.xml.rels": XML + '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+        '<Relationship Id="rIdStyles" Type="' + OD + 'styles" Target="styles.xml"/><Relationship Id="rIdNum" Type="' + OD + 'numbering" Target="numbering.xml"/>' +
+        rels.join("") + "</Relationships>",
+      "word/document.xml": document, "word/styles.xml": styles, "word/numbering.xml": numbering, "docProps/core.xml": core
+    };
+    const enc = new TextEncoder();
+    const files = Object.entries(parts).map(([name, s]) => ({ name, data: enc.encode(s) })).concat(media);
+    return new Blob([zip(files)], { type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" });
+  }
+
+  WI.exp = { stepCanvas, toBlob, docHtml, htmlFile, markdown, pdf, docx, zip, imgName, DOC_CSS, blocks };
 })();
