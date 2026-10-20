@@ -1,0 +1,562 @@
+<!DOCTYPE html>
+<!--
+  Cable Designer — Atlas Devices tools
+  Scope: cable and wire harness connection drawings in the style of
+  IPC/WHMA-A-620 cable and harness drawings. Connector library (D-sub,
+  circular M8/M12, crimp housings, IDC, RJ45, USB, terminals, flying leads,
+  splices, ground) and custom connectors with pin count, pin numbers and
+  signals, gender, face view, MPN / internal PN, contact, seal and
+  accessories. Cables and bundles with conductors (gauge, colour, stripe,
+  insulation), twisted groups with lay length, foil / braid shields with drain
+  and termination per end, length and strip dimensions with tolerances, and
+  labels / heat-shrink / sleeving callouts. Loose wires, notes, flag notes,
+  balloons, generated wire list and BOM with find numbers, title block and
+  revision history. Export: vector PDF, SVG, PNG, CSV wire list and BOM, and
+  .cblproj project files.
+
+  No built-in branding in the drawing: this page is public. The title block
+  shows a company name or a logo file the user loads; the logo stays in that
+  browser's IndexedDB and is not part of the site or the project file.
+
+  All data stays on this machine: the working drawing autosaves to this
+  browser's IndexedDB; projects save to .cblproj files you keep. Nothing is
+  committed — .gitignore blocks *.cblproj, exports and Cable_Designer/.
+
+  The CSP below blocks all network requests from scripts; the page loads
+  nothing from other hosts (fonts in fonts/, SIL OFL 1.1; jsPDF in vendor/, MIT).
+  Bump REV in js/app.js on each change.
+-->
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' blob: data:; worker-src 'none'; frame-src 'none'; form-action 'none'; base-uri 'none'">
+<meta name="referrer" content="no-referrer">
+<meta name="robots" content="noindex">
+<title>Cable Designer</title>
+<meta name="theme-color" content="#0B0C0A">
+<link rel="icon" type="image/png" href="../../assets/brand/favicon-64.png">
+<style>
+  @font-face { font-family: "Geist"; src: url("fonts/Geist-Variable.woff2") format("woff2"); font-weight: 100 900; font-display: swap; }
+  @font-face { font-family: "Geist Mono"; src: url("fonts/GeistMono-Variable.woff2") format("woff2"); font-weight: 100 900; font-display: swap; }
+  /* ===== Atlas Devices brand tokens — mirrored from atlasclark.github.io ===== */
+  :root {
+    --font: "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    --mono: "Geist Mono", ui-monospace, "SFMono-Regular", Consolas, monospace;
+    --radius-sm: 10px;
+    --lime: #D0DD2B;
+    --on-lime: #10110E;
+    --wordmark-src: url("../../assets/brand/wordmark.png");
+  }
+  [data-theme="light"] {
+    --bg: #F3F3EE; --bg2: #ECECE5; --surface: #FBFBF8; --surface2: #F3F3EE;
+    --border: #DCDCD3; --text: #10110E; --ink-2: #3A3B35; --text-dim: #5E5F57; --text-faint: #9A9B91;
+    --input-bg: #FBFBF8; --hover: #EEEEE7; --sel: rgba(140,152,0,.14);
+    --accent-text: #5F6A00; --stage: #E3E3DA; --stage-dot: rgba(16,17,14,.10);
+    --shadow-lg: 0 24px 60px rgba(16,17,14,.16); --paper-shadow: 0 10px 40px rgba(16,17,14,.18);
+    --green: #3E8A4E; --yellow: #A87A06; --red: #B8402F;
+    color-scheme: light;
+  }
+  [data-theme="dark"] {
+    --bg: #0B0C0A; --bg2: #10110E; --surface: #131411; --surface2: #1A1B17;
+    --border: #24251F; --text: #ECEDE6; --ink-2: #B9BAB1; --text-dim: #9C9D94; --text-faint: #65665E;
+    --input-bg: #10110E; --hover: #1B1C18; --sel: rgba(208,221,43,.10);
+    --accent-text: #D0DD2B; --stage: #070806; --stage-dot: rgba(236,237,230,.07);
+    --shadow-lg: 0 24px 70px rgba(0,0,0,.55); --paper-shadow: 0 10px 50px rgba(0,0,0,.6);
+    --green: #86C98F; --yellow: #E2C14E; --red: #EE7B68;
+    color-scheme: dark;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body {
+    font-family: var(--font); font-size: 14px; -webkit-font-smoothing: antialiased;
+    background: var(--bg); color: var(--text);
+    display: flex; flex-direction: column; overflow: hidden;
+  }
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 6px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--text-faint); }
+  ::selection { background: var(--lime); color: var(--on-lime); }
+  :focus-visible { outline: 2px solid var(--accent-text); outline-offset: 2px; }
+  [hidden] { display: none !important; }
+
+  /* ===== Top bar ===== */
+  .topbar {
+    position: relative; z-index: 30; display: flex; align-items: center; gap: 18px;
+    padding: 0 20px; min-height: 60px; flex-wrap: wrap;
+    background: color-mix(in srgb, var(--bg) 86%, transparent);
+    border-bottom: 1px solid var(--border);
+  }
+  a.brand { color: inherit; text-decoration: none; }
+  .brand { display: flex; align-items: center; gap: 14px; font-weight: 500; font-size: 17px; flex-shrink: 0; }
+  .brand .wordmark {
+    display: none; width: 132px; aspect-ratio: 900 / 152; background: var(--text);
+    -webkit-mask: var(--wordmark-src) center / contain no-repeat; mask: var(--wordmark-src) center / contain no-repeat;
+  }
+  .has-wm .brand .wordmark { display: block; }
+  .has-wm .brand .wm-text { display: none; }
+  .wm-text { font: 600 15px var(--font); letter-spacing: .06em; }
+  .wm-text b { font-weight: 400; margin-left: 5px; color: var(--text-dim); }
+  .brand .div { width: 1px; height: 18px; background: var(--border); }
+  .brand-lbl {
+    display: flex; align-items: center; gap: 9px;
+    font: 500 12px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--text-dim);
+  }
+  .pulse { width: 7px; height: 7px; border-radius: 50%; background: var(--lime); animation: brandPulse 2.4s ease-out infinite; flex-shrink: 0; }
+  @keyframes brandPulse {
+    0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--lime) 70%, transparent); }
+    70%, 100% { box-shadow: 0 0 0 9px transparent; }
+  }
+  .doc-id { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 260px; }
+  .doc-id input { border-color: transparent; background: transparent; }
+  .doc-id input:hover { border-color: var(--border); }
+  .doc-id input:focus { border-color: var(--ink-2); background: var(--input-bg); }
+  #dwgNo { width: 130px; font-family: var(--mono); font-size: 12.5px; color: var(--accent-text); font-weight: 600; }
+  #dwgRev { width: 64px; font-family: var(--mono); font-size: 12.5px; text-align: center; }
+  #dwgTitle { flex: 1; min-width: 120px; max-width: 420px; font-size: 15px; font-weight: 500; }
+  .topbar .actions { display: flex; gap: 8px; margin-left: auto; align-items: center; }
+  .badge { font: 600 10.5px var(--mono); min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; display: inline-grid; place-items: center; background: var(--hover); color: var(--text-dim); }
+  .badge.warn { background: color-mix(in srgb, var(--yellow) 22%, transparent); color: var(--yellow); }
+  .badge.err { background: color-mix(in srgb, var(--red) 22%, transparent); color: var(--red); }
+  .badge.ok { background: color-mix(in srgb, var(--green) 22%, transparent); color: var(--green); }
+
+  /* ===== Buttons / inputs ===== */
+  .btn {
+    border: 1px solid var(--border); background: var(--surface); color: var(--text);
+    font-family: inherit; font-size: 13px; font-weight: 500; height: 36px; padding: 0 13px;
+    border-radius: var(--radius-sm); cursor: pointer; display: inline-flex; align-items: center; gap: 7px;
+    white-space: nowrap; transition: transform .15s, border-color .15s, background-color .15s, color .15s;
+  }
+  .btn:hover { border-color: var(--ink-2); transform: translateY(-1px); }
+  .btn:disabled { opacity: .45; cursor: default; transform: none; border-color: var(--border); }
+  .btn svg { width: 15px; height: 15px; flex-shrink: 0; }
+  .btn-icon { width: 36px; padding: 0; justify-content: center; }
+  .btn-sm { height: 30px; padding: 0 10px; font-size: 12.5px; border-radius: 8px; }
+  .btn-xs { height: 26px; padding: 0 8px; font-size: 12px; border-radius: 7px; }
+  .btn-sm.btn-icon { width: 30px; padding: 0; }
+  .btn-primary, .btn-primary:hover { background: var(--text); color: var(--bg); border: 1px solid var(--text); }
+  .btn-primary:hover { background: var(--lime); border-color: var(--lime); color: var(--on-lime); }
+  .btn-danger:hover { border-color: var(--red); color: var(--red); background: transparent; }
+  .icon-btn {
+    border: none; background: transparent; color: var(--text-dim); cursor: pointer;
+    font-size: 13px; padding: 3px 6px; border-radius: 6px; font-family: inherit;
+  }
+  .icon-btn:hover { background: var(--hover); color: var(--text); }
+  .icon-btn:disabled { opacity: .3; cursor: default; background: transparent; }
+  input, select, textarea {
+    font-family: var(--font); font-size: 13px; color: var(--text);
+    background: var(--input-bg); border: 1px solid var(--border); border-radius: 8px;
+    padding: 6px 9px; outline: none; transition: border .15s; min-width: 0;
+  }
+  input, select { height: 32px; }
+  select { padding-right: 4px; }
+  textarea { resize: vertical; line-height: 1.5; min-height: 60px; }
+  input:focus, select:focus, textarea:focus { border-color: var(--ink-2); }
+  input::placeholder, textarea::placeholder { color: var(--text-faint); }
+  input[type="checkbox"] { height: auto; width: 15px; height: 15px; accent-color: var(--accent-text); }
+  input:disabled, select:disabled { opacity: .5; }
+
+  /* ===== Menus ===== */
+  .menu-wrap { position: relative; }
+  .menu {
+    position: absolute; right: 0; top: calc(100% + 6px); z-index: 50; min-width: 290px;
+    background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 6px;
+    box-shadow: var(--shadow-lg); animation: pop .14s ease;
+  }
+  .menu button {
+    all: unset; box-sizing: border-box; display: grid; grid-template-columns: 30px 1fr; gap: 2px 10px; width: 100%;
+    padding: 9px 10px; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 500;
+  }
+  .menu button:hover, .menu button:focus-visible { background: var(--hover); }
+  .menu button .ic { grid-row: span 2; color: var(--accent-text); font: 600 11px var(--mono); padding-top: 2px; }
+  .menu button small { color: var(--text-faint); font-size: 11.5px; font-weight: 400; }
+  .menu hr { border: none; border-top: 1px dashed var(--border); margin: 5px 4px; }
+
+  /* ===== Layout ===== */
+  main { flex: 1; min-height: 0; display: grid; grid-template-columns: 250px minmax(0, 1fr) 350px; }
+  .panel { min-height: 0; display: flex; flex-direction: column; background: var(--surface); }
+  .grp-lbl { font: 500 10.5px var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--text-faint); }
+
+  /* Left: parts and outline */
+  .side { border-right: 1px solid var(--border); overflow-y: auto; }
+  .side-sec { padding: 12px 12px 6px; }
+  .side-sec + .side-sec { border-top: 1px dashed var(--border); }
+  .side-sec > .grp-lbl { display: flex; justify-content: space-between; margin-bottom: 8px; }
+  .lib details { border-radius: 8px; }
+  .lib summary {
+    list-style: none; cursor: pointer; padding: 6px 8px; border-radius: 8px; font-size: 12.5px; font-weight: 500;
+    display: flex; align-items: center; gap: 8px; color: var(--ink-2);
+  }
+  .lib summary::-webkit-details-marker { display: none; }
+  .lib summary::before { content: "▸"; font-size: 10px; color: var(--text-faint); transition: transform .15s; }
+  .lib details[open] > summary::before { transform: rotate(90deg); }
+  .lib summary:hover { background: var(--hover); }
+  .lib summary span { margin-left: auto; font: 400 10.5px var(--mono); color: var(--text-faint); }
+  .lib-item {
+    all: unset; box-sizing: border-box; display: flex; align-items: center; gap: 8px; width: 100%;
+    padding: 6px 8px 6px 24px; border-radius: 8px; cursor: pointer; font-size: 12.5px; color: var(--text);
+  }
+  .lib-item:hover, .lib-item:focus-visible { background: var(--hover); }
+  .lib-item:hover .plus { opacity: 1; }
+  .lib-item .plus { margin-left: auto; color: var(--accent-text); font-weight: 600; opacity: 0; }
+  .outline { list-style: none; display: flex; flex-direction: column; gap: 1px; }
+  .outline li {
+    display: flex; align-items: center; gap: 8px; padding: 5px 8px; border-radius: 7px; cursor: pointer; font-size: 12.5px;
+  }
+  .outline li:hover { background: var(--hover); }
+  .outline li.on { background: var(--sel); }
+  .outline li b { font: 600 11.5px var(--mono); color: var(--accent-text); min-width: 36px; }
+  .outline li span { color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .outline .sub { font: 500 10px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--text-faint); padding: 8px 8px 3px; cursor: default; }
+  .outline .sub:hover { background: none; }
+  .empty-note { font: 400 11.5px var(--mono); color: var(--text-faint); padding: 4px 8px 8px; line-height: 1.6; }
+
+  /* Center: toolbar + stage + wire drawer */
+  .center { min-width: 0; min-height: 0; display: flex; flex-direction: column; }
+  .tools {
+    display: flex; align-items: center; gap: 6px; padding: 7px 12px; flex-wrap: wrap;
+    border-bottom: 1px solid var(--border); background: var(--surface);
+  }
+  .tools .vsep { width: 1px; height: 22px; background: var(--border); margin: 0 4px; }
+  .tools .spacer { flex: 1; }
+  .tools select { height: 30px; font-size: 12.5px; }
+  .tool {
+    width: 32px; height: 32px; display: grid; place-items: center; border-radius: 9px; cursor: pointer;
+    border: 1px solid transparent; background: transparent; color: var(--ink-2);
+  }
+  .tool svg { width: 17px; height: 17px; }
+  .tool:hover { background: var(--hover); color: var(--text); }
+  .tool[aria-pressed="true"] { background: var(--text); color: var(--bg); }
+  .tool:disabled { opacity: .35; cursor: default; background: transparent; }
+  .seg { display: inline-flex; border: 1px solid var(--border); border-radius: 9px; overflow: hidden; }
+  .seg button {
+    all: unset; cursor: pointer; padding: 0 10px; height: 28px; display: grid; place-items: center;
+    font: 500 11px var(--mono); color: var(--text-dim); border-right: 1px solid var(--border);
+  }
+  .seg button:last-child { border-right: none; }
+  .seg button:hover { background: var(--hover); color: var(--text); }
+  .seg button[aria-pressed="true"] { background: var(--text); color: var(--bg); }
+  #zoomLbl { font: 500 11px var(--mono); color: var(--text-dim); min-width: 46px; text-align: center; cursor: pointer; }
+  .hint-txt { font: 400 11px var(--mono); color: var(--text-faint); }
+
+  .stage {
+    position: relative; flex: 1; min-height: 0; overflow: hidden; background-color: var(--stage);
+    background-image: radial-gradient(var(--stage-dot) 1px, transparent 1px); background-size: 18px 18px;
+    cursor: default; touch-action: none;
+  }
+  .stage.panning { cursor: grabbing; }
+  #sheetSvg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; user-select: none; }
+  #paper { filter: drop-shadow(var(--paper-shadow)); }
+  #sheetSvg [data-id] { cursor: pointer; }
+  #sheetSvg .k-conn, #sheetSvg .k-cable, #sheetSvg .k-callout, #sheetSvg .k-table { cursor: move; }
+  #sheetSvg .k-frame, #sheetSvg .k-rev { cursor: default; }
+  #sheetSvg .k-wire:hover polyline:first-child { stroke-width: 4; }
+  .ovl-sel { fill: none; stroke: #9DB000; stroke-width: 1.2; stroke-dasharray: 4 3; pointer-events: none; }
+  .ovl-selw { fill: none; stroke: #C6D400; stroke-opacity: .55; stroke-width: 8; stroke-linejoin: round; pointer-events: none; }
+  .port { fill: #fff; fill-opacity: 0; stroke: #8A9A00; stroke-width: .8; stroke-opacity: 0; cursor: crosshair; }
+  .show-ports .port, .port:hover { fill-opacity: 1; stroke-opacity: 1; }
+  .port.hot { fill: #D0DD2B; stroke: #5F6A00; fill-opacity: 1; stroke-opacity: 1; }
+  .handle { fill: #D0DD2B; stroke: #5F6A00; stroke-width: 1; cursor: grab; }
+  .drag-line { stroke: #8A9A00; stroke-width: 1.6; stroke-dasharray: 4 3; fill: none; pointer-events: none; }
+
+  .drawer { border-top: 1px solid var(--border); background: var(--surface); display: flex; flex-direction: column; height: 34vh; min-height: 160px; }
+  .drawer-head { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-bottom: 1px solid var(--border); }
+  .drawer-body { flex: 1; min-height: 0; overflow: auto; }
+  .grid { border-collapse: separate; border-spacing: 0; width: 100%; font-size: 12.5px; }
+  .grid th {
+    position: sticky; top: 0; z-index: 1; background: var(--surface2); text-align: left; padding: 6px 6px;
+    font: 500 10px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--text-faint); border-bottom: 1px solid var(--border);
+  }
+  .grid td { padding: 3px 4px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  .grid tr.on td { background: var(--sel); }
+  .grid input, .grid select { height: 28px; font-size: 12.5px; padding: 4px 6px; border-radius: 6px; }
+  .grid .w-ref { width: 64px; font-family: var(--mono); }
+  .grid .w-sz { width: 56px; }
+  .grid .w-len { width: 70px; }
+  .grid .w-sig { width: 110px; }
+  .grid .w-pin { width: 74px; }
+  .grid .w-conn { width: 84px; }
+  .grid .w-col { width: 82px; }
+
+  /* Inspector */
+  .insp { border-left: 1px solid var(--border); overflow-y: auto; }
+  .insp-head { display: flex; align-items: center; justify-content: space-between; padding: 14px 16px 8px; gap: 8px; position: sticky; top: 0; background: var(--surface); z-index: 2; }
+  .insp-head .grp-lbl b { color: var(--accent-text); font-weight: 600; }
+  .insp-body { padding: 4px 16px 24px; display: flex; flex-direction: column; gap: 11px; }
+  .field { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+  .field > label, .field > .lbl { font: 500 10px var(--mono); text-transform: uppercase; letter-spacing: .08em; color: var(--text-faint); }
+  .field input:not([type="checkbox"]), .field select, .field textarea { width: 100%; }
+  .r2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .r3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+  .r21 { display: grid; grid-template-columns: 2fr 1fr; gap: 8px; }
+  .sec { border-top: 1px dashed var(--border); padding-top: 11px; display: flex; flex-direction: column; gap: 9px; }
+  .sec-h { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+  .sec-h .grp-lbl { color: var(--accent-text); }
+  .chk { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--ink-2); cursor: pointer; }
+  .hint { font-size: 11.5px; color: var(--text-faint); line-height: 1.5; }
+  .btn-row { display: flex; flex-wrap: wrap; gap: 6px; }
+  .pins { border-collapse: collapse; width: 100%; }
+  .pins td { padding: 2px 2px; }
+  .pins td:first-child { font: 500 10.5px var(--mono); color: var(--text-faint); width: 22px; text-align: right; padding-right: 6px; }
+  .pins input { height: 28px; font-size: 12.5px; padding: 4px 7px; width: 100%; }
+  .pins .pn { width: 60px; font-family: var(--mono); }
+  .pins .used { color: var(--accent-text); }
+  .cond { display: grid; grid-template-columns: 16px 50px 1fr 1fr 1fr auto; gap: 4px; align-items: center; }
+  .cond input, .cond select { height: 28px; font-size: 12px; padding: 3px 5px; }
+  .cond .sw { width: 12px; height: 12px; border-radius: 3px; box-shadow: 0 0 0 1px var(--border); }
+  .cond-row { display: contents; }
+  .cond-h { font: 500 9.5px var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--text-faint); }
+  .card { border: 1px solid var(--border); border-radius: 10px; padding: 9px; display: flex; flex-direction: column; gap: 7px; background: var(--surface2); }
+  .card-h { display: flex; align-items: center; gap: 6px; font: 600 11.5px var(--mono); color: var(--ink-2); }
+  .card-h .grow { flex: 1; }
+  .insp-empty { padding: 4px 0; display: flex; flex-direction: column; gap: 10px; }
+  .stat { display: grid; grid-template-columns: 1fr auto; gap: 4px 10px; font-size: 12.5px; color: var(--text-dim); }
+  .stat b { font: 600 12px var(--mono); color: var(--text); text-align: right; }
+
+  /* Empty-stage card */
+  .empty { position: absolute; inset: 0; display: grid; place-items: center; padding: 24px; pointer-events: none; }
+  .empty-card {
+    pointer-events: auto; text-align: center; max-width: 470px; padding: 30px 28px; border-radius: 18px;
+    border: 1.5px dashed color-mix(in srgb, var(--text-faint) 70%, transparent); background: color-mix(in srgb, var(--surface) 92%, transparent);
+    box-shadow: var(--shadow-lg);
+  }
+  .empty-card .big { width: 54px; height: 54px; margin: 0 auto 12px; color: var(--accent-text); }
+  .empty-card h2 { font-size: 19px; font-weight: 500; letter-spacing: -.01em; margin-bottom: 8px; }
+  .empty-card p { color: var(--text-dim); line-height: 1.55; font-size: 13.5px; }
+  .empty-card .btn-row { justify-content: center; margin-top: 16px; }
+
+  /* ===== Modal ===== */
+  .overlay {
+    position: fixed; inset: 0; background: color-mix(in srgb, var(--bg) 70%, transparent);
+    backdrop-filter: blur(4px); display: none; align-items: flex-start; justify-content: center;
+    z-index: 100; padding: 5vh 16px;
+  }
+  .overlay.open { display: flex; }
+  .modal {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 16px;
+    width: 560px; max-width: 100%; max-height: 90vh; overflow-y: auto; box-shadow: var(--shadow-lg);
+    animation: pop .18s ease;
+  }
+  .modal.wide { width: 860px; }
+  @keyframes pop { from { transform: translateY(10px) scale(.98); opacity: 0; } }
+  .modal-head { display: flex; align-items: center; padding: 16px 20px; border-bottom: 1px solid var(--border); position: sticky; top: 0; background: var(--surface); z-index: 3; }
+  .modal-head h3 { font-size: 15.5px; font-weight: 500; letter-spacing: -.01em; flex: 1; }
+  .modal-body { padding: 18px 20px; display: flex; flex-direction: column; gap: 13px; font-size: 13.5px; line-height: 1.5; }
+  .modal-body p { color: var(--text-dim); }
+  .modal-foot { display: flex; justify-content: flex-end; gap: 9px; padding: 14px 20px; border-top: 1px dashed var(--border); flex-wrap: wrap; }
+  .modal .r4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+  .modal h4 { font: 500 10.5px var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--accent-text); margin-top: 6px; }
+  .hist-tbl { width: 100%; border-collapse: collapse; }
+  .hist-tbl th { text-align: left; font: 500 10px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--text-faint); padding: 0 4px 6px; }
+  .hist-tbl td { padding: 3px 4px; }
+  .hist-tbl input { width: 100%; height: 30px; font-size: 12.5px; }
+  .note-row { display: grid; grid-template-columns: 22px 1fr auto; gap: 6px; align-items: start; }
+  .note-row > span { font: 600 12px var(--mono); color: var(--text-dim); padding-top: 7px; text-align: right; }
+  .note-row textarea { min-height: 34px; height: 34px; }
+  .checks { list-style: none; display: flex; flex-direction: column; gap: 6px; }
+  .checks li { display: flex; gap: 10px; align-items: baseline; font-size: 13px; }
+  .checks li b { font: 600 10.5px var(--mono); text-transform: uppercase; min-width: 40px; }
+  .checks .err b { color: var(--red); }
+  .checks .warn b { color: var(--yellow); }
+  .keys-tbl { display: grid; grid-template-columns: auto 1fr auto 1fr; gap: 7px 12px; font-size: 13px; color: var(--text-dim); align-items: center; }
+  kbd { font: 500 11px var(--mono); padding: 2px 6px; border: 1px solid var(--border); border-radius: 5px; color: var(--text-dim); background: var(--surface); }
+
+  body.drag::after {
+    content: "Drop a .cblproj project to open it"; position: fixed; inset: 12px; z-index: 300;
+    display: grid; place-items: center; border: 2px dashed var(--accent-text); border-radius: 16px;
+    background: color-mix(in srgb, var(--bg) 82%, transparent); font: 500 14px var(--mono); color: var(--accent-text);
+  }
+
+  /* ===== Toast ===== */
+  #toasts { position: fixed; bottom: 44px; right: 20px; display: flex; flex-direction: column; gap: 8px; z-index: 200; }
+  .toast {
+    background: var(--surface); border: 1px solid var(--border); border-left: 3px solid var(--lime);
+    padding: 11px 16px; border-radius: 10px; font-size: 13px; font-weight: 500; box-shadow: var(--shadow-lg);
+    animation: slidein .25s ease; max-width: 420px;
+  }
+  .toast.warn { border-left-color: var(--yellow); }
+  .toast.err { border-left-color: var(--red); }
+  @keyframes slidein { from { transform: translateX(30px); opacity: 0; } }
+
+  /* ===== Status bar ===== */
+  .statusbar {
+    position: relative; z-index: 20; display: flex; align-items: center; gap: 12px;
+    min-height: 28px; padding: 0 20px; border-top: 1px solid var(--border);
+    background: color-mix(in srgb, var(--bg) 86%, transparent);
+    font: 400 11px var(--mono); letter-spacing: .04em; color: var(--text-faint);
+    white-space: nowrap; overflow: hidden;
+  }
+  .statusbar > span { flex-shrink: 0; }
+  .statusbar #stats, .statusbar #saveStat { flex-shrink: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .statusbar .grow { flex: 1; }
+  .statusbar .sep { width: 1px; height: 12px; background: var(--border); }
+  .statusbar .rev { color: var(--accent-text); }
+  .statusbar .warn { color: var(--yellow); }
+
+  @media (max-width: 1200px) {
+    main { grid-template-columns: 220px minmax(0, 1fr) 310px; }
+  }
+  @media (max-width: 860px) {
+    body { overflow: auto; height: auto; }
+    main { grid-template-columns: 1fr; }
+    .side { border-right: none; border-bottom: 1px solid var(--border); max-height: 260px; }
+    .stage { min-height: 62vh; }
+    .insp { border-left: none; border-top: 1px solid var(--border); }
+    .topbar { padding: 8px 16px; }
+    .doc-id { order: 3; flex-basis: 100%; }
+    .statusbar { padding: 0 16px; }
+    .statusbar .hide-sm { display: none; }
+    .modal .r4 { grid-template-columns: 1fr 1fr; }
+  }
+</style>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="../../" title="Atlas Devices Tools, home">
+      <span class="wordmark" role="img" aria-label="Atlas Devices"></span>
+      <span class="wm-text">ATLAS<b>DEVICES</b></span>
+      <span class="div"></span>
+      <div class="brand-lbl"><span class="pulse"></span>Cable Designer</div>
+    </a>
+    <div class="doc-id">
+      <input id="dwgNo" placeholder="DWG-0000" autocomplete="off" spellcheck="false" title="Drawing number" aria-label="Drawing number">
+      <input id="dwgTitle" placeholder="Untitled cable drawing" autocomplete="off" title="Drawing title" aria-label="Drawing title">
+      <input id="dwgRev" placeholder="Rev" autocomplete="off" spellcheck="false" title="Revision" aria-label="Revision">
+    </div>
+    <div class="actions">
+      <button class="btn" id="drawingBtn" title="Title block, notes and revision history">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 15h18M12 15v5M8 8h8"/></svg>Drawing
+      </button>
+      <button class="btn" id="checksBtn" title="Design checks">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3 8-8"/><path d="M20 12v6a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h9"/></svg>Checks <span class="badge" id="checksBadge">0</span>
+      </button>
+      <div class="menu-wrap">
+        <button class="btn" id="projBtn" aria-haspopup="true" aria-expanded="false">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>Project
+        </button>
+        <div class="menu" id="projMenu" hidden role="menu">
+          <button data-act="save" role="menuitem"><span class="ic">S</span>Save project file<small>.cblproj (JSON). Ctrl+S</small></button>
+          <button data-act="open" role="menuitem"><span class="ic">O</span>Open project file<small>Replaces the drawing in this browser. Ctrl+O</small></button>
+          <hr>
+          <button data-act="new" role="menuitem"><span class="ic">+</span>New drawing<small>Clears this browser's working copy</small></button>
+          <button data-act="example" role="menuitem"><span class="ic">EX</span>Load example<small>Shielded twisted pair cable, fake part numbers</small></button>
+          <button data-act="keys" role="menuitem"><span class="ic">?</span>Keyboard and mouse<small>Shortcuts, wiring by drag</small></button>
+        </div>
+      </div>
+      <div class="menu-wrap">
+        <button class="btn btn-primary" id="expBtn" aria-haspopup="true" aria-expanded="false">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M7 10l5 5 5-5M4 20h16"/></svg>Export
+        </button>
+        <div class="menu" id="expMenu" hidden role="menu">
+          <button data-act="pdf" role="menuitem"><span class="ic">PDF</span>PDF drawing<small>Vector, all sheets, title block. Ctrl+P</small></button>
+          <button data-act="svg" role="menuitem"><span class="ic">SVG</span>SVG drawing<small>Sheet shown on screen</small></button>
+          <button data-act="png" role="menuitem"><span class="ic">PNG</span>PNG image<small>Sheet shown on screen, 200 dpi</small></button>
+          <hr>
+          <button data-act="wcsv" role="menuitem"><span class="ic">CSV</span>Wire list<small>From-to list with sizes, colours, lengths</small></button>
+          <button data-act="bcsv" role="menuitem"><span class="ic">CSV</span>Bill of materials<small>Items, quantities, part numbers</small></button>
+        </div>
+      </div>
+      <button class="btn btn-icon" id="themeBtn" title="Toggle light / dark theme" aria-label="Toggle color theme">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="4.5"/><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M5.3 18.7l1.4-1.4M17.3 6.7l1.4-1.4"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <main>
+    <aside class="panel side" aria-label="Parts and outline">
+      <div class="side-sec lib" id="lib">
+        <div class="grp-lbl"><span>Add to drawing</span></div>
+      </div>
+      <div class="side-sec">
+        <div class="grp-lbl"><span>Outline</span><span id="outlineCount"></span></div>
+        <ul class="outline" id="outline"></ul>
+      </div>
+    </aside>
+
+    <section class="center">
+      <div class="tools" role="toolbar" aria-label="Drawing tools">
+        <div class="seg" id="sheetSeg" hidden></div>
+        <select id="sizeSel" title="Sheet size" aria-label="Sheet size"></select>
+        <span class="vsep"></span>
+        <button class="tool" id="undoBtn" title="Undo (Ctrl+Z)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14L4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg></button>
+        <button class="tool" id="redoBtn" title="Redo (Ctrl+Y)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M15 14l5-5-5-5"/><path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13"/></svg></button>
+        <button class="tool" id="dupBtn" title="Duplicate selected (Ctrl+D)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h3"/></svg></button>
+        <button class="tool" id="delBtn" title="Delete selected (Del)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg></button>
+        <span class="vsep"></span>
+        <button class="tool" id="portsBtn" title="Show pin ports. Drag from a pin to a pin or a cable conductor to wire it (P)" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="5" cy="7" r="2.2"/><circle cx="19" cy="17" r="2.2"/><path d="M7.2 7c6 0 3.6 10 9.6 10"/></svg></button>
+        <span class="hint-txt hide-sm">Drag pin → pin to wire</span>
+        <span class="spacer"></span>
+        <button class="btn btn-sm" id="drawerBtn" title="Edit all wires in a table (W)" aria-pressed="false">Wire list</button>
+        <span class="vsep"></span>
+        <button class="tool" id="zoomOut" title="Zoom out (−)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M6 12h12"/></svg></button>
+        <span id="zoomLbl" title="Click: fit sheet (0). Wheel zooms; drag empty paper to pan.">100%</span>
+        <button class="tool" id="zoomIn" title="Zoom in (+)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M6 12h12M12 6v12"/></svg></button>
+      </div>
+      <div class="stage" id="stage">
+        <svg id="sheetSvg" xmlns="http://www.w3.org/2000/svg" font-family="Arial, Helvetica, sans-serif" fill="#111111">
+          <g id="paper"></g>
+          <g id="ovl"></g>
+        </svg>
+        <div class="empty" id="empty">
+          <div class="empty-card">
+            <svg class="big" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="14" width="10" height="20" rx="2"/><rect x="35" y="14" width="10" height="20" rx="2"/><path d="M13 19c8 0 14 10 22 10M13 29c8 0 14-10 22-10"/></svg>
+            <h2>Start a cable drawing</h2>
+            <p>Add connectors and a cable from the panel on the left, then drag from a pin to a pin or cable conductor to wire it. The wire list, BOM and title block fill in as you work.</p>
+            <div class="btn-row"><button class="btn btn-primary" id="emptyExample">Load example</button><button class="btn" id="emptyOpen">Open project…</button></div>
+          </div>
+        </div>
+      </div>
+      <div class="drawer" id="drawer" hidden>
+        <div class="drawer-head">
+          <span class="grp-lbl">All wires</span><span class="hint-txt" id="drawerCount"></span>
+          <span style="flex:1"></span>
+          <button class="btn btn-xs" id="addWireBtn">＋ Loose wire</button>
+          <button class="icon-btn" id="drawerX" aria-label="Close wire list">✕</button>
+        </div>
+        <div class="drawer-body" id="drawerBody"></div>
+      </div>
+    </section>
+
+    <aside class="panel insp" aria-label="Properties">
+      <div class="insp-head">
+        <span class="grp-lbl" id="inspTitle">Drawing</span>
+        <div class="btn-row" id="inspActs"></div>
+      </div>
+      <div class="insp-body" id="inspBody"></div>
+    </aside>
+  </main>
+
+  <div class="overlay" id="overlay">
+    <div class="modal" id="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+      <div class="modal-head"><h3 id="modalTitle"></h3><button class="icon-btn" id="modalX" style="font-size:17px" aria-label="Close">✕</button></div>
+      <div class="modal-body" id="modalBody"></div>
+      <div class="modal-foot" id="modalFoot"></div>
+    </div>
+  </div>
+
+  <footer class="statusbar">
+    <span title="This page has no network access. The drawing stays in this browser until you export or save a project file.">Local only</span>
+    <span class="sep hide-sm"></span>
+    <span id="stats"></span>
+    <span class="grow"></span>
+    <span class="hide-sm" id="saveStat"></span>
+    <span class="sep hide-sm"></span>
+    <span class="rev" id="rev"></span>
+  </footer>
+
+  <datalist id="dlInsul"></datalist>
+  <datalist id="dlSpec"></datalist>
+  <datalist id="dlAwg"></datalist>
+  <input type="file" id="projFile" accept=".cblproj,.json" hidden>
+  <input type="file" id="logoFile" accept="image/png,image/jpeg,image/webp,image/svg+xml" hidden>
+  <div id="toasts"></div>
+
+  <script src="vendor/jspdf.umd.min.js"></script>
+  <script src="js/lib.js"></script>
+  <script src="js/model.js"></script>
+  <script src="js/scene.js"></script>
+  <script src="js/out.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>

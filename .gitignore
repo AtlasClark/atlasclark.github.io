@@ -34,3 +34,9 @@ Work_Instructions/
 *.wiproj
 *.zip
 *.docx
+
+# Cable Designer projects and exports are local only. Never commit them.
+Cable_Designer/
+*.cblproj
+*.cable.svg
+*.cable.png
