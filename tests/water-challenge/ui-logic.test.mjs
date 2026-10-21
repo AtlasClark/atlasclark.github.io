@@ -190,15 +190,15 @@ test("turns: a pet seen for the first time already faces its drift (no turn on l
 test("identity: usernames come from the data, and a near-miss is caught", () => {
   const M = web.model, keep = M.S.participants;
   M.S.participants = [
-    { name: "A", entries: [{ by: "rclark" }, { by: "rclark" }, { by: "Hidrate" }, { by: "" }], spends: [{ by: "kcole" }] },
-    { name: "B", entries: [{ by: "RClark" }, { by: "sbelton" }, { by: "unknown" }] }
+    { name: "A", entries: [{ by: "rclark" }, { by: "rclark" }, { by: "Hidrate" }, { by: "" }], spends: [{ by: "ajones" }] },
+    { name: "B", entries: [{ by: "RClark" }, { by: "tmiller" }, { by: "unknown" }] }
   ];
   try {
-    assert.deepEqual(M.knownUsers(), [{ user: "kcole", n: 1 }, { user: "rclark", n: 3 }, { user: "sbelton", n: 1 }],
+    assert.deepEqual(M.knownUsers(), [{ user: "ajones", n: 1 }, { user: "rclark", n: 3 }, { user: "tmiller", n: 1 }],
                      "people only, case folded, A to Z");
     assert.deepEqual(M.matchUser("RCLARK"), { same: "rclark" });
     assert.deepEqual(M.matchUser("rclakr"), { near: "rclark" }, "a swap is two letters off");
-    assert.deepEqual(M.matchUser("sbleton"), { near: "sbelton" });
+    assert.deepEqual(M.matchUser("tmliler"), { near: "tmiller" });
     assert.deepEqual(M.matchUser("gjuan"), {}, "a new person is not flagged");
   } finally { M.S.participants = keep; }
 });

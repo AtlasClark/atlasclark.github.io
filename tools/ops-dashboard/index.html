@@ -836,6 +836,10 @@ function orderCreated(o) {
   return o.createdDate || (o.created ? new Date(o.created).toISOString().slice(0, 10) : "");
 }
 const LABEL_PALETTE = ["var(--blue)", "var(--purple)", "var(--teal)", "var(--pink)", "var(--orange)", "var(--green)", "var(--yellow)", "var(--red)"];
+/* Declared before load() runs (cleanState uses them). Ids made by uid() always pass. */
+const ID_RE = /^[\w-]{1,64}$/;
+const LINK_KEYS = ["p", "o", "po", "s", "n"];   // keys of LINK_TYPES
+function okId(v) { return typeof v === "string" && ID_RE.test(v); }
 
 /* ---------------- state ---------------- */
 let wasSeeded = false;
@@ -861,27 +865,59 @@ function load() {
   try {
     const raw = localStorage.getItem(LS_KEY);
     if (raw) {
-      const data = JSON.parse(raw);
-      // migrate retired statuses
-      (data.orders || []).forEach(o => {
-        if (o.status === "Ready") o.status = "Shipped";
-        if (o.status === "Open") o.status = "Order Confirmed";
-        if (!o.createdDate) o.createdDate = o.created ? new Date(o.created).toISOString().slice(0, 10) : todayStr();
-      });
-      // scopes: collapse the old 6-stage list down to Open / Closed
-      (data.sows || []).forEach(s => {
-        if (s.status !== "Open" && s.status !== "Closed") {
-          s.status = (s.status === "Complete") ? "Closed" : "Open";
-        }
-        if (s.status === "Closed" && !s.closedAt) {
-          s.closedAt = s.target ? new Date(s.target + "T00:00:00").getTime() : Date.now();
-        }
-      });
-      return data;
+      return cleanState(JSON.parse(raw));
     }
   } catch (e) { console.error("Load failed", e); }
   wasSeeded = true; pristineSeed = true;
   return seed();
+}
+/* Every load path (storage, snapshot, backup file, import) goes through here.
+   A backup file can come from anyone, so treat it as untrusted: ids and log times
+   are written into inline handlers (onclick="fn('id')"), where HTML escaping is
+   undone before the script runs. Only plain ids, numbers and known list values
+   get through. Must not throw: load() falls back to sample data if it does. */
+function cleanState(data) {
+  const d = data && typeof data === "object" && !Array.isArray(data) ? data : {};
+  const list = v => Array.isArray(v) ? v.filter(x => x && typeof x === "object" && !Array.isArray(x)) : [];
+  const strs = v => Array.isArray(v) ? v.filter(x => typeof x === "string") : [];
+  const known = (v, all, def) => all.includes(v) ? v : def;
+  const swap = new Map();   // bad id -> new id, so note links still find their item
+  ["projects", "orders", "pos", "sows", "notes", "todos"].forEach(k => {
+    d[k] = list(d[k]);
+    d[k].forEach(x => { if (!okId(x.id)) { const n = uid(); swap.set(x.id, n); x.id = n; } });
+  });
+  d.projects.forEach(p => {
+    p.status = known(p.status, PROJECT_STATUSES, "Queued");
+    p.priority = known(p.priority, PRIORITIES, "Medium");
+    p.tags = strs(p.tags);
+  });
+  d.orders.forEach(o => {
+    if (o.status === "Ready") o.status = "Shipped";          // retired statuses
+    if (o.status === "Open") o.status = "Order Confirmed";
+    o.status = known(o.status, ORDER_STATUSES, ORDER_STATUSES[0]);
+    o.type = known(o.type, ORDER_TYPES, "Other");
+    if (!Number.isFinite(o.created)) delete o.created;
+    if (!o.createdDate) o.createdDate = o.created ? new Date(o.created).toISOString().slice(0, 10) : todayStr();
+    o.log = list(o.log);
+    o.log.forEach((e, i) => { if (!Number.isFinite(e.ts)) e.ts = Date.now() + i; });
+  });
+  // scopes: collapse the old 6-stage list down to Open / Closed
+  d.sows.forEach(s => {
+    if (s.status !== "Open" && s.status !== "Closed") {
+      s.status = (s.status === "Complete") ? "Closed" : "Open";
+    }
+    if (s.status === "Closed" && !s.closedAt) {
+      s.closedAt = s.target ? new Date(s.target + "T00:00:00").getTime() : Date.now();
+    }
+  });
+  d.notes.forEach(n => {
+    n.labels = strs(n.labels);
+    n.links = list(n.links).filter(l => {
+      if (swap.has(l.id)) l.id = swap.get(l.id);
+      return LINK_KEYS.includes(l.t) && okId(l.id);
+    });
+  });
+  return d;
 }
 function save() {
   pristineSeed = false;
@@ -949,7 +985,7 @@ async function restoreSnapshot(i) {
   if (!confirm(`Restore the snapshot from ${new Date(h.ts).toLocaleString()}?\n\n` +
     `It contains: ${countSummary(h.counts || countOf(h.data))}\n` +
     `This replaces what's on screen now (${countSummary(countOf(state))}).`)) return;
-  state = h.data; pristineSeed = false;
+  state = cleanState(h.data); pristineSeed = false;
   document.documentElement.dataset.theme = state.theme || "dark";
   save(); renderAll(); closeModal();
   toast("Snapshot restored");
@@ -983,7 +1019,7 @@ function esc(s) { return String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;
 function fmtDate(d) {
   if (!d) return "—";
   const dt = new Date(d + "T00:00:00");
-  if (isNaN(dt)) return d;
+  if (isNaN(dt)) return esc(d);   // returned text goes into HTML
   return dt.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
 }
 function daysUntil(d) {
@@ -1932,7 +1968,7 @@ document.getElementById("importFile").addEventListener("change", e => {
       if (!data.projects || !data.orders || !data.pos || !data.notes) throw new Error("Not a valid backup file");
       data.sows = data.sows || []; data.todos = data.todos || [];
       if (!confirm("Importing will replace ALL current data. Continue?")) return;
-      state = data;
+      state = cleanState(data);
       save(); renderAll();
       document.documentElement.dataset.theme = state.theme || "dark";
       toast("Backup imported");
@@ -1947,7 +1983,7 @@ document.getElementById("importFile").addEventListener("change", e => {
    The file handle is remembered in IndexedDB; after a browser restart
    you click the 💾 button once to re-grant write access.
    ===================================================================== */
-const REV = "rev 1.0.1";   // site port of local build 2026-10-09-o
+const REV = "rev 1.0.2";   // site port of local build 2026-10-09-o
 const LS_BACKUP_TS = "atlas_ops_last_backup";
 let backupHandle = null, backupTimer = null, backupPaused = false, backupError = "";
 
@@ -2020,7 +2056,7 @@ async function writeBackup() {
             `Writing now would destroy data. Load the file's contents instead?\n\n` +
             `OK = load the file (recommended)   ·   Cancel = leave everything untouched`);
           if (load) {
-            state = onDisk; pristineSeed = false;
+            state = cleanState(onDisk); pristineSeed = false;
             document.documentElement.dataset.theme = state.theme || "dark";
             localStorage.setItem(LS_KEY, JSON.stringify(state));
             renderAll(); backupPaused = false;
@@ -2119,7 +2155,7 @@ async function adoptBackupFile(h, { announce = true } = {}) {
         `OK = load the file   ·   Cancel = keep what's on screen`;
       if (confirm(msg)) {
         data.sows = data.sows || []; data.todos = data.todos || [];
-        state = data; pristineSeed = false;
+        state = cleanState(data); pristineSeed = false;
         document.documentElement.dataset.theme = state.theme || "dark";
         localStorage.setItem(LS_KEY, JSON.stringify(state));
         mirrorToIdb(); renderAll();
@@ -2151,7 +2187,7 @@ async function maybeRestoreFromBackup() {
     if (data.projects && c.total) {
       if (confirm(`Browser storage was empty, but your backup file has data:\n   ${countSummary(c)}\n\nRestore it?`)) {
         data.sows = data.sows || []; data.todos = data.todos || [];
-        state = data; pristineSeed = false;
+        state = cleanState(data); pristineSeed = false;
         localStorage.setItem(LS_KEY, JSON.stringify(state));
         renderAll();
         document.documentElement.dataset.theme = state.theme || "dark";
@@ -2259,7 +2295,7 @@ async function maybeRestoreFromIdb() {
     if (snap && snap.data && snap.data.projects) {
       const n = snap.data.projects.length + snap.data.orders.length + snap.data.pos.length + snap.data.notes.length;
       if (n && confirm(`Browser storage was empty, but a local snapshot from ${new Date(snap.ts).toLocaleString()} has ${n} items.\n\nRestore it?`)) {
-        state = snap.data; pristineSeed = false;
+        state = cleanState(snap.data); pristineSeed = false;
         localStorage.setItem(LS_KEY, JSON.stringify(state));
         renderAll();
         document.documentElement.dataset.theme = state.theme || "dark";

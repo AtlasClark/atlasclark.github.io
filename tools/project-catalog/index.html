@@ -497,7 +497,7 @@
    Data lives in this browser (localStorage + IndexedDB snapshots) and in
    the JSON backup file you link with 💾. Nothing leaves the machine.
    ===================================================================== */
-const REV = "rev 1.3.0";
+const REV = "rev 1.3.1";
 const LS_KEY = "atlas_project_catalog_v1";
 const LS_BACKUP_TS = "atlas_catalog_last_backup";
 const LS_UI = "atlas_catalog_ui";   // view prefs only — never part of the backup
@@ -519,6 +519,9 @@ const DOCS = [
   { key: "rework",       label: "Rework",           short: "R", opt: true  },
 ];
 const REQ_DOCS = DOCS.filter(d => !d.opt);
+/* Declared before load() runs (cleanState uses it). Ids made by uid() always pass. */
+const ID_RE = /^[\w-]{1,64}$/;
+function okId(v) { return typeof v === "string" && ID_RE.test(v); }
 
 /* ---------------- state ---------------- */
 let wasSeeded = false;
@@ -542,20 +545,38 @@ function load() {
   try {
     const raw = localStorage.getItem(LS_KEY);
     if (raw) {
-      const data = JSON.parse(raw);
-      data.entries = data.entries || [];
-      data.entries.forEach(normalize);
-      return data;
+      return cleanState(JSON.parse(raw));
     }
   } catch (e) { console.error("Load failed", e); }
   wasSeeded = true; pristineSeed = true;
   return seed();
 }
+/* Every load path (storage, snapshot, backup file, import) goes through here.
+   A backup file can come from anyone, so treat it as untrusted: ids and log times
+   are written into inline handlers (onclick="fn('id')"), where HTML escaping is
+   undone before the script runs. Only plain ids and numbers get through.
+   Must not throw: load() falls back to sample data if it does. */
+function cleanState(data) {
+  const d = data && typeof data === "object" && !Array.isArray(data) ? data : {};
+  d.entries = Array.isArray(d.entries) ? d.entries.filter(isRec) : [];
+  const swap = new Map();   // bad id -> new id, so links between projects hold
+  d.entries.forEach(e => {
+    normalize(e);
+    if (!okId(e.id)) { const n = uid(); swap.set(e.id, n); e.id = n; }
+  });
+  d.entries.forEach(e => ["supersededById", "prevId"].forEach(k => {
+    if (swap.has(e[k])) e[k] = swap.get(e[k]);
+    if (!okId(e[k])) e[k] = "";
+  }));
+  return d;
+}
+function isRec(x) { return !!x && typeof x === "object" && !Array.isArray(x); }
 /* Fill in anything an older file is missing, so a render never trips on it. */
 function normalize(e) {
-  e.docs = e.docs || {};
+  e.docs = isRec(e.docs) ? e.docs : {};
   DOCS.forEach(d => { e.docs[d.key] = !!e.docs[d.key]; });
-  e.log = e.log || [];
+  e.log = Array.isArray(e.log) ? e.log.filter(isRec) : [];
+  e.log.forEach((l, i) => { if (!Number.isFinite(l.ts)) l.ts = Date.now() + i; });
   if (!STAGES.includes(e.stage)) e.stage = "In Development";
   ["name", "pcbPn", "asmPn", "rev", "owner", "folder", "wiki", "notes", "released",
    "supersededBy",     // free text from rev 1.0–1.1; shown only when there is no link
@@ -605,7 +626,7 @@ function esc(s) { return String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;
 function fmtDate(d) {
   if (!d) return "—";
   const dt = new Date(d + "T00:00:00");
-  if (isNaN(dt)) return d;
+  if (isNaN(dt)) return esc(d);   // returned text goes into HTML
   return dt.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
 }
 function toast(msg, kind = "") {
@@ -1124,7 +1145,7 @@ document.getElementById("importFile").addEventListener("change", ev => {
       const data = JSON.parse(reader.result);
       if (!Array.isArray(data.entries)) throw new Error("Not a catalog backup file");
       if (!confirm("Importing will replace the whole catalog. Continue?")) return;
-      data.entries.forEach(normalize);
+      cleanState(data);
       state = data;
       save(); renderAll();
       document.documentElement.dataset.theme = state.theme || "dark";
@@ -1219,7 +1240,7 @@ async function restoreSnapshot(i) {
   if (!confirm(`Restore the snapshot from ${new Date(h.ts).toLocaleString()}?\n\n` +
     `It contains: ${countSummary(h.counts || countOf(h.data))}\n` +
     `This replaces what's on screen now (${countSummary(countOf(state))}).`)) return;
-  state = h.data; state.entries.forEach(normalize); pristineSeed = false;
+  state = cleanState(h.data); pristineSeed = false;
   document.documentElement.dataset.theme = state.theme || "dark";
   save(); renderAll(); closeModal();
   toast("Snapshot restored");
@@ -1262,7 +1283,7 @@ async function writeBackup() {
             `Writing now would destroy data. Load the file's contents instead?\n\n` +
             `OK = load the file (recommended)   ·   Cancel = leave everything untouched`);
           if (load) {
-            state = onDisk; state.entries.forEach(normalize); pristineSeed = false;
+            state = cleanState(onDisk); pristineSeed = false;
             document.documentElement.dataset.theme = state.theme || "dark";
             localStorage.setItem(LS_KEY, JSON.stringify(state));
             renderAll(); backupPaused = false;
@@ -1361,7 +1382,7 @@ async function adoptBackupFile(h, { announce = true } = {}) {
         `Load the file's contents into the catalog?\n` +
         `OK = load the file   ·   Cancel = keep what's on screen`;
       if (confirm(msg)) {
-        data.entries.forEach(normalize);
+        cleanState(data);
         state = data; pristineSeed = false;
         document.documentElement.dataset.theme = state.theme || "dark";
         localStorage.setItem(LS_KEY, JSON.stringify(state));
@@ -1393,7 +1414,7 @@ async function maybeRestoreFromBackup() {
     const c = countOf(data);
     if (Array.isArray(data.entries) && c.total) {
       if (confirm(`Browser storage was empty, but your backup file has data:\n   ${countSummary(c)}\n\nRestore it?`)) {
-        data.entries.forEach(normalize);
+        cleanState(data);
         state = data; pristineSeed = false;
         localStorage.setItem(LS_KEY, JSON.stringify(state));
         renderAll();
@@ -1501,7 +1522,7 @@ async function maybeRestoreFromIdb() {
     if (snap && snap.data && Array.isArray(snap.data.entries)) {
       const n = snap.data.entries.length;
       if (n && confirm(`Browser storage was empty, but a local snapshot from ${new Date(snap.ts).toLocaleString()} has ${n} projects.\n\nRestore it?`)) {
-        state = snap.data; state.entries.forEach(normalize); pristineSeed = false;
+        state = cleanState(snap.data); pristineSeed = false;
         localStorage.setItem(LS_KEY, JSON.stringify(state));
         renderAll();
         document.documentElement.dataset.theme = state.theme || "dark";
