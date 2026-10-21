@@ -47,7 +47,7 @@
       desc: "", mfr: "", mpn: "", ipn: "",
       term: part(), seal: part(), acc: [],
       face: !!(lib.face && lib.face.t !== "none"), faceFrom: "mate",
-      custom: lib.custom ? { rows: 1, order: "rows" } : null,
+      custom: lib.custom ? { rows: 1, order: "rows" } : null, layout: null,
       strip: "", note: "", x: Math.round(x || 0), y: Math.round(y || 0)
     };
   }
@@ -58,8 +58,58 @@
     if (lib.even && n % 2) n++;
     while (c.pins.length < n) c.pins.push({ n: String(c.pins.length + 1), sig: "" });
     c.pins.length = n;
+    if (c.layout) c.layout = CD.normLayout(c.layout, n);
     p.wires.forEach(w => ["a", "b"].forEach(e => { if (w[e] && w[e].c === c.id && w[e].p >= n) w[e] = null; }));
     return n;
+  }
+
+  // ---------- face builder pin edits (wire ends follow their pin) ----------
+  // order: new index → old index. Old pins not in order are removed; their wire ends are cleared.
+  function reorderPins(p, c, order) {
+    const map = new Map(order.map((old, i) => [old, i]));
+    const L = c.layout;
+    c.pins = order.map(i => c.pins[i]);
+    if (L) L.pins = order.map(i => L.pins[i]);
+    p.wires.forEach(w => ["a", "b"].forEach(e => {
+      if (!w[e] || w[e].c !== c.id) return;
+      w[e] = map.has(w[e].p) ? { c: c.id, p: map.get(w[e].p) } : null;
+    }));
+  }
+  function removePins(p, c, idxs) {
+    const drop = new Set(idxs);
+    reorderPins(p, c, c.pins.map((x, i) => i).filter(i => !drop.has(i)));
+  }
+  // Appends pins numbered after the highest numeric pin number; layout pins in mm.
+  function addPins(c, list) {
+    let next = c.pins.reduce((m, x) => Math.max(m, parseInt(x.n, 10) || 0), 0);
+    list.forEach(lp => {
+      c.pins.push({ n: String(++next), sig: "" });
+      if (c.layout) c.layout.pins.push(Object.assign({ x: 0, y: 0, d: 1, sq: false }, lp));
+    });
+  }
+
+  // ---------- saved parts ("My parts") ----------
+  const PART_KEYS = ["lib", "gender", "desc", "mfr", "mpn", "ipn", "term", "seal", "acc", "face", "faceFrom", "custom", "layout", "strip", "note"];
+  function partFromConn(c, name) {
+    const o = { id: uid(), name: str(name) || c.desc || c.mpn || CD.libOf(c).name };
+    PART_KEYS.forEach(k => { o[k] = JSON.parse(JSON.stringify(c[k] == null ? null : c[k])); });
+    o.pins = c.pins.map(x => ({ n: x.n }));
+    return o;
+  }
+  function normPart(o) {
+    if (!o || typeof o !== "object" || !Array.isArray(o.pins) || !o.pins.length) return null;
+    const tmp = normalize({ conns: [Object.assign({}, o, { id: "x", pins: o.pins.map(x => ({ n: str(x && x.n), sig: "" })) })] }).conns[0];
+    const out = { id: str(o.id) || uid(), name: str(o.name) || tmp.desc || CD.libOf(tmp).name };
+    PART_KEYS.forEach(k => { out[k] = tmp[k]; });
+    out.pins = tmp.pins.map(x => ({ n: x.n }));
+    return out;
+  }
+  function connFromPart(p, part, x, y) {
+    const c = newConn(p, part.lib in CD.LIB ? part.lib : "custom", x, y);
+    PART_KEYS.forEach(k => { if (k !== "lib" && part[k] !== undefined) c[k] = JSON.parse(JSON.stringify(part[k])); });
+    c.pins = part.pins.map(x => ({ n: x.n, sig: "" }));
+    if (c.layout) c.layout = CD.normLayout(c.layout, c.pins.length);
+    return c;
   }
 
   function newCable(p, x, y, o) {
@@ -146,6 +196,7 @@
       const b = newConn(p, c.lib in CD.LIB ? c.lib : "custom", c.x, c.y);
       const o = Object.assign(b, c, { id: c.id || b.id, term: part(c.term), seal: part(c.seal) });
       o.pins = arr(c.pins).map(x => ({ n: str(x.n), sig: str(x.sig) }));
+      o.layout = CD.normLayout(c.layout, o.pins.length);
       o.acc = arr(c.acc).map(a => Object.assign(part(), a, { qty: str(a.qty || "1") }));
       return o;
     });
@@ -401,7 +452,7 @@
 
   Object.assign(CD, {
     FORMAT, VERSION, uid, today, num, str,
-    blankProject, normalize, newConn, setPinCount, newCable, newWire, newGroup, newMark, newCallout, cablePreset, nextWireNo,
+    blankProject, normalize, newConn, setPinCount, reorderPins, removePins, addPins, partFromConn, normPart, connFromPart, newCable, newWire, newGroup, newMark, newCallout, cablePreset, nextWireNo,
     byId, libOf, groupOf, conductors, wireRef, endText, sigOf, isDrain, colorText, gaugeText,
     UNIT, fmtLen, fmtTol, wireLen, WIRE_COLS, wireRows, BOM_COLS, bom, bomCells, checks,
     csvCell, wireCsv, bomCsv, connectCable, example

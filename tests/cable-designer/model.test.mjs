@@ -142,3 +142,70 @@ test("title block has no built-in branding; company text or a user logo only", (
   assert.ok(Math.abs(img.w / img.h - 4) < 1e-9, "keeps the aspect ratio");
   assert.ok(!withLogo.some(o => o.t === "text" && o.s === "Test Company"), "logo replaces the company text");
 });
+
+test("face builder geometry: ring + centre pin, keyway, renumber by rings", () => {
+  const ring = CD.ringPins(4, 5, 0, false, 1.5);
+  assert.deepEqual(plain(ring.map(p => [Math.round(p.x), Math.round(p.y)])), [[0, -5], [5, 0], [0, 5], [-5, 0]]);
+  const L = CD.normLayout({ shape: "circle", w: 16, keys: [{ kind: "notch", ang: 0, w: 2 }], pins: [{ x: 0, y: 0, d: 2 }].concat(ring) }, 5);
+  assert.equal(L.pins.length, 5);
+  assert.deepEqual(plain(CD.sortPinOrder(L.pins, "rings")), [1, 2, 3, 4, 0], "outer ring clockwise from top, centre last");
+  const key = CD.layoutGeom(L).find(g => g.key === "notch");
+  assert.ok(Math.abs(key.pts[1] + 8) < 1e-9 && key.pts[3] > -8 && key.pts[3] < -6.5, "keyway cut into the shell at the top");
+  const grid = CD.gridPins(2, 3, 2.54, 2.54, "zigzag", 1);
+  assert.deepEqual(plain(grid.slice(0, 3).map(p => [p.x, p.y])), [[-2.54, -1.27], [-2.54, 1.27], [0, -1.27]]);
+});
+
+test("custom face draws sized pins and mirrors only for the wire-side view", () => {
+  const p = CD.blankProject();
+  const c = CD.newConn(p, "custom", 0, 0);
+  CD.setPinCount(p, c, 3);
+  c.layout = CD.normLayout({ shape: "rect", w: 12, h: 6, pins: [{ x: -4, y: 0, d: 1 }, { x: 0, y: 0, d: 3, sq: true }, { x: 4, y: 0, d: 1 }] }, 3);
+  const f = CD.faceLayout(c);
+  assert.equal(f.shape, "custom");
+  assert.ok(f.pins[0].x < f.pins[2].x);
+  assert.ok(f.pins[1].r > f.pins[0].r * 2.5 && f.pins[1].sq);
+  c.faceFrom = "rear";
+  const r = CD.faceLayout(c);
+  assert.ok(r.pins[0].x > r.pins[2].x, "wire side view is mirrored");
+  c.gender = "female"; c.faceFrom = "mate";
+  assert.ok(CD.faceLayout(c).pins[0].x < CD.faceLayout(c).pins[2].x, "custom faces are drawn as seen, not auto-mirrored");
+  p.conns.push(c);
+  const s = CD.scene(p, { sheet: 1 });
+  assert.ok(s.groups.find(g => g.id === "c:" + c.id).prims.some(o => o.t === "rect" && Math.abs(o.w - f.pins[1].r * 2) < 1e-6));
+});
+
+test("removing and renumbering pins keeps wires on their pins", () => {
+  const p = CD.blankProject();
+  const c = CD.newConn(p, "custom", 0, 0); p.conns.push(c);
+  CD.setPinCount(p, c, 4);
+  c.layout = CD.layoutFromFace(c);
+  c.pins.forEach((x, i) => { x.sig = "S" + (i + 1); });
+  const w2 = CD.newWire(p, { a: { c: c.id, p: 1 } }), w3 = CD.newWire(p, { a: { c: c.id, p: 2 } }), w4 = CD.newWire(p, { a: { c: c.id, p: 3 } });
+  p.wires.push(w2, w3, w4);
+  CD.removePins(p, c, [2]);
+  assert.equal(c.pins.length, 3); assert.equal(c.layout.pins.length, 3);
+  assert.equal(w3.a, null);
+  assert.equal(c.pins[w4.a.p].sig, "S4");
+  CD.reorderPins(p, c, [2, 1, 0]);
+  assert.equal(c.pins[w4.a.p].sig, "S4"); assert.equal(c.pins[w2.a.p].sig, "S2");
+  CD.addPins(c, [{ x: 0, y: 0, d: 2 }]);
+  assert.equal(c.pins[3].n, "5", "numbered after the highest pin number");
+  assert.equal(c.layout.pins[3].d, 2);
+});
+
+test("My parts: save, sanitize and place a connector with its face", () => {
+  const p = CD.blankProject();
+  const c = CD.newConn(p, "m12a8", 0, 0);
+  Object.assign(c, { mpn: "EX-M12-8", desc: "M12 8 pin, test" });
+  c.layout = CD.layoutFromFace(c);
+  c.pins[0].sig = "SIG";
+  const part = CD.partFromConn(c, "Test M12");
+  assert.equal(part.pins[0].sig, undefined, "signals stay with the drawing");
+  const back = CD.normPart(JSON.parse(JSON.stringify(part)));
+  assert.equal(back.name, "Test M12"); assert.equal(back.layout.pins.length, 8);
+  assert.equal(CD.normPart({ name: "bad" }), null);
+  const n = CD.connFromPart(p, back, 10, 20);
+  assert.equal(n.mpn, "EX-M12-8"); assert.equal(n.pins.length, 8); assert.equal(n.pins[0].sig, "");
+  assert.notEqual(n.id, c.id);
+  assert.deepEqual(plain(n.layout), plain(c.layout));
+});

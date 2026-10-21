@@ -327,6 +327,35 @@
     else if (icon === "qd") { pen.rect(cx - 18, cy - 5, 18, 10, { lw: 0.9, r: 1.5 }); pen.rect(cx, cy - 3, 18, 6, { lw: 0.8 }); }
     else { pen.rect(cx - 16, cy - 2, 16, 4, { lw: 0.8, f: "#DDDDDD" }); pen.rect(cx, cy - 4, 18, 8, { lw: 0.9 }); }
   }
+  // Face from the face builder: shell, keys (notch cut into the shell, raised key, latch), sized pins.
+  function drawCustomFace(pen, f, x, y, male, c) {
+    f.geom.forEach(o => {
+      if (o.t === "circle") pen.circle(x + o.cx, y + o.cy, o.r, { lw: 1 });
+      else if (o.t === "rect") pen.rect(x + o.x, y + o.y, o.w, o.h, { lw: 1, r: o.r });
+      else if (!o.key) pen.poly(o.pts.map((v, i) => v + (i % 2 ? y : x)), { close: true, lw: 1 });
+    });
+    f.geom.filter(o => o.key).forEach(o => {
+      const P = o.pts.map((v, i) => v + (i % 2 ? y : x));
+      if (o.key === "key") pen.poly(P, { close: true, f: INK, s: INK, lw: 0.5 });
+      else if (o.key === "latch") pen.poly(P, { close: true, f: PAPER, lw: 0.8 });
+      else {   // keyway: break the shell line across the opening
+        const dx = P[0] - P[2], dy = P[1] - P[3], d = Math.hypot(dx, dy) || 1, ex = dx / d * 0.9, ey = dy / d * 0.9;
+        pen.poly([P[0] + ex, P[1] + ey, P[2], P[3], P[4], P[5], P[6] + ex, P[7] + ey], { close: true, f: PAPER, s: null });
+        pen.poly(P, { lw: 0.8 });
+      }
+    });
+    f.pins.forEach((pt, i) => {
+      const px = x + pt.x, py = y + pt.y, st = male ? { f: INK, s: null } : { f: PAPER, lw: 0.7 };
+      if (pt.sq) pen.rect(px - pt.r, py - pt.r, pt.r * 2, pt.r * 2, st); else pen.circle(px, py, pt.r, st);
+      const lbl = c.pins[i] ? c.pins[i].n : "";
+      if (pt.r >= 4.2) { pen.text(px, py + 1.6, lbl, { size: 4.6, anchor: "middle", bold: true, c: male ? PAPER : INK }); return; }
+      const dx = pt.x - f.cx, dy = pt.y - f.cy, d = Math.hypot(dx, dy);
+      // Pins in a row get the label above; others get it outward from the centre.
+      const flat = d < 0.5 || f.pins.some(q => q !== pt && Math.abs(q.y - pt.y) < pt.r && Math.abs(q.x - pt.x) < pt.r * 6);
+      const ux = flat ? 0 : dx / d, uy = flat ? -1 : dy / d, off = pt.r + 3.4;
+      pen.text(px + ux * off, py + uy * off + 1.6, lbl, { size: 4.6, anchor: "middle", c: DIM });
+    });
+  }
   function drawFace(pen, L, c) {
     const f = L.face, b = L.faceBox, x = b.x, y = b.y;
     const male = c.gender === "male";
@@ -343,6 +372,11 @@
         pen.text(x + pt.x, y + pt.y + (up ? -3.4 : 6.4), lbl, { size: 4.4, anchor: "middle", c: DIM });
       } else pen.text(x + pt.x + 3, y + pt.y - 2.4, lbl, { size: 3.8, anchor: "start", c: DIM });
     };
+    if (f.shape === "custom") {
+      drawCustomFace(pen, f, x, y, male, c);
+      pen.text(b.x + b.w / 2, b.y + b.h + 9, c.faceFrom === "rear" ? "WIRE SIDE VIEW" : "MATING FACE VIEW", { size: 4.6, anchor: "middle", c: DIM });
+      return;
+    }
     if (f.shape === "icon") drawFaceIcon(pen, b, f.icon);
     else if (f.shape === "dsub") {
       const i = 6;

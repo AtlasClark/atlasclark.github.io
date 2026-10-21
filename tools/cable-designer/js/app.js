@@ -9,7 +9,7 @@
 (function () {
   "use strict";
   const CD = window.CD, OUT = CD.out;
-  const REV = "rev 1.1.0";
+  const REV = "rev 1.2.0";
   const LS_UI = "cableDesigner.ui";
   const $ = id => document.getElementById(id);
   const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -351,7 +351,7 @@
       const lib = CD.LIB[v]; if (!lib) return;
       const fresh = CD.newConn(p, v, c.x, c.y);
       fresh.pins.forEach((pn, i) => { if (c.pins[i]) pn.sig = c.pins[i].sig || pn.sig; });
-      c.pins = fresh.pins; c.face = fresh.face; c.custom = fresh.custom;
+      c.pins = fresh.pins; c.face = fresh.face; c.custom = fresh.custom; c.layout = null;
       if (!lib.gender) c.gender = "none"; else if (c.gender === "none") c.gender = "female";
       p.wires.forEach(w => ["a", "b"].forEach(e => { if (w[e] && w[e].c === c.id && w[e].p >= c.pins.length) w[e] = null; }));
     },
@@ -447,14 +447,15 @@
     const used = {};
     p.wires.forEach(w => ["a", "b"].forEach(e => { if (w[e] && w[e].c === c.id) (used[w[e].p] = used[w[e].p] || []).push(CD.wireRef(p, w)); }));
     let h = '<div class="r2">' + F("Reference", I(o, "ref", c.ref, 'data-re="1"')) + F("Type", libSelect(o, c.lib)) + "</div>";
-    if (!node) h += '<div class="r2">' + F("Positions", '<input type="number" min="1" max="200" data-o="' + o + '" data-k="pins" data-fx="pins" data-set="0" data-re="1" data-lazy="1" value="' + c.pins.length + '"' + (lib.var ? "" : " disabled") + ">") +
+    if (!node) h += '<div class="r2">' + F("Positions", '<input type="number" min="1" max="200" data-o="' + o + '" data-k="pins" data-fx="pins" data-set="0" data-re="1" data-lazy="1" value="' + c.pins.length + '"' + (lib.var && !c.layout ? "" : ' disabled title="' + (c.layout ? "Add or remove pins in the face builder" : "Fixed by the connector type") + '"') + ">") +
       F("Gender", S(o, "gender", c.gender, CD.GENDERS, lib.gender ? 'data-re="1"' : "disabled")) + "</div>";
     h += F("Description", I(o, "desc", c.desc, 'placeholder="' + esc(lib.name) + '"'));
     h += '<div class="r3">' + F("Mfr", I(o, "mfr", c.mfr)) + F("Mfr part no.", I(o, "mpn", c.mpn)) + F("Part no.", I(o, "ipn", c.ipn)) + "</div>";
     if (lib.face && lib.face.t !== "none") {
       let fh = '<div class="r2">' + C(o, "face", c.face, "Show face view") + S(o, "faceFrom", c.faceFrom, [["mate", "Mating face"], ["rear", "Wire side"]]) + "</div>";
-      if (c.custom) fh += '<div class="r2">' + F("Rows", S(o, "custom.rows", c.custom.rows, [[1, "1 row"], [2, "2 rows"], [3, "3 rows"], [4, "4 rows"]])) + F("Numbering", S(o, "custom.order", c.custom.order, [["rows", "Row by row"], ["zigzag", "Across rows (odd / even)"]])) + "</div>";
-      fh += '<p class="hint">Face views are a guide. Check pin positions against the maker\'s drawing.</p>';
+      if (c.custom && !c.layout) fh += '<div class="r2">' + F("Rows", S(o, "custom.rows", c.custom.rows, [[1, "1 row"], [2, "2 rows"], [3, "3 rows"], [4, "4 rows"]])) + F("Numbering", S(o, "custom.order", c.custom.order, [["rows", "Row by row"], ["zigzag", "Across rows (odd / even)"]])) + "</div>";
+      if (lib.face.t !== "one") fh += '<div class="btn-row">' + B("faceEdit", c.layout ? "Edit face…" : "Face builder…", 'data-id="' + c.id + '"', "btn-primary") + "</div>";
+      fh += '<p class="hint">' + (c.layout ? "Custom face: " + c.layout.pins.length + " pins, drawn to match the maker's drawing." : "Library face, a guide only. Use the face builder to match the maker's drawing (rings, centre pins, contact sizes, keyways).") + "</p>";
       h += sec("Face view", fh);
     }
     if (!node) {
@@ -474,6 +475,7 @@
         B("pinsPaste", "Paste signals…", 'data-id="' + c.id + '"'));
     }
     h += F("Note", T(o, "note", c.note, 'rows="2"'));
+    if (!node) h += '<div class="btn-row">' + B("partSave", "Save to My parts…", 'data-id="' + c.id + '"') + "</div>";
     return h;
   }
 
@@ -632,6 +634,11 @@
     leader: d => { const k = callout(d.id); pushUndo(); if (k.lx != null) { k.lx = null; k.ly = null; } else { k.lx = k.x - 40; k.ly = k.y + 40; } changed(true); },
     resetPos: d => { pushUndo(); p.pos[d.id] = null; changed(true); },
     drawing: () => drawingDialog(),
+    faceEdit: d => faces.open(d.id),
+    partSave: d => savePart(conn(d.id)),
+    partDel: d => deletePart(d.id),
+    partsImport: () => $("partsFile").click(),
+    partsExport: () => exportParts(),
     logoPick: () => $("logoFile").click(),
     logoDel: () => { images.logo = null; idb.del("logo").catch(() => {}); render(); renderInspector(); if (modalRefresh) modalRefresh(); toast("Logo removed from this browser"); },
     noteAdd: d => { pushUndo(); p.notes.push({ id: CD.uid(), text: d.text || "" }); changed(false); modalRefresh(); },
@@ -727,6 +734,73 @@
     }
     item.x = best.x - ox; item.y = best.y - oy;   // no free space: least overlap
   }
+  // ---------- face builder ----------
+  const faces = CD.faceBuilder({
+    project: () => p, conn, openModal, toast, esc, pushUndo,
+    closeModal: () => closeModal(),
+    setModalClose: f => { modalClose = f; },
+    cancelEdit: () => { travel(undo, redo); redo.pop(); paintUndo(); },
+    changed: insp => changed(insp)
+  });
+
+  // ---------- My parts (saved connectors, this browser + .cdparts files) ----------
+  let parts = [];
+  async function storeParts() { try { await idb.set("parts", parts); } catch (e) { toast("Browser storage unavailable: export your parts to a file.", "warn"); } renderParts(); }
+  function renderParts() {
+    const box = $("myParts");
+    if (!box) return;
+    const list = parts.slice().sort((a, b) => a.name.localeCompare(b.name));
+    box.innerHTML = '<details' + (parts.length ? " open" : "") + '><summary>My parts<span>' + parts.length + "</span></summary>" +
+      list.map(x => '<div class="lib-row"><button class="lib-item" data-part="' + esc(x.id) + '" title="' + esc([x.mpn, CD.LIB[x.lib] ? CD.LIB[x.lib].name : "", x.pins.length + " pins"].filter(Boolean).join(" · ")) + '"><span>' + esc(x.name) + '</span><span class="plus">＋</span></button>' +
+        '<button class="icon-btn" data-a="partDel" data-id="' + esc(x.id) + '" title="Delete from My parts" aria-label="Delete ' + esc(x.name) + '">✕</button></div>').join("") +
+      (parts.length ? "" : '<p class="empty-note">Build a connector, then press "Save to My parts" in its properties.</p>') +
+      '<div class="btn-row" style="padding:4px 8px 8px 24px">' + B("partsImport", "Import…") + (parts.length ? B("partsExport", "Export") : "") + "</div></details>";
+  }
+  function savePart(c) {
+    if (!c) return;
+    const def = c.desc || c.mpn || CD.libOf(c).name;
+    openModal("Save to My parts", F("Part name", '<input id="partName" value="' + esc(def) + '">') +
+      "<p>Saves the type, face, pin numbers, part numbers, contact, seal and accessories. Signals stay with this drawing. My parts live in this browser; export them to share with the team.</p>", [
+      { label: "Cancel", onClick: closeModal },
+      { label: "Save", cls: "btn-primary", onClick: () => {
+        const name = $("partName").value.trim() || def;
+        const old = parts.find(x => x.name === name);
+        const part = CD.partFromConn(c, name);
+        if (old) { part.id = old.id; parts[parts.indexOf(old)] = part; } else parts.push(part);
+        closeModal(); storeParts(); toast((old ? "Updated " : "Saved ") + name + " in My parts");
+      } }]);
+  }
+  async function deletePart(id) {
+    const x = parts.find(q => q.id === id);
+    if (!x || !await confirmBox("Delete part", "<p>Delete <b>" + esc(x.name) + "</b> from My parts? Drawings that use it keep their copy.</p>", "Delete", true)) return;
+    parts = parts.filter(q => q !== x); storeParts();
+  }
+  function addPart(id) {
+    const x = parts.find(q => q.id === id);
+    if (!x) return;
+    sheet = 1;
+    pushUndo();
+    const c = CD.connFromPart(p, x, 0, 0);
+    p.conns.push(c);
+    place("c:" + c.id, c);
+    sel = "c:" + c.id;
+    changed(true);
+  }
+  function exportParts() {
+    busy("Export", () => saveFile("my-parts.cdparts", async () => new Blob([JSON.stringify({ format: "atlas-cable-parts", v: 1, parts }, null, 1)], { type: "application/json" }), "Cable Designer parts", "application/json", ".cdparts"));
+  }
+  async function importParts(file) {
+    let d;
+    try { d = JSON.parse(await file.text()); } catch (e) { toast("Not a parts file: " + file.name, "err"); return; }
+    const list = (d && d.format === "atlas-cable-parts" && Array.isArray(d.parts) ? d.parts : []).map(CD.normPart).filter(Boolean);
+    if (!list.length) { toast("No parts found in " + file.name, "warn"); return; }
+    let added = 0, updated = 0;
+    list.forEach(x => { const i = parts.findIndex(q => q.id === x.id || q.name === x.name); if (i >= 0) { parts[i] = x; updated++; } else { parts.push(x); added++; } });
+    storeParts();
+    toast("My parts: " + added + " added, " + updated + " updated");
+  }
+  $("partsFile").addEventListener("change", e => { const f = e.target.files[0]; e.target.value = ""; if (f) importParts(f); });
+
   function addConn(key) {
     if (sheet !== 1) { sheet = 1; }
     pushUndo();
@@ -735,6 +809,7 @@
     place("c:" + c.id, c);
     sel = "c:" + c.id;
     changed(true);
+    if (key === "custom") faces.open(c.id);
   }
   async function addCable(kind) {
     let n = 0;
@@ -763,7 +838,7 @@
     const groups = [];
     CD.LIB_LIST.forEach(l => { let g = groups.find(x => x.name === l.group); if (!g) groups.push(g = { name: l.group, items: [] }); g.items.push(l); });
     const item = (attr, label, title) => '<button class="lib-item" ' + attr + (title ? ' title="' + esc(title) + '"' : "") + "><span>" + esc(label) + '</span><span class="plus">＋</span></button>';
-    let h = '<details open><summary>Cables<span>6</span></summary>' +
+    let h = '<div id="myParts"></div><details open><summary>Cables<span>6</span></summary>' +
       item('data-cab="single"', "Single conductor cable") + item('data-cab="multi"', "Multi-conductor cable…", "DIN 47100 colours") +
       item('data-cab="stp"', "Shielded twisted pair", "Foil shield, drain wire") + item('data-cab="pairs"', "Multi-pair shielded…", "Twisted pairs, overall foil, drain") +
       item('data-cab="eth"', "4 pair data (T568B)", "Pairs twisted; Connect ends lands each on its T568B pin") + item('data-cab="bundle"', "Twisted pair, no jacket") + "</details>";
@@ -773,7 +848,8 @@
     $("lib").addEventListener("click", e => {
       const b = e.target.closest(".lib-item");
       if (!b) return;
-      if (b.dataset.lib) addConn(b.dataset.lib);
+      if (b.dataset.part) addPart(b.dataset.part);
+      else if (b.dataset.lib) addConn(b.dataset.lib);
       else if (b.dataset.cab) addCable(b.dataset.cab);
       else if (b.dataset.call) addCallout(b.dataset.call);
     });
@@ -844,7 +920,8 @@
       el.addEventListener("click", b.onClick);
       foot.appendChild(el);
     });
-    $("modal").classList.toggle("wide", !!wide);
+    $("modal").classList.toggle("wide", wide === true);
+    $("modal").classList.toggle("xwide", wide === "xwide");
     $("overlay").classList.add("open");
     const first = $("modalBody").querySelector("input,textarea,select") || foot.querySelector(".btn-primary");
     if (first) setTimeout(() => first.focus(), 30);
@@ -1155,6 +1232,7 @@
   [["dlInsul", CD.INSUL], ["dlSpec", CD.WIRE_SPECS], ["dlAwg", CD.AWG.map(String).concat(CD.MM2)]].forEach(([id, list]) => { $(id).innerHTML = list.map(v => '<option value="' + esc(v) + '">').join(""); });
   applyTheme();
   buildLib();
+  renderParts();
   setPorts(!!ui.ports);
   $("rev").textContent = "Cable Designer · " + REV;
   console.log("Cable Designer — " + REV);
@@ -1166,6 +1244,8 @@
     try {
       const logo = await idb.get("logo");
       if (logo && logo.data) { images.logo = logo; render(); renderInspector(); }
+      const sp = await idb.get("parts");
+      if (Array.isArray(sp)) { parts = sp.map(CD.normPart).filter(Boolean); renderParts(); }
       const saved = await idb.get("doc");
       if (saved && saved.format === CD.FORMAT) {
         p = CD.normalize(saved);

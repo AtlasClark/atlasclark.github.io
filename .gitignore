@@ -38,5 +38,6 @@ Work_Instructions/
 # Cable Designer projects and exports are local only. Never commit them.
 Cable_Designer/
 *.cblproj
+*.cdparts
 *.cable.svg
 *.cable.png

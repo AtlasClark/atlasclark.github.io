@@ -118,6 +118,7 @@
   // Returns { shape, w, h, pins: [{x, y}] } in points, origin top-left, viewed from the mating side.
   // Female mating faces are the mirror image of the male.
   function faceLayout(c) {
+    if (c.layout) return customFace(c);
     const lib = LIB[c.lib] || LIB.custom;
     const f = Object.assign({}, lib.face, c.custom && lib.custom ? c.custom : null);
     const n = c.pins.length;
@@ -165,7 +166,119 @@
     return g;
   }
 
+  // ---------- custom face layouts (face builder) ----------
+  // Layout in mm, origin at the face centre, y down, drawn as seen looking into the mating face
+  // of this part (no automatic mirror for gender). Pin i belongs to connector pin i.
+  // { shape: circle | rect | dsub | none, w, h, r, size: 1-3, keys: [{kind, ang, w}], pins: [{x, y, d, sq}] }
+  const SHELLS = [["circle", "Circular"], ["rect", "Rectangular"], ["dsub", "D-shaped (D-sub)"], ["none", "No shell"]];
+  const KEY_KINDS = [["notch", "Keyway (notch)"], ["key", "Key (raised)"], ["latch", "Latch / ramp"]];
+  const FACE_SIZES = { 1: [90, 70], 2: [130, 100], 3: [190, 150] };
+  const fnum = (v, d) => { const n = parseFloat(v); return isFinite(n) ? n : d; };
+  function normLayout(l, n) {
+    if (!l || typeof l !== "object") return null;
+    const shape = SHELLS.some(x => x[0] === l.shape) ? l.shape : "circle";
+    const out = {
+      shape, w: Math.max(1, fnum(l.w, 20)), h: Math.max(1, fnum(l.h, 20)), r: Math.max(0, fnum(l.r, 1)),
+      size: [1, 2, 3].includes(+l.size) ? +l.size : 2,
+      keys: (Array.isArray(l.keys) ? l.keys : []).map(k => ({ kind: KEY_KINDS.some(x => x[0] === k.kind) ? k.kind : "notch", ang: fnum(k.ang, 0), w: Math.max(0.2, fnum(k.w, 2)) })),
+      pins: (Array.isArray(l.pins) ? l.pins : []).map(p => ({ x: fnum(p.x, 0), y: fnum(p.y, 0), d: Math.max(0.2, fnum(p.d, 1)), sq: !!p.sq }))
+    };
+    while (out.pins.length < n) out.pins.push({ x: 0, y: 0, d: 1, sq: false });
+    out.pins.length = n;
+    return out;
+  }
+  // Edge point of the shell on the ray at angle a (degrees, 0 = top, clockwise), with the outward normal.
+  function shellEdge(L, a) {
+    const t = a * Math.PI / 180, nx = Math.sin(t), ny = -Math.cos(t);
+    if (L.shape === "circle") { const R = L.w / 2; return { x: nx * R, y: ny * R, nx, ny }; }
+    const hw = L.w / 2, hh = L.h / 2;
+    const k = Math.min(Math.abs(nx) > 1e-9 ? hw / Math.abs(nx) : Infinity, Math.abs(ny) > 1e-9 ? hh / Math.abs(ny) : Infinity);
+    const x = nx * k, y = ny * k;
+    return Math.abs(Math.abs(x) - hw) < 1e-6 ? { x, y, nx: Math.sign(x), ny: 0 } : { x, y, nx: 0, ny: Math.sign(y) };
+  }
+  // Shell and key outlines in mm, drawn by both the scene and the face builder.
+  function layoutGeom(L) {
+    const g = [];
+    if (L.shape === "circle") g.push({ t: "circle", cx: 0, cy: 0, r: L.w / 2 });
+    else if (L.shape === "rect") g.push({ t: "rect", x: -L.w / 2, y: -L.h / 2, w: L.w, h: L.h, r: Math.min(L.r, L.w / 2, L.h / 2) });
+    else if (L.shape === "dsub") { const i = L.h * 0.22, hw = L.w / 2, hh = L.h / 2; g.push({ t: "poly", pts: [-hw, -hh, hw, -hh, hw - i, hh, -hw + i, hh], close: true }); }
+    if (L.shape !== "none") L.keys.forEach(k => {
+      const e = shellEdge(L, k.ang), tx = -e.ny, ty = e.nx, hw = k.w / 2, d = Math.max(0.6, k.w * 0.55) * (k.kind === "notch" ? -1 : 1);
+      g.push({ t: "poly", key: k.kind, close: true, pts: [e.x + tx * hw, e.y + ty * hw, e.x + tx * hw + e.nx * d, e.y + ty * hw + e.ny * d, e.x - tx * hw + e.nx * d, e.y - ty * hw + e.ny * d, e.x - tx * hw, e.y - ty * hw] });
+    });
+    return g;
+  }
+  function layoutBounds(L) {
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    const add = (x, y) => { x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); };
+    layoutGeom(L).forEach(o => {
+      if (o.t === "circle") { add(o.cx - o.r, o.cy - o.r); add(o.cx + o.r, o.cy + o.r); }
+      else if (o.t === "rect") { add(o.x, o.y); add(o.x + o.w, o.y + o.h); }
+      else for (let i = 0; i < o.pts.length; i += 2) add(o.pts[i], o.pts[i + 1]);
+    });
+    L.pins.forEach(p => { add(p.x - p.d, p.y - p.d); add(p.x + p.d, p.y + p.d); });
+    if (!isFinite(x0)) return { x0: -5, y0: -5, x1: 5, y1: 5 };
+    return { x0, y0, x1, y1 };
+  }
+  function customFace(c) {
+    const L = normLayout(c.layout, c.pins.length), b = layoutBounds(L), [mw, mh] = FACE_SIZES[L.size];
+    const pad = 5, k = Math.min(mw / Math.max(1, b.x1 - b.x0), mh / Math.max(1, b.y1 - b.y0));
+    const w = (b.x1 - b.x0) * k + pad * 2, h = (b.y1 - b.y0) * k + pad * 2;
+    const mir = c.faceFrom === "rear" ? -1 : 1;
+    const ox = w / 2 - mir * (b.x0 + b.x1) / 2 * k, oy = pad - b.y0 * k;
+    const tx = x => ox + mir * x * k, ty = y => oy + y * k;
+    return {
+      shape: "custom", w, h, k, cx: tx(0), cy: ty(0), L,
+      geom: layoutGeom(L).map(o => o.t === "circle" ? Object.assign({}, o, { cx: tx(o.cx), cy: ty(o.cy), r: o.r * k })
+        : o.t === "rect" ? Object.assign({}, o, { x: Math.min(tx(o.x), tx(o.x + o.w)), y: ty(o.y), w: o.w * k, h: o.h * k, r: o.r * k })
+        : Object.assign({}, o, { pts: o.pts.map((v, i) => i % 2 ? ty(v) : tx(v)) })),
+      pins: L.pins.map(p => ({ x: tx(p.x), y: ty(p.y), r: Math.max(1.3, p.d / 2 * k), sq: p.sq }))
+    };
+  }
+  // Start a custom layout from the library face (about 0.3 mm per point), as seen on the mating face.
+  function layoutFromFace(c) {
+    const f = faceLayout(Object.assign({}, c, { layout: null, faceFrom: "mate" }));
+    const MM = 0.3, n = c.pins.length;
+    if (!f || f.shape === "icon") return normLayout({ shape: "circle", w: 16, keys: [{ kind: "notch", ang: 0, w: 1.6 }], pins: ringPins(n, 5, 0, false, 1.3) }, n);
+    const shape = f.shape === "circ" ? "circle" : f.shape === "dsub" ? "dsub" : "rect";
+    const w = shape === "circle" ? f.R * 2 * MM : f.w * MM, h = shape === "circle" ? w : f.h * MM;
+    const cx = shape === "circle" ? f.cx : f.w / 2, cy = shape === "circle" ? f.cy : f.h / 2;
+    const keys = shape === "circle" ? [{ kind: "notch", ang: 0, w: 1.6 }] : f.shape === "modular" ? [{ kind: "latch", ang: 180, w: 3.6 }] : f.shape === "rect" ? [{ kind: "latch", ang: 0, w: 3 }] : [];
+    return normLayout({
+      shape, w: +w.toFixed(2), h: +h.toFixed(2), r: shape === "rect" ? 0.5 : 0, keys,
+      pins: f.pins.map(p => p ? { x: +((p.x - cx) * MM).toFixed(2), y: +((p.y - cy) * MM).toFixed(2), d: 1.3 } : { x: 0, y: 0, d: 1.3 })
+    }, n);
+  }
+  // Pin generators for the face builder (mm). Angles: 0 = top, clockwise.
+  function ringPins(n, r, start, ccw, d) {
+    const out = [];
+    for (let i = 0; i < n; i++) {
+      const a = (start + (ccw ? -1 : 1) * i * 360 / n) * Math.PI / 180;
+      out.push({ x: +(Math.sin(a) * r).toFixed(3), y: +(-Math.cos(a) * r).toFixed(3), d, sq: false });
+    }
+    return out;
+  }
+  function gridPins(rows, cols, px, py, order, d) {
+    const out = [];
+    for (let i = 0; i < rows * cols; i++) {
+      const byCol = order === "zigzag" || order === "cols";
+      const r = byCol ? i % rows : Math.floor(i / cols), c = byCol ? Math.floor(i / rows) : i % cols;
+      out.push({ x: +((c - (cols - 1) / 2) * px).toFixed(3), y: +((r - (rows - 1) / 2) * py).toFixed(3), d, sq: false });
+    }
+    return out;
+  }
+  // Pin order for renumbering: rings (outer ring first, clockwise from top, centre last) or rows.
+  function sortPinOrder(pins, mode) {
+    const idx = pins.map((p, i) => i);
+    const ang = p => { let a = Math.atan2(p.x, -p.y); if (a < -1e-9) a += Math.PI * 2; return a; };
+    const ring = p => Math.round(Math.hypot(p.x, p.y) * 4);
+    if (mode === "rings") idx.sort((a, b) => ring(pins[b]) - ring(pins[a]) || (ring(pins[a]) ? ang(pins[a]) - ang(pins[b]) : 0));
+    else idx.sort((a, b) => Math.round(pins[a].y * 4) - Math.round(pins[b].y * 4) || pins[a].x - pins[b].x);
+    return idx;
+  }
+
   Object.assign(CD, {
+    SHELLS, KEY_KINDS, normLayout, layoutGeom, layoutBounds, layoutFromFace, ringPins, gridPins, sortPinOrder,
     COLORS, COLOR, DIN47100, T568A, T568B, ETH_PAIRS,
     AWG, awgMm2, MM2, INSUL, WIRE_SPECS, SHEETS,
     LIB, LIB_LIST: L, GENDERS, SHIELDS, SHIELD_TERMS, MARKS, MARK_ENDS, faceLayout

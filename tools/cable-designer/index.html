@@ -6,7 +6,9 @@
   circular M8/M12, crimp housings, IDC, RJ45, USB, terminals, flying leads,
   splices, ground) and custom connectors with pin count, pin numbers and
   signals, gender, face view, MPN / internal PN, contact, seal and
-  accessories. Cables and bundles with conductors (gauge, colour, stripe,
+  accessories. Face builder: shell, keyways and freely placed pins (rings,
+  centre pins, grids, contact sizes) to match a maker's drawing; saved
+  connectors go to "My parts" (this browser, .cdparts files to share). Cables and bundles with conductors (gauge, colour, stripe,
   insulation), twisted groups with lay length, foil / braid shields with drain
   and termination per end, length and strip dimensions with tolerances, and
   labels / heat-shrink / sleeving callouts. Loose wires, notes, flag notes,
@@ -339,6 +341,38 @@
     animation: pop .18s ease;
   }
   .modal.wide { width: 860px; }
+  .modal.xwide { width: 1180px; }
+
+  /* Face builder */
+  .fb { display: grid; grid-template-columns: minmax(0, 1fr) 400px; gap: 16px; min-height: 0; }
+  .fb-view { position: relative; display: flex; flex-direction: column; gap: 6px; }
+  #fbSvg { width: 100%; aspect-ratio: 1 / 1; max-height: 66vh; background: #FFFFFF; border: 1px solid var(--border); border-radius: 12px; touch-action: none; user-select: none; }
+  .fb-tip { font: 400 11px var(--mono); color: var(--text-faint); }
+  .fb-side { display: flex; flex-direction: column; gap: 10px; max-height: 70vh; overflow-y: auto; padding-right: 4px; }
+  .fb-side .sec:first-of-type { border-top: none; padding-top: 0; }
+  .fb-row { display: grid; grid-template-columns: 1.6fr 1fr 1fr auto; gap: 6px; align-items: center; }
+  .fb-tbl { width: 100%; border-collapse: collapse; font-size: 12px; }
+  .fb-tbl th { text-align: left; font: 500 10px var(--mono); color: var(--text-faint); padding: 2px 3px; }
+  .fb-tbl td { padding: 1px 2px; }
+  .fb-tbl td:first-child { font: 500 10.5px var(--mono); color: var(--text-faint); text-align: right; padding-right: 5px; }
+  .fb-tbl input { height: 26px; width: 100%; font-size: 12px; padding: 2px 5px; }
+  .fb-tbl tr.on td { background: var(--sel); }
+  #fbSvg .fb-grid { stroke: #ECECE6; stroke-width: calc(var(--u) * .12); }
+  #fbSvg .fb-grid.major { stroke: #D9D9D0; }
+  #fbSvg .fb-axis { stroke: #B9B9AE; stroke-width: calc(var(--u) * .15); stroke-dasharray: calc(var(--u) * 1) calc(var(--u) * .8); }
+  #fbSvg .fb-shell { fill: none; stroke: #111; stroke-width: calc(var(--u) * .35); }
+  #fbSvg .fb-k { stroke: #111; stroke-width: calc(var(--u) * .3); fill: #fff; }
+  #fbSvg .fb-k-key { fill: #111; }
+  #fbSvg .fb-pin { fill: #fff; stroke: #111; stroke-width: calc(var(--u) * .3); cursor: grab; }
+  #fbSvg .fb-pin.male { fill: #111; }
+  #fbSvg .fb-pin.on { stroke: #9DB000; stroke-width: calc(var(--u) * .8); }
+  #fbSvg .fb-pin.male.on { fill: #3A4100; }
+  #fbSvg .fb-lbl { fill: #555; font-family: Arial, Helvetica, sans-serif; pointer-events: none; }
+  #fbSvg .fb-lbl.inv { fill: #fff; font-weight: bold; }
+  #fbSvg .fb-box { fill: rgba(208,221,43,.15); stroke: #9DB000; stroke-width: calc(var(--u) * .2); }
+  .lib-row { display: flex; align-items: center; }
+  .lib-row .lib-item { flex: 1; min-width: 0; }
+  .lib-row .lib-item span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   @keyframes pop { from { transform: translateY(10px) scale(.98); opacity: 0; } }
   .modal-head { display: flex; align-items: center; padding: 16px 20px; border-bottom: 1px solid var(--border); position: sticky; top: 0; background: var(--surface); z-index: 3; }
   .modal-head h3 { font-size: 15.5px; font-weight: 500; letter-spacing: -.01em; flex: 1; }
@@ -549,6 +583,7 @@
   <datalist id="dlSpec"></datalist>
   <datalist id="dlAwg"></datalist>
   <input type="file" id="projFile" accept=".cblproj,.json" hidden>
+  <input type="file" id="partsFile" accept=".cdparts,.json" hidden>
   <input type="file" id="logoFile" accept="image/png,image/jpeg,image/webp,image/svg+xml" hidden>
   <div id="toasts"></div>
 
@@ -557,6 +592,7 @@
   <script src="js/model.js"></script>
   <script src="js/scene.js"></script>
   <script src="js/out.js"></script>
+  <script src="js/face.js"></script>
   <script src="js/app.js"></script>
 </body>
 </html>
