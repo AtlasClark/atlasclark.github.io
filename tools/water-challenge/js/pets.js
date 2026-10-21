@@ -234,19 +234,19 @@ export function applyRoll(p, rnd, key) {
 /* Status line and unlock card for a roll that has been saved. */
 export function announce(p, res, how) {
   const k = res.kind, verb = how || "";
+  /* msg is shown when the card closes, so the status line can't give the pet away */
   if (k === C.PET_NO_PET) {
     bus.msg(p.name + " has buried every pet there is. There is nothing left to find.", false);
   } else if (res.mystery) {
-    bus.msg(p.name + verb + " found something that doesn't live in the pen. Keep it on; it won't wait around.", true);
-    bus.unlock({ name: p.name, kind: C.MYSTERY_KIND, hue: 0, fresh: true, equipped: true });
+    bus.unlock({ name: p.name, kind: C.MYSTERY_KIND, hue: 0, fresh: true, equipped: true,
+                 msg: p.name + verb + " found something that doesn't live in the pen. Keep it on; it won't wait around." });
   } else if (res.homunculus) {
-    bus.msg(p.name + " has all " + C.PET_COUNT + ". The pen made something new.", true);
     bus.unlock({ name: p.name, kind: C.HOMUNCULUS_KIND, hue: 210, fresh: true, rolled: k,
-                 equipped: petKindFor(p) === C.HOMUNCULUS_KIND });
+                 equipped: petKindFor(p) === C.HOMUNCULUS_KIND, msg: p.name + " has all " + C.PET_COUNT + ". The pen made something new." });
   } else {
-    bus.unlock({ name: p.name, kind: k, hue: res.hue, fresh: res.fresh, equipped: petKindFor(p) === k });
-    bus.msg(p.name + verb + (res.fresh ? " unlocked the " : " rolled another ") + petLabel(k) +
-            " (" + petRarityOf(k).name + ")" + (res.fresh ? "!" : ", which they already had."), true);
+    bus.unlock({ name: p.name, kind: k, hue: res.hue, fresh: res.fresh, equipped: petKindFor(p) === k,
+                 msg: p.name + verb + (res.fresh ? " unlocked the " : " rolled another ") + petLabel(k) +
+                      " (" + petRarityOf(k).name + ")" + (res.fresh ? "!" : ", which they already had.") });
   }
 }
 

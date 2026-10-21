@@ -5,7 +5,8 @@
    (made on another PC) is hidden until its live replay lands here, or for HOLD_MS. */
 
 import * as C from "./config.js";
-import { S } from "./model.js";
+import { S, petEventTimes } from "./model.js";
+import { todayKey } from "./util.js";
 import { petKindFor } from "./store.js";
 import { pendingDrops, balance, chestRaw } from "./shop.js";
 
@@ -17,10 +18,32 @@ export function setFlying(fn) { flying = fn; }
 export function pending(p) { return pendingDrops(p, flying(), landed, Date.now(), HOLD_MS); }
 export const anyPending = () => S.participants.some(p => pending(p).length);
 
+/* Goal rolls work the same way: the roll is saved when the pour crosses the goal, and
+   the unlock card reveals it. Until that card closes on this page, the roll stays out
+   of the activity list (with the reroll line), the status line, the shop's reroll box
+   and the Pets tab. A roll seen only in the data
+   (rolled on another PC) waits for its card from the live channel, or HOLD_MS after
+   the pour that made it. */
+const rollCards = new Map();                      /* name|day -> "waiting" | "shown" */
+const rollKey = name => name + "|" + todayKey();
+export function rollCardQueued(name) { rollCards.set(rollKey(name), "waiting"); }     /* a reroll hides it again */
+export function rollCardDone(name) { rollCards.set(rollKey(name), "shown"); }
+
+/* ms the roll stays hidden: 0 = shown, Infinity = until its card closes. */
+export function rollHoldLeft(p, now = Date.now()) {
+  const key = todayKey();
+  if (p.petRollDay !== key || !(Number(p.rollKind) >= 0)) return 0;
+  const st = rollCards.get(rollKey(p.name));
+  if (st) return st === "waiting" ? Infinity : 0;
+  const at = new Date(petEventTimes(p, key).roll || 0).getTime();
+  return at > 0 ? Math.max(0, at + HOLD_MS - now) : 0;
+}
+
 /* Pen pets won but not yet shown: kind -> was it buried. */
 export function hiddenPets(p) {
   const m = new Map();
   for (const d of pending(p)) if (d.fresh && d.pet >= 0) m.set(d.pet, !!d.revived);
+  if (p.rollWasNew && rollHoldLeft(p)) m.set(Number(p.rollKind), false);
   return m;
 }
 

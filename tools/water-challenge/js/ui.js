@@ -17,7 +17,7 @@ import { crownSvg, jesterSvg, hatSvg, drawPortrait, drawCritter, drawHeadstone, 
 import * as G from "./glass.js";
 import { diag, dir } from "./store.js";
 import { defs as petDefs, hats as petHats, petSource } from "./petdefs.js";
-import { shownKind, hiddenPets, shownBalance, hiddenIds } from "./reveal.js";
+import { shownKind, hiddenPets, shownBalance, hiddenIds, rollHoldLeft, rollCardDone } from "./reveal.js";
 import { shopOpen, balance, spentTotal, spendsOn, earnedTotal, chestWinnings, shopDay } from "./shop.js";
 import { $, esc, fmt, fmtOz, fmtGal, todayKey, dateKey, prettyTime, clockStamp, has, parseKey, shiftKey } from "./util.js";
 
@@ -281,13 +281,16 @@ function renderLeaderboard() {
 /* Pet events stay pinned at the top so everyone sees who got what; each carries the
    time of the pour that caused it. Every pour below has its own undo, which asks
    for a second click and says what it does to the pets first. */
+let rollTimer = 0;
 function renderActivity() {
   const key = todayKey(), pets = [], pours = [];
+  let holdFor = Infinity;                          /* a roll held by time alone: render again when it shows */
   const atOf = ts => (ts && new Date(ts).getTime()) || 0;
   for (const p of S.participants) {
     for (const e of p.entries) if (e.date === key) pours.push({ p, e, at: atOf(e.ts) });
-    const t = petEventTimes(p, key);
-    if (p.petRollDay === key && Number(p.rollKind) >= 0) {
+    const t = petEventTimes(p, key), held = rollHoldLeft(p);
+    if (held && held !== Infinity) holdFor = Math.min(holdFor, held);
+    if (p.petRollDay === key && Number(p.rollKind) >= 0 && !held) {
       pets.push({ kind: "roll", p, pet: Number(p.rollKind), fresh: !!p.rollWasNew, ts: t.roll });
     }
     if (p.graveDay === key && Number(p.deadKind) >= 0) pets.push({ kind: "grave", p, pet: Number(p.deadKind), ts: t.grave });
@@ -296,6 +299,7 @@ function renderActivity() {
     const hid = hiddenIds(p), drops = [];
     for (const s of spendsOn(p, key)) {
       if (hid.has(s.id)) continue;
+      if (held && s.kind === "reroll" && Number(s.pet) === Number(p.rollKind)) continue;   /* its card is still turning */
       if (s.kind === "plinko") drops.push(s); else pets.push({ kind: "spend", p, s, ts: s.at });
     }
     if (drops.length === 1) pets.push({ kind: "spend", p, s: drops[0], ts: drops[0].at });
@@ -304,6 +308,8 @@ function renderActivity() {
       pets.push({ kind: "plinko", p, drops, ts: drops[drops.length - 1].at, from: drops[0].at });
     }
   }
+  clearTimeout(rollTimer);
+  if (holdFor !== Infinity) rollTimer = setTimeout(render, holdFor + 50);
   pets.sort((a, b) => atOf(b.ts) - atOf(a.ts));
   pours.sort((a, b) => b.at - a.at);
   if (ui.armed && !pours.some(x => x.e.eid === ui.armed)) ui.armed = "";
@@ -766,6 +772,8 @@ async function nextUnlock() {
   unlockBusy = true;
   try { await playUnlock(info); } catch { $("unlock").hidden = true; }
   G.releaseDrop(info.name);
+  if (!info.bought) { rollCardDone(info.name); render(); }
+  if (info.msg) setMsg(info.msg, true);
   nextUnlock();
 }
 

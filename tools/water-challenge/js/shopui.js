@@ -5,7 +5,7 @@ import * as C from "./config.js";
 import { S, findParticipant, activeParticipants, tokensEarned, capBonus } from "./model.js";
 import * as store from "./store.js";
 import { shopOpen, balance, spentTotal, priceOf, rerollBlock, reroll, plinkoBlock, plinkoPlay, plinkoOdds, chestOdds, buyBlock, buy, chestWinnings } from "./shop.js";
-import { landed as landedIds, setFlying, HOLD_MS, hiddenPets, shownBalance, shownChest, anyPending } from "./reveal.js";
+import { landed as landedIds, setFlying, HOLD_MS, hiddenPets, shownBalance, shownChest, anyPending, rollHoldLeft } from "./reveal.js";
 import { onLive, emit } from "./live.js";
 import { petLabel, petGridOrder, rarityLabel, petBinIndex, isGrave, announce, penOf, pen2Open, penAlive } from "./pets.js";
 import { PlinkoBoard } from "./plinko.js";
@@ -88,11 +88,11 @@ export function renderShop() {
   $("plinkoNote").textContent = pb || "";
   $("plinkoDrop").style.setProperty("--pc", p.color);
 
-  const rb = rerollBlock(p), k = Number(p.rollKind), rolledToday = p.petRollDay === todayKey() && k >= 0;
+  const rb = rerollBlock(p), k = Number(p.rollKind), rolledToday = p.petRollDay === todayKey() && k >= 0, held = rollHoldLeft(p);
   $("rerollBox").innerHTML =
     (rolledToday
-      ? '<div class="reroll-now">' + (penOf(k) > 0 ? '<i class="pi pi-' + k + '"></i>' : '') +
-        '<div><span class="dim">Today\'s roll</span><br><b>' + esc(petLabel(k)) + '</b> <span class="rar">' + esc(rarityLabel(k)) + '</span>' +
+      ? '<div class="reroll-now">' + (penOf(k) > 0 && !held ? '<i class="pi pi-' + k + '"></i>' : '') +
+        '<div><span class="dim">Today\'s roll</span><br>' + (held ? '<b>?</b>' : '<b>' + esc(petLabel(k)) + '</b> <span class="rar">' + esc(rarityLabel(k)) + '</span>') +
         (p.rerollDay === todayKey() ? ' <span class="pill">rerolled</span>' : '') + '</div></div>'
       : '') +
     '<button type="button" id="rerollBtn" class="btn primary"' + (rb ? ' disabled' : '') + '>Reroll &middot; ' + C.REROLL_COST + ' token</button>' +

@@ -7,6 +7,7 @@ import { S, dataChanged, findParticipant, knownUsers, matchUser, totalOn, metGoa
          stampDayGoals, currentGoal, currentAnnualGoal, currentIdleMax, challengeStart, challengeEnd } from "./model.js";
 import * as store from "./store.js";
 import { reconcilePets, equipPet } from "./pets.js";
+import { rollCardQueued } from "./reveal.js";
 import * as G from "./glass.js";
 import { startLive, onLive, emit } from "./live.js";
 import { loadPetDefs, useFolderDefs, useSiteDefs } from "./petdefs.js";
@@ -30,12 +31,13 @@ bus.petReset = name => { const st = G.animState(name); st.duckState = 0; st.show
 const cardsShown = new Set();
 function playUnlock(info) {
   const key = info.name + "|" + info.kind + "|" + (info.bought ? "buy" : "roll") + "|" + todayKey();
-  if (cardsShown.has(key)) return;
+  if (cardsShown.has(key)) { if (info.msg) setMsg(info.msg, true); return; }
   cardsShown.add(key);
+  if (!info.bought) rollCardQueued(info.name);       /* the roll stays hidden until the card closes */
   if (info.equipped) G.dropIn(info.name, 12);       /* held off-screen until the card closes */
   setTimeout(() => showUnlock(info), G.pourLeft(info.name) * 1000 + 150);
 }
-bus.unlock = info => { emit("unlock", { info }); playUnlock(info); };
+bus.unlock = info => { const { msg, ...shared } = info; emit("unlock", { info: shared }); playUnlock(info); };
 onLive("unlock", (ev, late) => { if (late < C.LIVE_SHOW_MS && ev.info) playUnlock(ev.info); pollSoon(); });
 /* Someone else poured: play the stream now and fetch the new level straight away. */
 onLive("pour", (ev, late) => { if (late < C.LIVE_SHOW_MS) G.pour(ev.name, ev.oz, ev.color); pollSoon(); });

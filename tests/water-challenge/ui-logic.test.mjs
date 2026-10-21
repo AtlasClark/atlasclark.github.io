@@ -353,3 +353,20 @@ test("visits: only from a settled pet with water, to a free neighbour with water
     assert.equal(G.visitOf("ea").host, "eb", "otherwise it goes");
   } finally { Math.random = real; }
 });
+
+test("goal rolls: hidden until the unlock card closes, from the activity list and the Pets tab", async () => {
+  const R = await import(pathToFileURL(path.join(JS, "reveal.js")));
+  const { todayKey } = await import(pathToFileURL(path.join(JS, "util.js")));
+  const p = { name: "rolltest", petRollDay: todayKey(), rollKind: 3, rollWasNew: true, entries: [], pets: { "3": 40 }, spends: [] };
+  assert.equal(R.rollHoldLeft(p), 0, "no card and no pour time: shown");
+  R.rollCardQueued(p.name);
+  assert.equal(R.rollHoldLeft(p), Infinity, "card queued: hidden until it closes");
+  assert.ok(R.hiddenPets(p).has(3), "a new pet stays off the Pets tab");
+  R.rollCardDone(p.name);
+  assert.equal(R.rollHoldLeft(p), 0, "card closed: shown");
+  assert.ok(!R.hiddenPets(p).has(3));
+  R.rollCardQueued(p.name);
+  assert.equal(R.rollHoldLeft(p), Infinity, "a reroll's card hides the new roll again");
+  R.rollCardDone(p.name);
+  assert.equal(R.rollHoldLeft({ ...p, name: "other", petRollDay: "2000-01-01" }), 0, "not today: never held");
+});
