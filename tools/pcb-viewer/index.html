@@ -95,8 +95,15 @@
 
       <div class="alignbar" id="alignBar" hidden>
         <b>Align <span id="alignSide">top</span> photo</b>
-        <span class="muted">Drag to move · Scroll to scale · Arrows nudge (Shift ×10) · Right-drag pans</span>
+        <span class="muted">Drag to move · Scroll to zoom · Shift+scroll or <kbd>[</kbd> <kbd>]</kbd> to scale · Arrows nudge (Shift ×10) · Right-drag pans</span>
         <span class="grow"></span>
+        <span class="scale-ctl" role="group" aria-label="Photo scale">
+          <span class="mono muted">Scale</span>
+          <button type="button" class="hud-btn sq" id="scDown" title="Smaller by 0.1% (Shift: 1%) [" aria-label="Scale down">−</button>
+          <input type="number" id="scVal" step="0.1" min="10" max="1000" aria-label="Photo scale in percent of the start scale">
+          <span class="mono muted">%</span>
+          <button type="button" class="hud-btn sq" id="scUp" title="Larger by 0.1% (Shift: 1%) ]" aria-label="Scale up">+</button>
+        </span>
         <button type="button" class="hud-btn" id="alignAuto">Auto-fit</button>
         <button type="button" class="hud-btn primary" id="alignDone">Done</button>
       </div>

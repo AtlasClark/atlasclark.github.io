@@ -150,6 +150,11 @@ kbd { font: 500 10.5px var(--mono); padding: 1px 6px; border: 1px solid var(--li
   box-shadow: 0 8px 28px rgba(0,0,0,.2); font-size: 13px;
 }
 .alignbar .grow { flex: 1; }
+.alignbar kbd { font-size: 10px; padding: 0 4px; }
+.scale-ctl { display: inline-flex; align-items: center; gap: 6px; }
+.scale-ctl .hud-btn.sq { width: 30px; height: 30px; font-size: 16px; box-shadow: none; }
+.scale-ctl input { width: 74px; height: 30px; padding: 0 6px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--ink); font: 500 13px var(--mono); text-align: right; }
+.scale-ctl input:focus { outline: none; border-color: var(--ink-2); }
 
 .tip {
   position: absolute; z-index: 6; pointer-events: none; max-width: 300px; padding: 7px 10px; border-radius: 8px;

@@ -8,7 +8,7 @@
 */
 (function () {
   "use strict";
-  const REV = "rev 1.3.0";
+  const REV = "rev 1.4.0";
   const P = window.PCBV;
   const $ = s => document.querySelector(s);
   const $$ = s => Array.from(document.querySelectorAll(s));
@@ -600,8 +600,8 @@
     if (!S.imgs[sd] || !S.board) return;
     if (S.side !== sd) setSide(sd);
     if (!S.align[sd]) S.align[sd] = autoFit(sd) || { x: 0, y: 0, s: 0.001, how: "manual" };
-    S.aligning = sd; S.sel = null;
-    $("#alignBar").hidden = false; $("#alignSide").textContent = sd === "TOP" ? "top" : "bottom";
+    S.aligning = sd; S.sel = null; S.alignS0 = S.align[sd].s;
+    $("#alignBar").hidden = false; syncScale(); $("#alignSide").textContent = sd === "TOP" ? "top" : "bottom";
     cv.classList.add("aligning"); $("#layersPop").hidden = true;
     fit(); renderPanel();
   }
@@ -612,6 +612,17 @@
     if (a && a.how === "manual") store.set(alignKey(sd), { x: a.x, y: a.y, s: a.s });
     if (S.mode === "cad") S.mode = "blend";
     syncHud(); renderPanel(); redraw();
+  }
+  // Photo scale about a screen point (default: view centre, so the zoomed-in spot stays put)
+  function scalePhoto(f, sx = W / 2, sy = H / 2) {
+    const a = S.aligning && S.align[S.aligning]; if (!a || !(f > 0)) return;
+    const vx = (sx - W / 2) / S.cam.z + S.cam.x, vy = S.cam.y - (sy - H / 2) / S.cam.z;
+    a.s *= f; a.x = vx - (vx - a.x) * f; a.y = vy - (vy - a.y) * f; a.how = "manual";
+    syncScale(); redraw();
+  }
+  function syncScale() {
+    const a = S.aligning && S.align[S.aligning], el = $("#scVal");
+    if (a && document.activeElement !== el) el.value = (a.s / S.alignS0 * 100).toFixed(1);
   }
   function resetAlign(sd) {
     try { localStorage.removeItem(alignKey(sd)); } catch {}
@@ -1091,11 +1102,10 @@
     if (!S.board) return;
     e.preventDefault();
     const dy = e.deltaMode ? e.deltaY * 33 : e.deltaY;
-    if (S.aligning && !e.ctrlKey) {
-      const a = S.align[S.aligning], f = Math.exp(-dy * (e.shiftKey ? 0.00008 : 0.0005));
-      const vx = (e.offsetX - W / 2) / S.cam.z + S.cam.x, vy = S.cam.y - (e.offsetY - H / 2) / S.cam.z;
-      a.s *= f; a.x = vx - (vx - a.x) * f; a.y = vy - (vy - a.y) * f; a.how = "manual";
-      redraw(); return;
+    if (S.aligning && e.shiftKey) {
+      // Shift+wheel scales the photo (~0.5% per notch). Windows Chrome turns Shift+wheel into deltaX.
+      const d = e.deltaY || e.deltaX, dd = e.deltaMode ? d * 33 : d;
+      scalePhoto(Math.exp(-dd * 0.00005), e.offsetX, e.offsetY); return;
     }
     zoomAt(e.offsetX, e.offsetY, Math.exp(-dy * 0.0015));
   }, { passive: false });
@@ -1119,7 +1129,14 @@
   $("#fitBtn").addEventListener("click", () => fit());
   $("#alignDone").addEventListener("click", endAlign);
   $("#alignBtn").addEventListener("click", () => startAlign(S.side));
-  $("#alignAuto").addEventListener("click", () => { const sd = S.aligning; if (sd) { try { localStorage.removeItem(alignKey(sd)); } catch {} S.align[sd] = autoFit(sd); redraw(); } });
+  $("#alignAuto").addEventListener("click", () => { const sd = S.aligning; if (sd) { try { localStorage.removeItem(alignKey(sd)); } catch {} S.align[sd] = autoFit(sd); syncScale(); redraw(); } });
+  $("#scDown").addEventListener("click", e => scalePhoto(1 / (1 + (e.shiftKey ? 0.01 : 0.001))));
+  $("#scUp").addEventListener("click", e => scalePhoto(1 + (e.shiftKey ? 0.01 : 0.001)));
+  $("#scVal").addEventListener("change", e => {
+    const a = S.aligning && S.align[S.aligning], v = parseFloat(e.target.value);
+    if (a && v >= 10 && v <= 1000) scalePhoto(S.alignS0 * v / 100 / a.s); else syncScale();
+  });
+  $("#scVal").addEventListener("keydown", e => { if (e.key === "Enter") e.target.blur(); });
   $("#unitBtn").addEventListener("click", () => { S.units = S.units === "mm" ? "in" : "mm"; store.set("pcbv.units", S.units); syncHud(); renderPanel(); });
 
   // Tabs + panel delegation
@@ -1159,6 +1176,8 @@
       const a = S.align[S.aligning], st = (e.shiftKey ? 10 : 1) / S.cam.z;
       const mv = { ArrowLeft: [-st, 0], ArrowRight: [st, 0], ArrowUp: [0, st], ArrowDown: [0, -st] }[e.key];
       if (mv) { e.preventDefault(); a.x += mv[0]; a.y += mv[1]; a.how = "manual"; redraw(); return; }
+      const sc = { "[": -1, "{": -1, "]": 1, "}": 1 }[e.key];      // Shift gives { } on US layouts
+      if (sc) { e.preventDefault(); const st = e.shiftKey ? 0.01 : 0.001; scalePhoto(sc > 0 ? 1 + st : 1 / (1 + st)); return; }
       if (e.key === "Escape" || e.key === "Enter") { endAlign(); return; }
     }
     const k = e.key.toLowerCase();
