@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <!--
   Water Challenge (web) - Atlas Devices tools
-  Scope: browser port of the team water-tracking game (Atlas_Water_Challenge_R55.hta).
+  Scope: a team water-tracking game.
   Each person's glass fills toward a personal daily goal set from their own history;
   reaching it rolls a pet, passing twice the goal drowns one. Leaderboard, streaks,
   time away, a team year target, a season history and pet collections.
@@ -9,8 +9,6 @@
   _settings.json). The page reaches it through the File System Access API (Chrome/Edge)
   and remembers the folder handle in this browser. Nothing is stored on this site,
   and the CSP below only lets scripts fetch this site's own files (the update check).
-  A folder stays at format 21 (byte-compatible with R55, same locks) until it is upgraded
-  from Settings to format 22, after which only this page may write to it.
   Bump REV in js/config.js on each change.
 -->
 <html lang="en">
@@ -42,54 +40,70 @@
     </div>
     <div class="hdr-right"><span id="syncPill" class="sync-pill bad">offline</span></div>
 
-    <div id="settingsPanel" class="settings-panel" hidden>
-      <div class="sp-title">Challenge settings</div>
-      <label class="field-label" for="titleVal">Title</label>
-      <input id="titleVal" class="txt brand-txt" type="text" maxlength="40" spellcheck="false" placeholder="Water Challenge">
-      <label class="field-label" for="taglineVal">Tagline</label>
-      <input id="taglineVal" class="txt brand-txt" type="text" maxlength="80" placeholder="Drink responsibly. Brag irresponsibly.">
-      <label class="field-label" for="goalVal">Default goal</label>
-      <input id="goalVal" class="txt amount" type="text" inputmode="decimal"><span class="unit">fl oz</span>
-      <label class="field-label" for="annualVal">Yearly goal per person</label>
-      <input id="annualVal" class="txt amount wide" type="text" inputmode="numeric"><span class="unit">fl oz</span>
-      <label class="field-label" for="startVal">Challenge started</label>
-      <input id="startVal" class="txt date" type="text" placeholder="YYYY-MM-DD">
-      <label class="field-label" for="idleVal">Streak grace</label>
-      <input id="idleVal" class="txt amount narrow" type="text" inputmode="numeric"><span class="unit">days</span>
-      <p class="hint">Cap is 2&times; goal. Reach it to win the day; pass it and a pet drowns.</p>
-      <button type="button" id="applySettings" class="btn primary">Set</button>
-      <p class="sp-note">Goals come from each person's last 30 days; the default covers new people.
-        Changes never alter past days.</p>
-      <div class="sp-title">Data format</div>
-      <p class="hint" id="fmtNote"></p>
-      <button type="button" id="upgradeBtn" class="btn muted small-gap">Upgrade folder format</button>
-      <div class="sp-title sp-gap">Roster</div>
-      <p class="hint">Away hides a glass and pauses streaks and the year target.</p>
-      <div id="rosterList" class="roster"></div>
-      <div id="bottleBox" hidden>
-        <div class="sp-title sp-gap">Bottle sync</div>
-        <p class="hint" id="bottleNote"></p>
-        <label class="field-label" for="bRelay">Relay address</label>
-        <input id="bRelay" class="txt bottle-txt" type="url" placeholder="https://hidrate-relay.you.workers.dev" spellcheck="false" autocomplete="off">
-        <label class="field-label" for="bKey">Relay key</label>
-        <div class="bottle-row"><input id="bKey" class="txt bottle-txt" type="password" spellcheck="false" autocomplete="off">
-          <button type="button" id="bNewKey" class="btn muted" title="Make a new random key to paste into the Worker's RELAY_KEY secret">New key</button></div>
-        <div class="bottle-row"><button type="button" id="bSaveRelay" class="btn muted">Save</button>
-          <button type="button" id="bTest" class="btn muted">Test</button>
-          <a class="btn muted btn-link" href="bottle/hidrate-worker.js" target="_blank" rel="noopener" title="The Worker code, with the set-up steps at the top">Relay set-up &#8599;</a></div>
-        <div id="bOut">
-          <label class="field-label" for="bEmail">Hidrate sign-in</label>
-          <input id="bEmail" class="txt bottle-txt" type="email" placeholder="email" autocomplete="username">
-          <input id="bPass" class="txt bottle-txt" type="password" placeholder="password (not kept)" autocomplete="current-password">
-          <button type="button" id="bSignIn" class="btn primary">Sign in</button>
-        </div>
-        <div id="bIn" class="bottle-row" hidden><span class="hint" id="bWho"></span>
-          <button type="button" id="bSignOut" class="btn muted">Sign out</button>
-          <button type="button" id="bSyncNow" class="btn primary">Sync now</button></div>
+    <div id="settingsPanel" class="settings-panel" hidden role="dialog" aria-labelledby="spHead">
+      <div class="sp-top"><h2 id="spHead">Settings</h2>
+        <button type="button" id="spClose" class="sp-x" title="Close (Esc)" aria-label="Close settings">&times;</button></div>
+      <div class="sp-grid">
+        <details class="sp-card" data-card="challenge" open>
+          <summary>Challenge</summary>
+          <label class="field-label" for="titleVal">Title</label>
+          <input id="titleVal" class="txt sp-wide" type="text" maxlength="40" spellcheck="false" placeholder="Water Challenge">
+          <label class="field-label" for="taglineVal">Tagline</label>
+          <input id="taglineVal" class="txt sp-wide" type="text" maxlength="80" placeholder="Drink responsibly. Brag irresponsibly.">
+          <p class="hint">Shown at the top of the page for everyone on this data folder.</p>
+        </details>
+        <details class="sp-card" data-card="goals" open>
+          <summary>Goals</summary>
+          <div class="sp-pair">
+            <div><label class="field-label" for="goalVal">Default daily goal</label>
+              <input id="goalVal" class="txt amount" type="text" inputmode="decimal"><span class="unit">fl oz</span></div>
+            <div><label class="field-label" for="annualVal">Yearly goal per person</label>
+              <input id="annualVal" class="txt amount wide" type="text" inputmode="numeric"><span class="unit">fl oz</span></div>
+          </div>
+          <div class="sp-pair">
+            <div><label class="field-label" for="startVal">Challenge started</label>
+              <input id="startVal" class="txt date" type="text" placeholder="YYYY-MM-DD"></div>
+            <div><label class="field-label" for="idleVal">Streak grace</label>
+              <input id="idleVal" class="txt amount narrow" type="text" inputmode="numeric"><span class="unit">days</span></div>
+          </div>
+          <p class="hint">Each person's goal comes from their last 30 days; the default covers new people.
+            The cap is 2&times; the goal: reach the goal to win the day, pass the cap and a pet drowns.
+            Changes never alter past days.</p>
+        </details>
+        <details class="sp-card" data-card="roster">
+          <summary>Roster <b id="rosterCount" class="sp-count"></b></summary>
+          <p class="hint">Away hides a glass and pauses streaks and the year target.</p>
+          <div id="rosterList" class="roster"></div>
+        </details>
+        <details class="sp-card" data-card="pets">
+          <summary>Pet art</summary>
+          <p class="hint" id="petArtNote">Redraw the pets, the crown and the jester hat.</p>
+          <a class="btn muted btn-link" href="studio/" target="_blank" rel="noopener">Open Pet Studio &#8599;</a>
+        </details>
+        <details class="sp-card" data-card="bottle" id="bottleBox" hidden>
+          <summary>Bottle sync</summary>
+          <p class="hint" id="bottleNote"></p>
+          <label class="field-label" for="bRelay">Relay address</label>
+          <input id="bRelay" class="txt sp-wide" type="url" placeholder="https://hidrate-relay.you.workers.dev" spellcheck="false" autocomplete="off">
+          <label class="field-label" for="bKey">Relay key</label>
+          <div class="bottle-row"><input id="bKey" class="txt sp-wide" type="password" spellcheck="false" autocomplete="off">
+            <button type="button" id="bNewKey" class="btn muted" title="Make a new random key to paste into the Worker's RELAY_KEY secret">New key</button></div>
+          <div class="bottle-row"><button type="button" id="bSaveRelay" class="btn muted">Save relay</button>
+            <button type="button" id="bTest" class="btn muted">Test</button>
+            <a class="btn muted btn-link" href="bottle/hidrate-worker.js" target="_blank" rel="noopener" title="The Worker code, with the set-up steps at the top">Relay set-up &#8599;</a></div>
+          <div id="bOut">
+            <label class="field-label" for="bEmail">Hidrate sign-in</label>
+            <input id="bEmail" class="txt sp-wide" type="email" placeholder="email" autocomplete="username">
+            <input id="bPass" class="txt sp-wide" type="password" placeholder="password (not kept)" autocomplete="current-password">
+            <button type="button" id="bSignIn" class="btn primary">Sign in</button>
+          </div>
+          <div id="bIn" class="bottle-row" hidden><span class="hint" id="bWho"></span>
+            <button type="button" id="bSignOut" class="btn muted">Sign out</button>
+            <button type="button" id="bSyncNow" class="btn primary">Sync now</button></div>
+        </details>
       </div>
-      <div class="sp-title sp-gap">Pet art</div>
-      <p class="hint" id="petArtNote">Redraw the pets, the crown and the jester hat.</p>
-      <a class="btn muted btn-link" href="studio/" target="_blank" rel="noopener">Open Pet Studio &#8599;</a>
+      <div class="sp-foot"><span class="hint">Challenge and Goals are shared with everyone on this folder.</span>
+        <button type="button" id="applySettings" class="btn primary">Save</button></div>
     </div>
   </header>
 
@@ -158,17 +172,13 @@
     </section>
 
     <section id="view-shop" hidden>
-      <div id="shopClosed" class="panel full">
-        <div class="panel-heading"><p class="eyebrow">Spend your gold</p><h2>Token shop</h2></div>
-        <p>The shop needs the data folder at format 22: <b>Settings &rsaquo; Data format &rsaquo; Upgrade</b>.</p>
-      </div>
-      <div id="shopMain" hidden>
+      <div id="shopMain">
         <div class="panel shop-top">
           <div class="panel-heading"><p class="eyebrow">1 token per goal day &middot; 5 per day over the cap</p><h2>Token shop</h2></div>
           <div id="shopWho" class="shop-who"></div>
           <p id="shopBalance" class="shop-balance"></p>
         </div>
-        <div class="shop-grid">
+        <div id="shopGrid" class="shop-grid">
           <div class="panel shop-plinko">
             <div class="panel-heading"><p class="eyebrow">1 token per drop &middot; live for everyone</p><h2>Plinko</h2></div>
             <p class="hint">Each peg is a 50/50 bounce. The slot sets the rarity, and you win a pet from it you don't have alive.
@@ -202,7 +212,6 @@
   <button type="button" class="sb-link" id="sbFolder" title="Data folder (click to reconnect or change)">not connected</button>
   <span class="sb-sep">signed in as</span>
   <button type="button" class="sb-link" id="sbMe" title="Name stamped on what you log (click to change)">set your name</button>
-  <span class="sb-peers" id="sbPeers"></span>
   <span class="sb-grow"></span>
   <button type="button" class="sb-link" id="sbDiag">diagnostics</button>
 </footer>

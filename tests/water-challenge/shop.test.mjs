@@ -12,12 +12,11 @@ const shop = await import(pathToFileURL(path.join(JS, "shop.js")));
 const C = web.C;
 const own = (p, k) => Object.prototype.hasOwnProperty.call(p.pets, String(k));
 
-/* A connected folder at format 22 on the day after the backup (a fresh day). */
-async function fresh(upgrade = true) {
+/* A connected folder on the day after the backup (a fresh day). */
+async function fresh() {
   const files = readDataFiles(), day = dayKeys(backupDay(files), "2099-01-01")[1];
   setToday(day);
   const w = await loadWeb(files);
-  if (upgrade) await web.store.upgradeFolder();
   const M = web.model;
   const rich = w.S.participants.filter(p => M.isActive(p)).sort((a, b) => shop.balance(b) - shop.balance(a))[0];
   return { ...w, day, M, rich };
@@ -91,13 +90,6 @@ test("plinko: a pet they don't have alive first (buried ones included); duplicat
   assert.equal(commons.size, C.PET_BINS[0].kinds.length, "all alive: any Common, as a duplicate");
 });
 
-test("the shop stays shut on a format 21 folder", { skip: skipReason }, async () => {
-  const { rich } = await fresh(false);
-  assert.match(shop.plinkoBlock(rich), /format 22/);
-  assert.match(shop.rerollBlock(rich), /format 22/);
-  assert.match(shop.buyBlock(rich, 0), /format 22/);
-});
-
 test("buy: anything not alive in the pen, costs its price, is worn and logged", { skip: skipReason }, async () => {
   const { rich, mem } = await fresh();
   const owned = Object.keys(rich.pets).map(Number).find(k => k < C.PET_COUNT);
@@ -144,6 +136,9 @@ test("reroll: after today's roll, once, for a token; it sticks through undo and 
   const r = await shop.reroll(rich);
   assert.ok(r);
   assert.equal(r.from, first);
+  const rec = shop.spendsOn(rich, day).find(s => s.kind === "reroll");
+  assert.equal(rec.from, first, "the reroll keeps the goal's own roll, for the activity line");
+  assert.equal(rec.fromFresh, !!firstNew, "and whether it was new");
   assert.equal(shop.balance(rich), before - C.REROLL_COST);
   assert.equal(rich.rerollDay, day);
   assert.equal(rich.petRollDay, day);
@@ -277,14 +272,6 @@ test("full-pen reward at format 22: needs all 25 alive, goes when one drowns, co
   assert.ok(own(p, C.HOMUNCULUS_KIND), "all 25 alive again: it comes back");
 });
 
-test("full-pen reward at format 21 keeps R55's rule: a buried pet counts as found", { skip: skipReason }, async () => {
-  const { S, M } = await fresh(false);
-  const p = S.participants.find(x => M.isActive(x));
-  wholePen(p);
-  delete p.pets["5"]; p.graves["5"] = 1;
-  assert.ok(web.pets.penComplete(p));
-});
-
 /* ---- the cap bonus ---------------------------------------------------------- */
 test("cap bonus: 5 tokens a day past the cap, from the start date on, taken back on undo", { skip: skipReason }, async () => {
   const { S, day, M } = await fresh();
@@ -397,10 +384,3 @@ test("second pen: opens for good once all 25 are alive; rolls, Plinko and the sh
   assert.equal(P.petBinIndex(C.PEN2_FIRST + 5), P.petBinIndex(5), "the Old Boot is the second pen's ???");
 });
 
-test("second pen: never at format 21, so the HTA's rolls are untouched", { skip: skipReason }, async () => {
-  const { S, M } = await fresh(false);
-  const p = S.participants.find(x => M.isActive(x));
-  wholePen(p); p.pen2 = "2026-01-01";
-  assert.equal(web.pets.pen2Open(p), false);
-  assert.equal(web.pets.rollPen(p), 1);
-});

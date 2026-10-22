@@ -1,4 +1,4 @@
-/* Bottle sync: HidrateSpark sips into your glass, as the R55 HTA did, for
+/* Bottle sync: HidrateSpark sips into your glass, for
    BOTTLE_USER only. The browser can't call Hidrate itself (its API wants a header
    browsers may not send), so requests go through your Cloudflare Worker relay
    (bottle/hidrate-worker.js), which adds Hidrate's app keys. This browser keeps the
@@ -88,7 +88,7 @@ export async function fetchSips(now = new Date()) {
   }
 }
 
-/* The R55 rules. Sips are grouped into BOTTLE_BUCKET_MIN-minute buckets (one entry
+/* The rules. Sips are grouped into BOTTLE_BUCKET_MIN-minute buckets (one entry
    each, eid "h:<id>", sid "<id>", by HIDRATE_TAG). A bucket only ever grows: a reply
    with fewer sips never takes water away. Bottle rows from before sids existed are
    replaced. Changes p.entries; returns { added, grown, removed: [eid], oz }. */

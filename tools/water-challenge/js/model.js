@@ -1,6 +1,6 @@
 /* Shared state and every derived number: goals, scores, the day index, streaks,
    time away, tokens, year targets and season stats. Pure and synchronous; nothing
-   here touches the folder. Semantics follow R55 line for line. */
+   here touches the folder. */
 
 import * as C from "./config.js";
 import { todayKey, parseKey, shiftKey, keyDaysBetween, daysBetween, dateKey, has } from "./util.js";
@@ -8,11 +8,9 @@ import { todayKey, parseKey, shiftKey, keyDaysBetween, daysBetween, dateKey, has
 export const S = {
   participants: [],
   settings: defaultSettings(),
-  me: "",                 /* identity stamped on entries (the HTA used %USERNAME%) */
+  me: "",                 /* identity stamped on entries */
   mine: null,             /* the participant this browser belongs to; "" = none, null = not asked yet */
-  folderFormat: 21,       /* format the connected folder is at; files are written at it */
   dataVer: 0,             /* bumps on every data change; cheap cache key */
-  staleWriters: [], driftWriters: [], peerWriters: [],
   newerRevSeen: false, loadRecovered: 0, loadFailed: 0
 };
 
@@ -21,7 +19,7 @@ export function defaultSettings() {
            startDate: "", idleSkipDays: C.STREAK_MAX_IDLE_RUN,
            minGoalOz: 40, goalFactor: 0.9, minGoalDays: 3, dropTopDay: true,
            goalWindowDays: 30, legacyFlatUntil: C.LEGACY_FLAT_UNTIL,
-           legacyGoalOz: 0, formatRev: C.LEGACY_FORMAT, upgradedAt: "", upgradedBy: "", title: "", tagline: "" };
+           legacyGoalOz: 0, title: "", tagline: "" };
 }
 
 let dayIndex = null, goalMemo = {}, dailyMemo = {};

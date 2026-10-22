@@ -1,5 +1,5 @@
-/* Layout choice, the dive rule, pet-event times and the undo prompt. These have no
-   R55 counterpart, so they are checked against what they promise. */
+/* Layout choice, the dive rule, pet-event times and the undo prompt, checked against
+   what they promise. */
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -11,27 +11,28 @@ const JS = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../too
 const G = await import(pathToFileURL(path.join(JS, "glass.js")));
 const C = web.C;
 
-test("layout: fewest rows that keep cards comfortable, shared evenly", () => {
+test("layout: as many across as stay comfortable, one more column at a time", () => {
   const L = (n, w) => G.pickLayout(n, w);
-  assert.deepEqual(L(8, 748), { cols: 4, rows: 2, card: 164 }, "8 on a mid screen: 4 + 4, not 5 + 3 thin");
-  assert.equal(L(5, 748).cols, 3, "5 on a mid screen: 3 + 2 wide, not 5 thin");
-  assert.equal(L(6, 1100).cols, 6, "6 on a wide screen: one row");
-  assert.equal(L(8, 1364).cols, 4, "8 on the widest screen: MAX_COLS stops a single row of 8");
+  assert.deepEqual(L(8, 748), { cols: 4, rows: 2, card: 164 }, "8 on a mid screen: 4 + 4");
+  assert.deepEqual(L(8, 1867), { cols: 8, rows: 1, card: 212 }, "8 on a full-HD screen: one row, bigger cards");
+  assert.equal(L(9, 1867).cols, 8, "9: MAX_COLS stops a row of 9, so 8 + 1");
   assert.equal(L(8, 343).cols, 2, "phone: two across");
+  assert.equal(L(1, 240).cols, 1, "one person, narrowest: one card");
+  const steps = [];                                   /* 8 people, widening: 4 + 4, 5 + 3, 6 + 2, 7 + 1, 8 */
+  for (let w = 700; w <= 1900; w += 4) { const c = L(8, w).cols; if (steps[steps.length - 1] !== c) steps.push(c); }
+  assert.deepEqual(steps, [4, 5, 6, 7, 8], "one column at a time, never back");
   for (let n = 1; n <= 16; n++) {
-    for (let w = 240; w <= 1400; w += 37) {
-      const lay = L(n, w);
-      assert.ok(lay.cols <= C.MAX_COLS && lay.cols >= 1, n + "@" + w + " cols");
+    let prev = 0;
+    for (let w = 240; w <= 1900; w += 37) {
+      const lay = L(n, w), fit = c => (w / c - C.CARD_GAP * 2);
+      assert.ok(lay.cols <= Math.min(n, C.MAX_COLS) && lay.cols >= 1, n + "@" + w + " cols");
+      assert.ok(lay.cols >= prev, n + "@" + w + " a wider screen never has fewer across");
+      prev = lay.cols;
       assert.ok(lay.card <= C.CARD_MAX && lay.card >= C.CARD_MIN, n + "@" + w + " card");
       assert.equal(lay.card % C.CARD_STEP, 0, n + "@" + w + " snapped");
       assert.equal(lay.rows, Math.ceil(n / lay.cols));
-      assert.ok(lay.cols * (lay.rows - 1) < n, n + "@" + w + " no empty last row");
-      if (lay.card >= C.CARD_COMFORT) {
-        const fewer = Math.ceil(n / (lay.rows - 1 || 1));
-        if (lay.rows > 1 && fewer <= C.MAX_COLS) {
-          assert.ok((w / fewer - C.CARD_GAP * 2) < C.CARD_COMFORT, n + "@" + w + " one fewer row would have fit");
-        }
-      }
+      assert.ok(lay.cols === 1 || fit(lay.cols) >= C.CARD_COMFORT, n + "@" + w + " comfortable");
+      if (lay.cols < Math.min(n, C.MAX_COLS)) assert.ok(fit(lay.cols + 1) < C.CARD_COMFORT, n + "@" + w + " one more would have fit");
     }
   }
 });
@@ -369,4 +370,13 @@ test("goal rolls: hidden until the unlock card closes, from the activity list an
   assert.equal(R.rollHoldLeft(p), Infinity, "a reroll's card hides the new roll again");
   R.rollCardDone(p.name);
   assert.equal(R.rollHoldLeft({ ...p, name: "other", petRollDay: "2000-01-01" }), 0, "not today: never held");
+});
+
+test("pets legend: the roll odds add up to exactly 100%, dragon included", async () => {
+  const P = await import(pathToFileURL(path.join(JS, "pets.js")));
+  const o = P.rollOdds(), tenths = [...o.bins, o.dragon].map(v => Math.round(v * 10));
+  assert.equal(tenths.reduce((a, b) => a + b, 0), 1000);
+  assert.equal(o.dragon, C.MYSTERY_CHANCE * 100);
+  const total = C.PET_BINS.reduce((a, b) => a + b.weight, 0);
+  C.PET_BINS.forEach((b, i) => assert.ok(Math.abs(o.bins[i] - (1 - C.MYSTERY_CHANCE) * b.weight / total * 100) <= 0.05, b.name));
 });

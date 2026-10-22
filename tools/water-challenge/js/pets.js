@@ -1,7 +1,7 @@
 /* Pet rules: the seeded daily roll, drowning past the cap, take-backs on undo,
    equipping, the full-pen reward and the one that is not in the pen.
-   The RNG arithmetic must stay plain IEEE doubles, exactly as in R55, so the web
-   page and the HTA reach the same pet for the same person on the same day. */
+   The RNG arithmetic must stay plain IEEE doubles, so every machine reaches the
+   same pet for the same person on the same day (a test pins sample draws). */
 
 import * as C from "./config.js";
 import { S, metGoal, personalGoal, findParticipant, totalOn, pastCap, isActive } from "./model.js";
@@ -36,12 +36,24 @@ export function petHueFor(p) {
   return hashHue(p.name + k);
 }
 
+/* A goal roll's odds, in %, to one decimal and summing to exactly 100: the dragon's
+   draw comes first, then each rarity by its weight among the rest. These are the full
+   odds; a rarity with nothing left to give hands its share to the others. */
+export function rollOdds() {
+  const total = C.PET_BINS.reduce((a, b) => a + b.weight, 0);
+  const raw = [...C.PET_BINS.map(b => (1 - C.MYSTERY_CHANCE) * b.weight / total), C.MYSTERY_CHANCE].map(v => v * 1000);
+  const out = raw.map(Math.floor);
+  let left = 1000 - out.reduce((a, b) => a + b, 0);                    /* largest remainders take the rounding */
+  for (const i of raw.map((v, i) => i).sort((a, b) => (raw[b] - out[b]) - (raw[a] - out[a]))) { if (left-- <= 0) break; out[i]++; }
+  return { bins: out.slice(0, -1).map(v => v / 10), dragon: out[out.length - 1] / 10 };
+}
+
 /* ---- the two pens ---- */
 export const penOf = k => (k >= 0 && k < C.PET_COUNT) ? 1 : (k >= C.PEN2_FIRST && k < C.PEN2_FIRST + C.PET_COUNT) ? 2 : 0;
 export const penKinds = pen => Array.from({ length: C.PET_COUNT }, (_, i) => (pen === 2 ? C.PEN2_FIRST : 0) + i);
 export const binsFor = pen => pen === 2 ? C.PEN2_BINS : C.PET_BINS;
-/* Open for good once earned, at format 22 only (the HTA knows one pen). */
-export const pen2Open = p => S.folderFormat >= C.FORMAT_REV && !!(p && p.pen2);
+/* Open for good once earned. */
+export const pen2Open = p => !!(p && p.pen2);
 /* The pen new pets come from: the second once it is open (the first is complete). */
 export const rollPen = p => pen2Open(p) ? 2 : 1;
 export const penAlive = (p, pen) => penKinds(pen).filter(k => has(p.pets, k)).length;
@@ -62,21 +74,17 @@ export function petGridOrder(pen = 1) {
   return order;
 }
 
-/* Every one of the 25 accounted for; a grave counts as found. */
-/* The full-pen reward. At format 21 (shared with R55) a buried pet counts as found,
-   as in R55. At format 22 it needs all 25 alive, and syncHomunculus takes it away
+/* The full-pen reward needs all 25 first-pen pets alive; syncHomunculus takes it away
    when one is lost and gives it back when all 25 are alive again. */
-const aliveRule = () => S.folderFormat >= C.FORMAT_REV;
 export function penComplete(p) {
-  for (let k = 0; k < C.PET_COUNT; k++) if (!has(p.pets, k) && (aliveRule() || !isGrave(p, k))) return false;
+  for (let k = 0; k < C.PET_COUNT; k++) if (!has(p.pets, k)) return false;
   return true;
 }
 export function penFound(p) {
   let n = 0;
-  for (let k = 0; k < C.PET_COUNT; k++) if (has(p.pets, k) || (!aliveRule() && isGrave(p, k))) n++;
+  for (let k = 0; k < C.PET_COUNT; k++) if (has(p.pets, k)) n++;
   return n;
 }
-export const penWord = () => aliveRule() ? "alive" : "found";
 
 export function grantHomunculus(p) {
   if (!penComplete(p) || has(p.pets, C.HOMUNCULUS_KIND)) return false;
@@ -195,14 +203,14 @@ async function revivePet(p) {
   return true;
 }
 
-/* Per-day logs (format 22 only; dropped at 21). They let the recap name each
+/* Per-day logs. They let the recap name each
    day's roll and drowning after newer days have replaced petRollDay and graveDay. */
 export function logDay(p, log, key, value) {
   if (!p[log] || typeof p[log] !== "object") p[log] = {};
   p[log][key] = value;
 }
 
-/* One roll, applied to p in memory: the draws, in R55's order, from rnd. Shared by
+/* One roll, applied to p in memory: the draws, in a fixed order, from rnd. Shared by
    the daily roll and the paid reroll. Returns what happened, for announce(). */
 export function applyRoll(p, rnd, key) {
   if (!p.pets) p.pets = {};
@@ -263,14 +271,13 @@ function releaseMystery(p) {
   return null;
 }
 
-/* One drowning a day. R55 only blocked a second one when deadKind was set, so a
-   drowned dragon (deadKind -1) let another machine drown a second pet; any
-   drowning today now blocks the next. At format 22 the full-pen reward is not
-   drowned itself: the water takes a pen pet, which breaks the set instead. */
+/* One drowning a day: any drowning today blocks the next (graveDay, not deadKind, so
+   a drowned dragon counts too). The full-pen reward is not drowned itself: the water
+   takes a pen pet, which breaks the set instead. */
 async function killPet(p) {
   if (p.graveDay === todayKey()) return null;
   let k = petKindFor(p), byLot = false;
-  if (k < 0 || !has(p.pets, k) || (aliveRule() && k === C.HOMUNCULUS_KIND)) { k = pickVictim(p); byLot = true; }
+  if (k < 0 || !has(p.pets, k) || k === C.HOMUNCULUS_KIND) { k = pickVictim(p); byLot = true; }
   if (k < 0 || !has(p.pets, k)) return null;
   const hue = Number(p.pets[String(k)]);
   delete p.pets[String(k)];
@@ -294,9 +301,8 @@ async function killPet(p) {
 
 /* Today's pet events are a function of today's totals, not a ratchet. Runs for
    every active person after each load and each action. */
-/* Format 22: the full-pen reward follows the pen. Returns true when it changed. */
+/* The full-pen reward follows the pen. Returns true when it changed. */
 export async function syncHomunculus(p) {
-  if (!aliveRule()) return false;
   const H = String(C.HOMUNCULUS_KIND), holds = has(p.pets, H), whole = penComplete(p);
   if (holds && !whole) {
     delete p.pets[H];
@@ -306,7 +312,7 @@ export async function syncHomunculus(p) {
     return true;
   }
   if (!holds && whole) {
-    const revived = isGrave(p, H) ? [H] : null;              /* an old grave of it, from R55 days */
+    const revived = isGrave(p, H) ? [H] : null;              /* an old grave of it, from before this rule */
     if (revived) delete p.graves[H];
     grantHomunculus(p);
     if (!(await saveParticipant(p, null, null, revived))) return false;
@@ -318,7 +324,7 @@ export async function syncHomunculus(p) {
 
 /* The second pen opens, for good, the first time all 25 are alive at once. */
 export async function openPen2(p) {
-  if (!aliveRule() || p.pen2 || !penComplete(p)) return false;
+  if (p.pen2 || !penComplete(p)) return false;
   p.pen2 = todayKey();
   if (!(await saveParticipant(p, null))) { delete p.pen2; return false; }
   bus.msg(p.name + " opened the second pen: " + C.PET_COUNT + " new pets to find. Rolls and Plinko come from it now.", true);
@@ -371,7 +377,7 @@ export async function equipPet(name, kind) {
 }
 
 /* Rarity text for the activity feed. The reward and the one outside the pen have
-   no bin (R55 showed them as Common). */
+   no bin (once shown as Common). */
 export function rarityLabel(k) {
   if (k === C.HOMUNCULUS_KIND) return "reward";
   if (k === C.MYSTERY_KIND) return "not in the pen";

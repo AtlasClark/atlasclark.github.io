@@ -1,120 +1,97 @@
-/* Pet events: for every active person, pour to the goal, past the cap, then undo
-   twice, and compare the pet state after each step with what R55 does. Two cases
-   where the web build deliberately differs are pinned down at the end. */
+/* Pet events: the seeded daily roll is pinned to a recorded sample, and for every
+   active person a pour to the goal, past the cap, then two undos must roll, drown,
+   revive and take the roll back, leaving everyone else alone. */
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { skipReason, readDataFiles, backupDay, setToday, loadR55, loadWeb, web, Diff, clone, dayKeys } from "./lib/bridge.mjs";
+import { skipReason, readDataFiles, backupDay, setToday, loadWeb, web, clone, dayKeys } from "./lib/bridge.mjs";
 
-const FIELDS = ["pets", "graves", "equippedPet", "petRollDay", "rollKind", "rollWasNew", "lastRoll", "prevRoll", "graveDay", "deadKind"];
+const FIELDS = ["pets", "graves", "equippedPet", "petRollDay", "rollKind", "rollWasNew", "graveDay", "deadKind"];
 const petState = p => Object.fromEntries(FIELDS.map(f => [f, f === "pets" || f === "graves" ? sortKeys(p[f]) : p[f]]));
 const sortKeys = o => Object.fromEntries(Object.keys(o || {}).sort((a, b) => a - b).map(k => [k, o[k]]));
+const own = (p, k) => Object.prototype.hasOwnProperty.call(p.pets || {}, String(k));
 
-/* The pet half of R55's updateGlasses, for one person, as a fresh window sees it. */
-function r55Reconcile(ctx, p) {
-  const key = ctx.todayKey(), total = ctx.totalOn(p, key), goal = ctx.personalGoal(p, key);
-  const danger = ctx.pastCap(total, p, key);
-  if (ctx.metGoal(total, goal)) ctx.maybeRollPet(p);
-  if (p.graveDay === key && Number(p.deadKind) >= 0 && !danger) ctx.revivePet(p);
-  if (p.petRollDay === key && Number(p.rollKind) >= 0 && !ctx.metGoal(total, goal)) ctx.undoRoll(p);
-  if (danger) {
-    const victim = ctx.ownsEquipped(p) ? ctx.petKindFor(p) : ctx.pickVictim(p);
-    if (victim >= 0 && p.pets && Object.prototype.hasOwnProperty.call(p.pets, String(victim))) ctx.killPet(p);
+/* Recorded from rev 1.22.1. Changing dayRng or
+   the draw order changes everyone's pets, so these must not move. */
+const DRAWS = {"Ada|2026-01-05":[286351684,889396478,217281362],"Ada|2026-10-21":[92551405,495032049,851329485],
+  "Ada|2026-10-21#reroll":[175085746,223209410,849037965],"Bo|2026-01-05":[587900757,42267416,583126017],
+  "Bo|2026-10-21":[394100383,305715339,658997536],"Bo|2026-10-21#reroll":[687391601,868913013,381739022],
+  "Casey Long-Name|2026-01-05":[849888252,169293375,519940062],"Casey Long-Name|2026-10-21":[656087973,774928812,161061063],
+  "Casey Long-Name|2026-10-21#reroll":[838573920,265199199,546466216]};
+const ROLLS = [["Ada","2026-01-05",17,208],["Ada","2026-03-17",7,87],["Ada","2026-10-21",9,216],["Bo","2026-01-05",7,65],
+  ["Bo","2026-03-17",8,212],["Bo","2026-10-21",8,331],["Casey Long-Name","2026-01-05",7,220],["Casey Long-Name","2026-03-17",0,331],
+  ["Casey Long-Name","2026-10-21",4,324],["Dee","2026-01-05",23,288],["Dee","2026-03-17",23,205],["Dee","2026-10-21",4,150]];
+
+test("rolls: the seeded draws and a fresh pen's rolls match the recorded sample", () => {
+  for (const [k, want] of Object.entries(DRAWS)) {
+    const [name, key] = k.split("|"), r = web.pets.dayRng(name, key);
+    assert.deepEqual([r(), r(), r()].map(v => Math.round(v * 1e9)), want, k);
   }
-}
-
-async function both(files, day) {
-  setToday(day);
-  const r = loadR55(files);
-  const w = await loadWeb(files);
-  return { ctx: r.ctx, S: w.S };
-}
+  for (const [name, key, kind, hue] of ROLLS) {
+    const r = web.pets.applyRoll({ name, pets: {}, entries: [] }, web.pets.dayRng(name, key), key);
+    assert.deepEqual([r.kind, r.hue], [kind, hue], name + " " + key);
+  }
+});
 
 function entry(day, n, oz) {
   return { eid: "t:" + day + ":" + n, ts: day + "T13:0" + n + ":00", date: day, oz, by: "test" };
 }
+async function pour(p, e) { p.entries.push(clone(e)); await web.store.saveParticipant(p, null); await web.pets.reconcilePets(); }
+async function unpour(p, eid) { p.entries = p.entries.filter(x => x.eid !== eid); await web.store.saveParticipant(p, [eid]); await web.pets.reconcilePets(); }
 
-async function pour(ctx, rp, wp, e) {
-  rp.entries.push(clone(e)); ctx.saveParticipant(rp, null); ctx.dataChanged();
-  wp.entries.push(clone(e)); await web.store.saveParticipant(wp, null);
-}
-async function unpour(ctx, rp, wp, eid) {
-  rp.entries = rp.entries.filter(x => x.eid !== eid); ctx.saveParticipant(rp, [eid]); ctx.dataChanged();
-  wp.entries = wp.entries.filter(x => x.eid !== eid); await web.store.saveParticipant(wp, [eid]);
-}
-
-for (const shift of [0, 1]) test("roll, drown, revive and roll-back match R55 for every active person" +
-                                  (shift ? " (next day, fresh rolls)" : " (backup day)"), { skip: skipReason }, async () => {
-  const files = readDataFiles(), day = dayKeys(backupDay(files), "2099-01-01")[shift], d = new Diff();
-  let rolls = 0;
-  const { ctx: probe } = await both(files, day);
-  const names = probe.participants.filter(p => probe.isActive(p)).map(p => p.name);
+test("goal, cap and undo: roll, drown, revive and take back, for every active person", { skip: skipReason }, async () => {
+  const files = readDataFiles(), day = dayKeys(backupDay(files), "2099-01-01")[1];   /* a fresh day */
+  setToday(day);
+  const probe = await loadWeb(files), M = web.model;
+  const names = probe.S.participants.filter(p => M.isActive(p)).map(p => p.name);
   assert.ok(names.length > 0);
-
   for (const name of names) {
-    const { ctx, S } = await both(files, day);       /* fresh copy per person */
-    const M = web.model, rp = ctx.findParticipant(name), wp = M.findParticipant(name);
-    const others = () => S.participants.filter(p => p.name !== name).map(petState);
-    const before = others();
-    d.eq(name + " start", petState(rp), petState(wp));
-
-    const step = async label => {
-      r55Reconcile(ctx, rp);
-      await web.pets.reconcilePets();
-      d.eq(name + " " + label, petState(rp), petState(wp));
-    };
-    const total = () => ctx.totalOn(rp, day), goal = ctx.personalGoal(rp, day);
-    const toGoal = Math.max(0.5, Math.ceil(goal - total()) + 0.5);
-    await pour(ctx, rp, wp, entry(day, 1, toGoal));
-    await step("at goal");
-    if (wp.petRollDay === day) rolls++;
-    const toCap = Math.ceil(ctx.capFor(rp, day) - total()) + 5;
-    await pour(ctx, rp, wp, entry(day, 2, toCap));
-    await step("past cap");
-    await unpour(ctx, rp, wp, "t:" + day + ":2");
-    await step("back under cap");
-    await unpour(ctx, rp, wp, "t:" + day + ":1");
-    await step("back under goal");
-    d.eq(name + " nobody else touched", before, others());
+    const { S } = await loadWeb(files);                                /* fresh copy per person */
+    const p = M.findParticipant(name), others = () => S.participants.filter(x => x.name !== name).map(petState);
+    const before = others(), start = petState(p);
+    const total = () => M.totalOn(p, day);
+    await pour(p, entry(day, 1, Math.max(0.5, Math.ceil(M.personalGoal(p, day) - total()) + 0.5)));
+    assert.equal(p.petRollDay, day, name + ": the goal rolls a pet");
+    const hadPet = Object.keys(p.pets).some(k => Number(k) !== web.C.HOMUNCULUS_KIND);
+    await pour(p, entry(day, 2, Math.ceil(M.capFor(p, day) - total()) + 5));
+    if (hadPet) assert.equal(p.graveDay, day, name + ": past the cap a pet drowns");
+    const lostDragon = p.graveDay === day && Number(p.deadKind) < 0;   /* a drowned dragon is gone for good */
+    await unpour(p, "t:" + day + ":2");
+    if (lostDragon) assert.equal(p.graveDay, day, name + ": the dragon does not come back");
+    else assert.notEqual(p.graveDay, day, name + ": back under the cap it comes back");
+    await unpour(p, "t:" + day + ":1");
+    assert.notEqual(p.petRollDay, day, name + ": back under the goal the roll is taken back");
+    const end = petState(p);
+    if (lostDragon) delete start.pets[String(web.C.MYSTERY_KIND)];
+    assert.deepEqual(end.pets, start.pets, name + ": pets as they were");
+    assert.deepEqual(end.graves, start.graves, name + ": graves as they were");
+    assert.deepEqual(others(), before, name + ": nobody else touched");
   }
-  assert.equal(d.list.length, 0, d.report());
-  if (shift) assert.equal(rolls, names.length, "everyone rolls on a fresh day");
 });
 
-test("R55 keeps the dragon after it is put away; the web build lets it go", { skip: skipReason }, async () => {
+test("the dragon is lost once it is put away", { skip: skipReason }, async () => {
   const files = readDataFiles(), day = backupDay(files);
-  const { ctx } = await both(files, day);
-  const holder = ctx.participants.find(p => Object.prototype.hasOwnProperty.call(p.pets, "26"));
-  if (!holder) return;                                /* nobody holds it in this data */
-  const wp = web.model.findParticipant(holder.name);
-  holder.equippedPet = 26; wp.equippedPet = 26;
-
-  ctx.equipPet(holder.name, 26);                     /* take it off */
-  await web.pets.equipPet(holder.name, 26);
-  assert.equal(holder.equippedPet, -1);
-  assert.equal(wp.equippedPet, -1);
-  assert.ok(Object.prototype.hasOwnProperty.call(holder.pets, "26"), "R55 restores it from disk in the merge");
-  assert.ok(!Object.prototype.hasOwnProperty.call(wp.pets, "26"), "web removes it");
+  setToday(day);
+  const { S } = await loadWeb(files);
+  const p = S.participants.find(x => web.model.isActive(x));
+  p.pets["26"] = 0; p.equippedPet = 26;
+  await web.store.saveParticipant(p, null);
+  await web.pets.equipPet(p.name, 26);                                /* take it off */
+  assert.equal(p.equippedPet, -1);
+  assert.ok(!own(p, 26), "gone, not kept");
 });
 
-test("after a dragon drowns, the web build does not drown a second pet the same day", { skip: skipReason }, async () => {
+test("after a dragon drowns, no second pet drowns the same day", { skip: skipReason }, async () => {
   const files = readDataFiles(), day = backupDay(files);
-  const { ctx } = await both(files, day);
-  const rp = ctx.participants.find(p => ctx.isActive(p) && Object.keys(p.pets).some(k => k !== "26"));
-  const wp = web.model.findParticipant(rp.name);
-  for (const p of [rp, wp]) { p.pets["26"] = 0; p.equippedPet = 26; }
-  ctx.saveParticipant(rp, null); await web.store.saveParticipant(wp, null);
-  const oz = Math.ceil(ctx.capFor(rp, day) - ctx.totalOn(rp, day)) + 5;
-  await pour(ctx, rp, wp, entry(day, 3, oz));
-
-  r55Reconcile(ctx, rp);                             /* this window drowns the dragon */
-  await web.pets.reconcilePets();
-  assert.equal(rp.graveDay, day); assert.equal(wp.graveDay, day);
-  assert.equal(Object.keys(rp.graves).length, Object.keys(wp.graves).length);
-
-  const gravesBefore = Object.keys(wp.graves).length;
-  r55Reconcile(ctx, rp);                             /* another window, same day */
-  await web.pets.reconcilePets();
-  assert.equal(Object.keys(rp.graves).length, gravesBefore + 1, "R55 drowns a second pet");
-  assert.equal(Object.keys(wp.graves).length, gravesBefore, "web drowns nothing more");
+  setToday(day);
+  const { S } = await loadWeb(files), M = web.model;
+  const p = S.participants.find(x => M.isActive(x) && Object.keys(x.pets).some(k => k !== "26"));
+  p.pets["26"] = 0; p.equippedPet = 26;
+  await web.store.saveParticipant(p, null);
+  await pour(p, entry(day, 3, Math.ceil(M.capFor(p, day) - M.totalOn(p, day)) + 5));
+  assert.equal(p.graveDay, day);
+  assert.ok(!own(p, 26), "the dragon went under");
+  const graves = Object.keys(p.graves).length;
+  await web.pets.reconcilePets();                                     /* another window, same day */
+  assert.equal(Object.keys(p.graves).length, graves, "nothing more drowns");
 });

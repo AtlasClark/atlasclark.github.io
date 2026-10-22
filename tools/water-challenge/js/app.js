@@ -13,7 +13,7 @@ import { startLive, onLive, emit } from "./live.js";
 import { loadPetDefs, useFolderDefs, useSiteDefs } from "./petdefs.js";
 import { bottleOn, bottleCfg, signedIn, loadBottle, setRelay, newRelayKey, pingRelay, signIn, signOut, fetchSips, applySips } from "./bottle.js";
 import { openRadial, wireRadial } from "./radial.js";
-import { initShop, renderShop, shopTabChanged, openShopFor } from "./shopui.js";
+import { initShop, renderShop, shopTabChanged } from "./shopui.js";
 import { ui, render, setTab, setMsg, showBanner, tickMasks, relayout, forceRebuild, resetIcons,
          toggleSwatches, openBank, auditStreak, showDiag, closeOverlays, fillSettings, renderRoster,
          renderActivityNow, showUnlock, uiHooks } from "./ui.js";
@@ -97,10 +97,6 @@ async function refresh() {
   if (backedUp !== todayKey()) {   /* before anything is written today */
     try { await store.backupIfDue(todayKey()); backedUp = todayKey(); }
     catch (e) { store.diagNote("backup failed: " + (e.message || e)); }
-  }
-  if (S.folderFormat > (Number(S.settings.formatRev) || C.LEGACY_FORMAT)) {
-    store.diagNote("restoring formatRev " + S.folderFormat + " in " + C.SETTINGS_FILE);
-    await store.saveSettings();
   }
   await reconcile();
   lastSig = await store.folderSignature();
@@ -288,7 +284,6 @@ function askIdentity(first) {
         S.me = v;
         S.mine = $("whoMine").value;
         try { await store.kvSet("me", v); await store.kvSet("mine", S.mine); } catch { }
-        if (S.mine) openShopFor(S.mine);
       }
       if (first && S.mine === null) { S.mine = ""; try { await store.kvSet("mine", ""); } catch { } }   /* asked once */
       if (!S.me) S.me = "unknown";
@@ -500,25 +495,23 @@ async function applySettings() {
   });
 }
 
-async function upgradeFormat() {
-  if (!guard()) return;
-  if (S.folderFormat >= C.FORMAT_REV) return;
-  const ok = await askConfirm("Upgrade this folder to format " + C.FORMAT_REV + "?",
-    "Only do this on the web-only copy. Every file is rewritten, and the HTA must not touch this folder afterwards.", "Upgrade");
-  if (!ok) return;
-  await store.serial(async () => {
-    try {
-      const n = await store.upgradeFolder();
-      setMsg("Folder upgraded to format " + C.FORMAT_REV + ". " + n + " files rewritten.", true);
-    } catch (e) {
-      setMsg("Upgrade stopped: " + (e.message || e) + ". Reload and retry.", false);
-    }
-    await refresh();
-  });
-  fillSettings();
+/* Which cards are folded is remembered in this browser. */
+const SP_KEY = "awc-settings-cards";
+function restoreCards() {
+  let st = {};
+  try { st = JSON.parse(localStorage.getItem(SP_KEY) || "{}") || {}; } catch { }
+  for (const d of document.querySelectorAll("#settingsPanel .sp-card")) if (d.dataset.card in st) d.open = !!st[d.dataset.card];
 }
-
-function openSettings() { fillSettings(); fillBottle(); $("settingsPanel").hidden = false; $("cog").setAttribute("aria-expanded", "true"); $("goalVal").focus(); }
+function rememberCards() {
+  const st = {};
+  for (const d of document.querySelectorAll("#settingsPanel .sp-card")) st[d.dataset.card] = d.open;
+  try { localStorage.setItem(SP_KEY, JSON.stringify(st)); } catch { }
+}
+function openSettings() {
+  fillSettings(); fillBottle(); restoreCards();
+  $("settingsPanel").hidden = false; $("cog").setAttribute("aria-expanded", "true");
+  ($("settingsPanel").querySelector(".sp-card[open] input") || $("spClose")).focus();
+}
 function closeSettings() { $("settingsPanel").hidden = true; $("cog").setAttribute("aria-expanded", "false"); }
 
 /* ---- events ------------------------------------------------------------- */
@@ -530,13 +523,14 @@ function wire() {
   $("tab-history").onclick = () => tab("history");
   $("tab-pets").onclick = () => tab("pets");
   $("tab-shop").onclick = () => tab("shop");
-  $("bankShop").onclick = () => { openShopFor($("bankShop").dataset.name); closeOverlays(); tab("shop"); };
+  $("bankShop").onclick = () => { closeOverlays(); tab("shop"); };
   uiHooks.renderShop = renderShop;
   uiHooks.bottle = bottleView;
-  initShop({ settle, guard, askConfirm, pollSoon });
+  initShop({ settle, guard, askConfirm, pollSoon, whoAmI: () => askIdentity(false) });
   $("cog").onclick = () => $("settingsPanel").hidden ? openSettings() : closeSettings();
+  $("spClose").onclick = closeSettings;
+  for (const d of document.querySelectorAll("#settingsPanel .sp-card")) d.addEventListener("toggle", rememberCards);
   $("applySettings").onclick = applySettings;
-  $("upgradeBtn").onclick = upgradeFormat;
   $("settingsPanel").addEventListener("keydown", e => { if (e.key === "Enter" && e.target.tagName === "INPUT") applySettings(); });
   $("pname").addEventListener("keydown", e => { if (e.key === "Enter") addParticipant(); });
   $("addP").onclick = addParticipant;

@@ -4,7 +4,7 @@
 import * as C from "./config.js";
 import { S, findParticipant, activeParticipants, tokensEarned, capBonus } from "./model.js";
 import * as store from "./store.js";
-import { shopOpen, balance, spentTotal, priceOf, rerollBlock, reroll, plinkoBlock, plinkoPlay, plinkoOdds, chestOdds, buyBlock, buy, chestWinnings } from "./shop.js";
+import { balance, spentTotal, priceOf, rerollBlock, reroll, plinkoBlock, plinkoPlay, plinkoOdds, chestOdds, buyBlock, buy, chestWinnings } from "./shop.js";
 import { landed as landedIds, setFlying, HOLD_MS, hiddenPets, shownBalance, shownChest, anyPending, rollHoldLeft } from "./reveal.js";
 import { onLive, emit } from "./live.js";
 import { petLabel, petGridOrder, rarityLabel, petBinIndex, isGrave, announce, penOf, pen2Open, penAlive } from "./pets.js";
@@ -23,14 +23,7 @@ export function initShop(h) {
   $("plinkoOdds").innerHTML = plinkoOdds().map((v, i) =>
     '<span class="rar r' + i + '">' + esc(C.PET_BINS[i].name) + '</span> ' + pct(v)).join(" &middot; ") +
     ' &middot; <span class="rar chest">&#9733; Chest</span> ' + pct(chestOdds());
-  try { ui.shopFor = localStorage.getItem("awc-shop-for") || ""; } catch { }
-  $("shopWho").addEventListener("click", e => {
-    const b = e.target.closest("[data-who]");
-    if (!b) return;
-    ui.shopFor = b.dataset.who;
-    try { localStorage.setItem("awc-shop-for", ui.shopFor); } catch { }
-    renderShop();
-  });
+  $("shopBalance").addEventListener("click", e => { if (e.target.closest("[data-act=whoami]")) hooks.whoAmI(); });
   $("plinkoDrop").addEventListener("click", dropToken);
   $("rerollBox").addEventListener("click", e => { if (e.target.closest("#rerollBtn")) doReroll(); });
   $("buyPens").addEventListener("click", e => {
@@ -51,29 +44,29 @@ export function initShop(h) {
   });
 }
 
+/* A browser spends only its own glass's tokens ("your glass", set with the name), so
+   nobody spends someone else's by a stray click. The other chips just show balances. */
 export function shopFor() {
-  let p = ui.shopFor && findParticipant(ui.shopFor);
-  if (!p) p = (S.mine && findParticipant(S.mine)) || activeParticipants()[0] || S.participants[0] || null;
-  return p;
+  return (S.mine && findParticipant(S.mine)) || null;
 }
-
-export function openShopFor(name) { ui.shopFor = name; try { localStorage.setItem("awc-shop-for", name); } catch { } }
 
 /* ---- rendering ------------------------------------------------------------ */
 export function renderShop() {
-  const open = shopOpen();
-  $("shopClosed").hidden = open;
-  $("shopMain").hidden = !open;
-  if (!open) return;
   ensureIcons();
   if (!board) board = new PlinkoBoard($("plinkoCanvas"), landed);
   else if (Math.abs(board.w - Math.min(460, $("plinkoWrap").clientWidth)) > 4) board.resize($("plinkoWrap").clientWidth);
   const p = shopFor();
-  if (!p) { $("shopBalance").textContent = "Nobody on the roster yet."; return; }
-
   $("shopWho").innerHTML = S.participants.map(x =>
-    '<button type="button" class="who-chip' + (x === p ? " on" : "") + '" data-who="' + esc(x.name) + '" style="--pc:' + x.color + '">' +
+    '<button type="button" class="who-chip' + (x === p ? " on" : "") + '" style="--pc:' + x.color + '"' +
+    (x === p ? '' : ' disabled title="Only ' + esc(x.name) + '&rsquo;s own browser can spend these"') + '>' +
     '<i class="dot" style="background:' + x.color + '"></i>' + esc(x.name) + '<b>' + shownBalance(x) + '</b></button>').join("");
+  $("shopGrid").hidden = !p;
+  if (!p) {
+    $("shopBalance").innerHTML = S.participants.length
+      ? 'Set <b>your glass</b> to shop: tokens are spent only from your own. <button type="button" class="btn primary small" data-act="whoami">Pick your glass</button>'
+      : "Nobody on the roster yet.";
+    return;
+  }
   const bonus = capBonus(p), bal = shownBalance(p), fromChest = chestWinnings(p) - (balance(p) - bal);
   $("shopBalance").innerHTML = '<span class="coin"></span><b>' + bal + '</b> token' + (bal === 1 ? '' : 's') +
     ' <span class="dim">&middot; ' + tokensEarned(p) + ' for goal days' + (bonus ? ' + ' + bonus + ' cap bonus' : '') +

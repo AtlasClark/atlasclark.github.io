@@ -1,12 +1,12 @@
-/* The shared folder. Reads and writes the same files as R55 through the File System
-   Access API (Chrome/Edge). The folder handle and identity are kept in IndexedDB on
-   this origin only; challenge data never leaves the share.
+/* The shared folder, through the File System Access API (Chrome/Edge). The folder
+   handle and identity are kept in IndexedDB on this origin only; challenge data never
+   leaves the share.
 
-   Interop rules with the HTA:
-   - UTF-16 LE with BOM in both directions (FSO unicode mode).
-   - Sidecar "<file>.lock" files, stolen after LOCK_STALE_MS, same as withLock() in R55.
+   File rules, for every page on the folder:
+   - JSON in UTF-16 LE with BOM.
+   - Sidecar "<file>.lock" files, stolen after LOCK_STALE_MS.
    - Read-merge-write inside the lock, so a stale view never paints over a pour.
-   - Exactly the R55 field set is written; nothing is added. */
+   - Fields this build does not know are kept, so a newer build's data survives. */
 
 import * as C from "./config.js";
 import { S, dataChanged, currentGoalFor, currentGoal, currentAnnualGoal, currentIdleMax,
@@ -102,7 +102,7 @@ async function writeText(name, text, d = dir) {
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 /* The API has no create-if-absent, so this is check, create, then read back our
-   token. The merge inside the lock covers the rest, as it does for the HTA. */
+   token. The merge inside the lock covers the rest. */
 async function withLock(fileName, fn) {
   const lockName = fileName + ".lock";
   const token = "web " + (S.me || "?") + " " + Date.now() + " " + Math.random().toString(36).slice(2);
@@ -138,7 +138,7 @@ async function withLock(fileName, fn) {
 export function safeFileName(name) { return String(name).replace(/[\\\/:\*\?"<>\|\.]/g, "_"); }
 export function participantFileName(name) { return safeFileName(name) + ".json"; }
 
-/* ---- serialisers (same field order and layout as R55's toJson) ---------- */
+/* ---- serialisers --------------------------------------------------------- */
 const q = s => JSON.stringify(String(s === undefined || s === null ? "" : s).replace(/[\r\n]/g, " "));
 function mapJson(map) {
   const out = [];
@@ -160,9 +160,8 @@ function extraFields(p) {
   return Object.keys(p).filter(k => !k.startsWith("_") && !C.KNOWN_FIELDS.includes(k));
 }
 
-/* At format 21 the output is byte-for-byte R55's toJson (bar the writer stamp). */
-export function toJson(p, fmt = S.folderFormat) {
-  const out = [], v22 = fmt >= 22;
+export function toJson(p) {
+  const out = [], spends = p.spends || [];
   out.push('{\n  "name": ' + q(p.name) + ',');
   out.push('\n  "color": ' + q(p.color) + ',');
   out.push('\n  "goal": ' + Number(currentGoalFor(p)) + ',');
@@ -179,16 +178,13 @@ export function toJson(p, fmt = S.folderFormat) {
   out.push('\n  "rollKind": ' + n1(p.rollKind) + ',');
   out.push('\n  "rollWasNew": ' + (p.rollWasNew ? "true" : "false") + ',');
   out.push('\n  "deadKind": ' + n1(p.deadKind) + ',');
-  if (v22) {
-    const spends = p.spends || [];
-    out.push('\n  "tokensSpent": ' + spends.reduce((a, s) => a + (Number(s.cost) || 0), 0) + ',');
-    out.push('\n  "rerollDay": ' + q(p.rerollDay || "") + ',');
-    out.push('\n  "rollLog": ' + JSON.stringify(p.rollLog || {}) + ',');
-    out.push('\n  "graveLog": ' + JSON.stringify(p.graveLog || {}) + ',');
-    out.push('\n  "spends": [' + spends.map(s => '\n    ' + JSON.stringify(s)).join(",") + (spends.length ? '\n  ' : '') + '],');
-    for (const k of extraFields(p)) out.push('\n  ' + JSON.stringify(k) + ': ' + JSON.stringify(p[k]) + ',');
-  }
-  out.push('\n  "writerRev": ' + (v22 ? C.FORMAT_REV : C.LEGACY_FORMAT) + ',');
+  out.push('\n  "tokensSpent": ' + spends.reduce((a, s) => a + (Number(s.cost) || 0), 0) + ',');
+  out.push('\n  "rerollDay": ' + q(p.rerollDay || "") + ',');
+  out.push('\n  "rollLog": ' + JSON.stringify(p.rollLog || {}) + ',');
+  out.push('\n  "graveLog": ' + JSON.stringify(p.graveLog || {}) + ',');
+  out.push('\n  "spends": [' + spends.map(s => '\n    ' + JSON.stringify(s)).join(",") + (spends.length ? '\n  ' : '') + '],');
+  for (const k of extraFields(p)) out.push('\n  ' + JSON.stringify(k) + ': ' + JSON.stringify(p[k]) + ',');
+  out.push('\n  "writerRev": ' + C.FORMAT_REV + ',');
   out.push('\n  "writerVersion": ' + q(C.APP_VERSION) + ',');
   out.push('\n  "writerUser": ' + q(S.me) + ',');
   out.push('\n  "writtenAt": ' + q(localStamp(new Date())) + ',');
@@ -337,9 +333,6 @@ export async function loadSettings() {
     if (Number(o.goalWindowDays) > 0) s.goalWindowDays = Math.floor(Number(o.goalWindowDays));
     if (o.legacyFlatUntil !== undefined) s.legacyFlatUntil = String(o.legacyFlatUntil);
     if (Number(o.legacyGoalOz) > 0) s.legacyGoalOz = Number(o.legacyGoalOz);
-    if (Number(o.formatRev) > 0) s.formatRev = Math.floor(Number(o.formatRev));
-    if (o.upgradedAt) s.upgradedAt = String(o.upgradedAt);
-    if (o.upgradedBy) s.upgradedBy = String(o.upgradedBy);
     if (typeof o.title === "string") s.title = o.title.trim().slice(0, C.TITLE_MAX);
     if (typeof o.tagline === "string") s.tagline = o.tagline.trim().slice(0, C.TAGLINE_MAX);
     if (o.minGoalOz === undefined || o.goalFactor === undefined || o.minGoalDays === undefined ||
@@ -363,12 +356,8 @@ export async function saveSettings() {
     ',\n  "legacyFlatUntil": ' + q(L.until) +
     ',\n  "legacyGoalOz": ' + Number(L.goal) +
     ',\n  "goalSetAt": ' + q(S.settings.goalSetAt || "") +
-    (S.folderFormat >= 22
-      ? ',\n  "formatRev": ' + S.folderFormat +
-        ',\n  "upgradedAt": ' + q(S.settings.upgradedAt || "") +
-        ',\n  "upgradedBy": ' + q(S.settings.upgradedBy || "")
-      : '') +
-    (S.settings.title ? ',\n  "title": ' + q(S.settings.title) : '') +       /* only when set: unset stays R55's bytes */
+    ',\n  "formatRev": ' + C.FORMAT_REV +
+    (S.settings.title ? ',\n  "title": ' + q(S.settings.title) : '') +
     (S.settings.tagline ? ',\n  "tagline": ' + q(S.settings.tagline) : '') +
     ',\n  "updatedBy": ' + q(S.me) +
     ',\n  "updatedAt": ' + q(localStamp(new Date())) + '\n}\n';
@@ -382,24 +371,8 @@ export async function saveSettings() {
 }
 
 /* ---- loading ------------------------------------------------------------ */
-function noteWriter(obj) {
-  const rev = Number(obj.writerRev || 0), ver = obj.writerVersion || "";
-  if (rev === S.folderFormat) {
-    if (!ver || ver === C.APP_VERSION) return;
-    if (C.PEER_VERSIONS.includes(ver)) { S.peerWriters.push({ name: obj.name, ver, user: obj.writerUser || "unknown" }); return; }
-    S.driftWriters.push({ name: obj.name, ver, user: obj.writerUser || "unknown" });
-    return;
-  }
-  if (rev > C.FORMAT_REV) S.newerRevSeen = true;
-  if (rev > S.folderFormat) return;     /* a newer build: flagged above, not stale */
-  S.staleWriters.push({ name: obj.name,
-                        label: (obj.writerVersion ? obj.writerVersion + ", " : "") + (rev ? "format r" + rev : "unstamped"),
-                        user: obj.writerUser || "unknown", at: obj.writtenAt || "" });
-}
-
 export async function loadAll() {
   const list = [], prev = {};
-  S.staleWriters = []; S.driftWriters = []; S.peerWriters = [];
   S.newerRevSeen = false; S.loadRecovered = 0; S.loadFailed = 0;
   if (!dir) return list;
   /* A file caught mid-write falls back to the last good copy, so nobody drops out
@@ -442,33 +415,10 @@ export async function loadAll() {
       else { S.loadFailed++; note("unreadable " + name + ": " + (e.message || e)); }
     }
   }
-  /* The folder's format: what _settings.json says, or higher if any file was
-     written higher (R55 strips formatRev when it saves settings). */
-  let fmt = Number(S.settings.formatRev) || C.LEGACY_FORMAT;
-  for (const o of list) {
-    const r = Number(o.writerRev) || 0;
-    if (r > fmt && r <= C.FORMAT_REV) fmt = r;
-  }
-  S.folderFormat = fmt;
-  for (const o of list) noteWriter(o);
+  /* A file from a newer format: this page is out of date (the banner says reload). */
+  S.newerRevSeen = list.some(o => Number(o.writerRev) > C.FORMAT_REV);
   list.sort((a, b) => a.name < b.name ? -1 : 1);
   return list;
-}
-
-/* One-way: raise the folder to FORMAT_REV and rewrite every file at it. */
-export async function upgradeFolder() {
-  S.folderFormat = C.FORMAT_REV;
-  S.settings.formatRev = C.FORMAT_REV;
-  S.settings.upgradedAt = localStamp(new Date());
-  S.settings.upgradedBy = S.me;
-  if (!(await saveSettings())) throw new Error("could not write " + C.SETTINGS_FILE);
-  let n = 0;
-  for (const p of S.participants) {
-    if (!(await saveParticipant(p, null))) throw new Error("could not rewrite " + p.name + " (" + n + " done)");
-    n++;
-  }
-  note("folder upgraded to format " + C.FORMAT_REV + " (" + n + " files)");
-  return n;
 }
 
 /* Cheap change detector: name + size + mtime of every file. */
@@ -500,7 +450,7 @@ export async function participantExists(name) {
 }
 
 /* Moved, not erased: a copy goes to _removed/<name>_<date>.json, then the original
-   is taken out of the data folder. Same outcome as R55's MoveFile. */
+   is taken out of the data folder. */
 export async function moveToRemoved(name) {
   const src = participantFileName(name);
   const sub = await dir.getDirectoryHandle(C.REMOVED_SUBDIR, { create: true });

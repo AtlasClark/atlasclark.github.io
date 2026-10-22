@@ -688,7 +688,7 @@ function petTab() {
   const k = W.kind, d = app.def, p = W.pets[k], r = rarityOf(k);
   return '<h4>' + esc(baseName(k)) + ' <span class="dim">#' + k + ' &middot; ' + esc(r.name) + '</span></h4>' +
     '<div class="row"><label>Name</label><input type="text" data-f="name" data-focus="name" maxlength="24" placeholder="' + esc(baseName(k)) + '" value="' + esc(d.name || "") + '"></div>' +
-    '<p class="note">Leave blank to keep &ldquo;' + esc(baseName(k)) + '&rdquo;. A new name shows on the site; the HTA keeps the old one.</p>' +
+    '<p class="note">Leave blank to keep &ldquo;' + esc(baseName(k)) + '&rdquo;. A new name shows on the site.</p>' +
     '<div class="grid2"><div class="row"><label>Crown</label>' + num("cx", d.crown[0]) + '</div><div class="row"><label>&nbsp;</label>' + num("cy", d.crown[1]) + '</div></div>' +
     '<p class="note">Turn on <b>Crown</b> above to see it; drag the gold diamond to move it.</p>' +
     '<div class="row"><label>Swim range</label><input type="number" data-f="range" data-focus="range" min="0" max="100" step="5" value="' +

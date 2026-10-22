@@ -1,6 +1,6 @@
 /* The token shop: reroll today's pet, Plinko, and buying a species outright.
    Tokens are earned one per goal day (model.tokensEarned) and spent through a log
-   of spends in each person's file, so the shop needs a folder at format 22.
+   of spends in each person's file.
    Every action here saves; callers run them inside store.serial(). */
 
 import * as C from "./config.js";
@@ -9,7 +9,6 @@ import { saveParticipant, petKindFor } from "./store.js";
 import { has, todayKey, localStamp } from "./util.js";
 import { applyRoll, dayRng, grantHomunculus, isGrave, petBinIndex, penOf, binsFor, rollPen, pen2Open } from "./pets.js";
 
-export const shopOpen = () => S.folderFormat >= C.FORMAT_REV;
 export const spentTotal = p => (p.spends || []).reduce((a, s) => a + (Number(s.cost) || 0), 0);
 export const chestWinnings = p => (p.spends || []).reduce((a, s) => a + (s.chest ? Number(s.chest.won) || 0 : 0), 0);
 export const earnedTotal = p => tokensEarned(p) + capBonus(p) + chestWinnings(p);
@@ -42,7 +41,6 @@ const newHue = k => k === C.JOKE_KIND ? 28 : Math.floor(Math.random() * 360);
 /* "" when allowed, otherwise why not. */
 export function rerollBlock(p) {
   const key = todayKey();
-  if (!shopOpen()) return "Needs format " + C.FORMAT_REV + " (Settings › Data format).";
   if (p.petRollDay !== key || !(Number(p.rollKind) >= 0)) return "Reach today's goal first.";
   if (p.rerollDay === key) return "Already rerolled today.";
   /* A new pen species today plus the full-pen reward means today's roll completed
@@ -58,7 +56,7 @@ export function rerollBlock(p) {
    seed with the same odds as any day. Returns { from, res } or null. */
 export async function reroll(p) {
   if (rerollBlock(p)) return null;
-  const key = todayKey(), from = Number(p.rollKind), drop = [];
+  const key = todayKey(), from = Number(p.rollKind), fromFresh = !!p.rollWasNew, drop = [];
   if (p.rollWasNew && has(p.pets, from)) {
     delete p.pets[String(from)];
     drop.push(String(from));
@@ -68,7 +66,7 @@ export async function reroll(p) {
   p.petRollDay = "";
   p.rerollDay = key;
   const res = applyRoll(p, dayRng(p.name, key + "#reroll"), key);
-  spend(p, "reroll", C.REROLL_COST, { pet: res.kind, from, fresh: !!res.fresh });
+  spend(p, "reroll", C.REROLL_COST, { pet: res.kind, from, fromFresh, fresh: !!res.fresh });
   const removed = drop.filter(k => !has(p.pets, k));             /* it may have come up again */
   if (!(await saveParticipant(p, null, removed, null, true))) return null;
   return { from, res };
@@ -76,7 +74,6 @@ export async function reroll(p) {
 
 /* ---- Plinko ---------------------------------------------------------------- */
 export function plinkoBlock(p) {
-  if (!shopOpen()) return "Needs format " + C.FORMAT_REV + " (Settings › Data format).";
   if (balance(p) < C.PLINKO_COST) return "Needs " + C.PLINKO_COST + " token.";
   return "";
 }
@@ -148,7 +145,6 @@ function give(p, k, hue) {
 
 /* ---- buying ---------------------------------------------------------------- */
 export function buyBlock(p, k) {
-  if (!shopOpen()) return "Needs format " + C.FORMAT_REV + " (Settings › Data format).";
   if (penOf(k) === 0) return "Not for sale.";
   if (penOf(k) === 2 && !pen2Open(p)) return "Opens with the second pen.";
   if (has(p.pets, k)) return "Already owned.";

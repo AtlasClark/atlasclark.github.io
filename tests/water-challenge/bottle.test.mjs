@@ -1,4 +1,4 @@
-/* Bottle sync: the R55 rules for turning sips into entries, and the Cloudflare
+/* Bottle sync: the rules for turning sips into entries, and the Cloudflare
    Worker relay (with Hidrate stood in, so nothing goes over the network). */
 
 import { test } from "node:test";

@@ -1,7 +1,6 @@
 /* Water animation. One state object per person, keyed by name, so a poll never
-   restarts a glass. Changes from R55: canvases are sized for devicePixelRatio
-   (sharp on scaled displays), and motion is time-based, so 60 fps runs at the
-   same speed as the HTA's 30 fps, only smoother.
+   restarts a glass. Canvases are sized for devicePixelRatio (sharp on scaled
+   displays), and motion is time-based, so it runs at the same speed at any frame rate.
    Pet motion (turns, hops, dives, the drop-in) and the pour stream are applied
    around the drawing, never inside the pet shapes, so they survive new graphics. */
 
@@ -22,20 +21,13 @@ export function setActive(on) {
 }
 
 /* ---- layout ------------------------------------------------------------- */
-/* Fewest rows whose cards stay at least CARD_COMFORT wide; if none does, the
-   widest cards on offer. Columns are then n / rows rounded up, so rows even out. */
+/* As many across as stay at least CARD_COMFORT wide (one at the least); the rest wrap. */
 export function pickLayout(count, avail) {
   const n = Math.max(1, count || 0);
-  let best = null;
-  for (let rows = 1; rows <= n; rows++) {
-    const cols = Math.ceil(n / rows);
-    if (cols > C.MAX_COLS || (best && cols === best.cols)) continue;
-    const fit = Math.floor((avail / cols - C.CARD_GAP * 2) / C.CARD_STEP) * C.CARD_STEP;
-    const lay = { cols, rows: Math.ceil(n / cols), card: Math.max(C.CARD_MIN, Math.min(C.CARD_MAX, fit)) };
-    if (fit >= C.CARD_COMFORT) return lay;
-    if (!best || lay.card > best.card) best = lay;
-  }
-  return best;
+  const fitFor = cols => Math.floor((avail / cols - C.CARD_GAP * 2) / C.CARD_STEP) * C.CARD_STEP;
+  let cols = Math.min(n, C.MAX_COLS);
+  while (cols > 1 && fitFor(cols) < C.CARD_COMFORT) cols--;            /* as many across as stay comfortable */
+  return { cols, rows: Math.ceil(n / cols), card: Math.max(C.CARD_MIN, Math.min(C.CARD_MAX, fitFor(cols))) };
 }
 
 export const petR = () => Math.min(dims.W * C.PET_R_SHARE, C.PET_R_MAX);

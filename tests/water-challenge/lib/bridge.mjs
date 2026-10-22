@@ -1,21 +1,17 @@
-/* Test bridge: runs R55's own script (from the .hta) in a Node vm with an in-memory
-   filesystem, and the web modules in this realm with an in-memory folder handle.
-   Both read the same copy of the data, and both clocks can be set to any day.
+/* Test bridge: the web modules with an in-memory folder handle on a copy of the
+   data, and a clock that can be set to any day.
 
-   Inputs (gitignored, local only):
-     AWC_HTA   default AtlasWaterTracker/Atlas_Water_Challenge_R55.hta
+   Input (gitignored, local only):
      AWC_DATA  default AtlasWaterTracker/data                                    */
 
 import fs from "node:fs";
 import path from "node:path";
-import vm from "node:vm";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
-export const HTA_PATH = process.env.AWC_HTA || path.join(ROOT, "AtlasWaterTracker/Atlas_Water_Challenge_R55.hta");
 export const DATA_DIR = process.env.AWC_DATA || path.join(ROOT, "AtlasWaterTracker/data");
-export const available = fs.existsSync(HTA_PATH) && fs.existsSync(DATA_DIR);
-export const skipReason = available ? false : "R55 .hta or data folder not found (set AWC_HTA / AWC_DATA)";
+export const available = fs.existsSync(DATA_DIR);
+export const skipReason = available ? false : "data folder not found (set AWC_DATA)";
 
 /* ---- clock -------------------------------------------------------------- */
 const RealDate = Date;
@@ -26,21 +22,10 @@ class TestDate extends RealDate {
 }
 globalThis.Date = TestDate;
 
-const CLOCK_SRC = `(function () {
-  var Real = Date, off = 0;
-  globalThis.__setOffset = function (o) { off = o; };
-  globalThis.Date = class extends Real {
-    constructor(...a) { if (a.length) super(...a); else super(Real.now() + off); }
-    static now() { return Real.now() + off; }
-  };
-})();`;
-
-let r55ctx = null;
-/* Both realms read noon on the given day. */
+/* The clock reads noon on the given day. */
 export function setToday(key) {
   const [y, m, d] = key.split("-").map(Number);
   offset = new RealDate(y, m - 1, d, 12, 0, 0).getTime() - RealDate.now();
-  if (r55ctx) r55ctx.__setOffset(offset);
 }
 
 /* ---- the data ----------------------------------------------------------- */
@@ -67,54 +52,6 @@ export function backupDay(files) {
     for (const e of JSON.parse(decode(buf)).entries || []) if (e.date > max) max = e.date;
   }
   return max;
-}
-
-/* ---- R55 in a vm --------------------------------------------------------- */
-export function loadR55(files) {
-  const html = fs.readFileSync(HTA_PATH, "utf8");
-  const m = /<script type="text\/javascript">([\s\S]*?)<\/script>/.exec(html);
-  if (!m) throw new Error("no script block in " + HTA_PATH);
-  const disk = new Map();                       /* path -> text */
-  const DIR = "D:\\data";
-  for (const [n, buf] of files) disk.set(DIR + "\\" + n, decode(buf));
-
-  class Enumerator {
-    constructor(list) { this.l = list; this.i = 0; }
-    atEnd() { return this.i >= this.l.length; }
-    moveNext() { this.i++; }
-    item() { return this.l[this.i]; }
-  }
-  const ctx = {
-    console, window: {}, location: { href: "" }, oHTA: {}, Enumerator,
-    document: { getElementById: () => null, attachEvent() {} },
-    ActiveXObject: function () { throw new Error("no ActiveX in tests"); },
-    confirm: () => true
-  };
-  vm.createContext(ctx);
-  vm.runInContext(CLOCK_SRC, ctx);
-  vm.runInContext(m[1], ctx, { filename: "R55.hta.js" });
-
-  const msgs = [];
-  Object.assign(ctx, {
-    fso: {
-      FileExists: p => disk.has(p), FolderExists: () => true, BuildPath: (a, b) => a + "\\" + b,
-      GetFolder: () => ({ Files: [...disk.keys()].filter(p => p.lastIndexOf("\\") === DIR.length)
-                                                 .map(p => ({ Name: p.slice(DIR.length + 1), Path: p, Size: disk.get(p).length, DateLastModified: 0 })) })
-    },
-    readTextFile: p => disk.get(p),
-    writeTextFile: (p, t) => disk.set(p, t),
-    withLock: (p, fn) => { fn(); return true; },
-    currentWindowsUser: () => "r55test",
-    setMsg: t => msgs.push(t), showBanner: () => {}, render: () => {}, splash: () => {},
-    folderSignature: () => "sig",
-    storageOK: true, dataDir: DIR
-  });
-  r55ctx = ctx;
-  ctx.__setOffset(offset);                      /* a new sandbox starts on the current test clock */
-  ctx.loadSettings();
-  ctx.participants = ctx.loadAll();
-  ctx.dataChanged();
-  return { ctx, disk, msgs, DIR };
 }
 
 /* ---- the web modules ---------------------------------------------------- */
@@ -184,19 +121,6 @@ export async function loadWeb(files) {
   web.util.bus.drown = () => {};
   web.util.bus.petReset = () => {};
   return { mem, S, msgs };
-}
-
-/* Collects differences rather than stopping at the first, so one run shows them all. */
-export class Diff {
-  constructor() { this.list = []; }
-  eq(label, a, b) {
-    const ja = JSON.stringify(a), jb = JSON.stringify(b);
-    if (ja !== jb) this.list.push(label + "\n      R55: " + ja + "\n      web: " + jb);
-  }
-  report(limit = 15) {
-    return this.list.length + " difference(s):\n  " + this.list.slice(0, limit).join("\n  ") +
-           (this.list.length > limit ? "\n  ..." : "");
-  }
 }
 
 export const clone = o => JSON.parse(JSON.stringify(o));

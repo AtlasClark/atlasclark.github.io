@@ -10,15 +10,15 @@ import { S, personalGoal, capFor, totalOn, metGoal, pastCap, atCap, dayScoreFor,
          recentDays, topOf, dayRec, dayLeaders, dayResult, wonDay, satOut, tokensEarned,
          duplicateNames, isAway, openAwaySince, goalForDate, petEventTimes, allDateKeys } from "./model.js";
 import { petKindFor, ownsEquipped, graveEquipped, petHueFor, isGrave, gravesOf, petsOwned,
-         graveLine, petLabel, petName, petRarityOf, petBinIndex, petGridOrder, penFound, penWord,
+         graveLine, petLabel, petName, petRarityOf, petBinIndex, petGridOrder, penFound,
          penOf, penKinds, pen2Open, penAlive, penBuried,
-         hashHue, rarityLabel, undoEffect } from "./pets.js";
+         hashHue, rarityLabel, undoEffect, rollOdds } from "./pets.js";
 import { crownSvg, jesterSvg, hatSvg, drawPortrait, drawCritter, drawHeadstone, drawGoldPile, drawCoin } from "./art.js";
 import * as G from "./glass.js";
 import { diag, dir } from "./store.js";
 import { defs as petDefs, hats as petHats, petSource } from "./petdefs.js";
 import { shownKind, hiddenPets, shownBalance, hiddenIds, rollHoldLeft, rollCardDone } from "./reveal.js";
-import { shopOpen, balance, spentTotal, spendsOn, earnedTotal, chestWinnings, shopDay } from "./shop.js";
+import { balance, spentTotal, spendsOn, earnedTotal, chestWinnings, shopDay } from "./shop.js";
 import { $, esc, fmt, fmtOz, fmtGal, todayKey, dateKey, prettyTime, clockStamp, has, parseKey, shiftKey } from "./util.js";
 
 /* Set by app.js: the Shop tab renders from shopui.js, which imports this module. */
@@ -110,10 +110,10 @@ function prettyDate(key) {
 let ordered = [], renderedSig = "";
 
 /* Measured on the section, not the grid: the grid's own width is set from the layout. */
+/* The screen's width less the page padding (clientWidth leaves out the scrollbar),
+   not the page column: the glasses may reach past it on a big screen. */
 function wrapWidth() {
-  const el = $("view-today");
-  const w = el ? el.clientWidth : 0;
-  return Math.max(240, Math.min(C.WRAP_MAX, w || (document.body.clientWidth - C.SHELL_PAD * 2)));
+  return Math.max(240, Math.min(C.WRAP_MAX, document.documentElement.clientWidth - C.SHELL_PAD * 2));
 }
 
 export function relayout() {
@@ -123,7 +123,9 @@ export function relayout() {
 
 function buildGlasses() {
   const T = G.dims;
-  $("glasses").style.maxWidth = (T.cols * (T.card + C.CARD_GAP * 2)) + "px";   /* wrap at exactly cols */
+  const gridW = T.cols * (T.card + C.CARD_GAP * 2), grid = $("glasses");
+  grid.style.width = gridW + "px";                                     /* wrap at exactly cols */
+  grid.style.marginLeft = "calc(50% - " + gridW / 2 + "px)";          /* centred on the page, even when wider than its column */
   const rTop = Math.round(T.gw * 0.106), rBot = Math.round(T.gw * 0.212);
   const radius = rTop + "px " + rTop + "px " + rBot + "px " + rBot + "px";
   const compact = T.card < C.COMPACT_UNDER;
@@ -290,8 +292,9 @@ function renderActivity() {
     for (const e of p.entries) if (e.date === key) pours.push({ p, e, at: atOf(e.ts) });
     const t = petEventTimes(p, key), held = rollHoldLeft(p);
     if (held && held !== Infinity) holdFor = Math.min(holdFor, held);
-    if (p.petRollDay === key && Number(p.rollKind) >= 0 && !held) {
-      pets.push({ kind: "roll", p, pet: Number(p.rollKind), fresh: !!p.rollWasNew, ts: t.roll });
+    const goal = goalRollOn(p, key);
+    if (goal && !(held && !goal.rerolled)) {                     /* a reroll's card never hides the goal's own roll */
+      pets.push({ kind: "roll", p, pet: goal.k, fresh: goal.fresh, ts: t.roll });
     }
     if (p.graveDay === key && Number(p.deadKind) >= 0) pets.push({ kind: "grave", p, pet: Number(p.deadKind), ts: t.grave });
     /* buys and rerolls one row each; Plinko folded to one row per person (a ball
@@ -321,7 +324,7 @@ function renderActivity() {
                                     esc(prettyTime(a.ts)) + '">' + plinkoLine(a.p, a.drops, key, when) + '</li>';
     if (a.kind === "roll") {
       return '<li class="ev-pet">' + '<span class="tag">' + (a.fresh ? "new pet" : "pet") + '</span>' + when +
-             '<strong>' + esc(a.p.name) + '</strong> ' + (a.fresh ? "unlocked the " : "rolled another ") + esc(petLabel(a.pet)) +
+             '<strong>' + esc(a.p.name) + '</strong> ' + rollVerb(a.fresh) + esc(petLabel(a.pet)) +
              ' <span class="rar">' + esc(rarityLabel(a.pet)) + '</span></li>';
     }
     return '<li class="ev-grave"><span class="tag">RIP</span>' + (key >= C.CAP_BONUS_SINCE ? '<span class="tag bonus">+' + C.CAP_BONUS + ' tokens</span>' : '') +
@@ -370,18 +373,6 @@ function renderStaleWarning() {
     html = "<b>Duplicate names:</b> " + esc(dup.join(", ")) + ". Streaks will be wrong until one of each is renamed or removed.";
   } else if (S.newerRevSeen) {
     html = "The folder was written by a newer version. Reload before logging.";
-  } else if (S.staleWriters.length && S.folderFormat >= C.FORMAT_REV) {
-    const bits = S.staleWriters.slice(0, 4).map(w => esc(w.name) + " (" + esc(w.label) + ", " + esc(w.user) +
-      (w.at ? " at " + esc(String(w.at).replace("T", " ")) : "") + ")");
-    html = "<b>An HTA or old copy wrote here:</b> " + bits.join(", ") +
-      (S.staleWriters.length > 4 ? " and " + (S.staleWriters.length - 4) + " more" : "") +
-      ". It drops newer data such as spent tokens. Stop using it on this folder.";
-  } else if (S.staleWriters.length) {
-    const bits = S.staleWriters.slice(0, 4).map(w => esc(w.name) + " (" + esc(w.label) + ", " + esc(w.user) +
-      (w.at ? " at " + esc(String(w.at).replace("T", " ")) : "") + ")");
-    html = "<b>Old copies are writing here:</b> " + bits.join(", ") +
-      (S.staleWriters.length > 4 ? " and " + (S.staleWriters.length - 4) + " more" : "") +
-      ". Replace them with R55 or use this page.";
   }
   if (html) { if (el.innerHTML !== html) el.innerHTML = html; el.hidden = false; }
   else el.hidden = true;
@@ -430,8 +421,9 @@ function renderPets() {
   ensureIcons();
   const h = [];
   h.push('<div class="pet-legend">');
-  C.PET_BINS.forEach((b, i) => h.push('<span><i class="pl r' + i + '"></i>' + esc(b.name) + ' &middot; ' + b.weight + '%</span>'));
-  h.push('<span><i class="pl grave"></i>Buried &middot; ' + (shopOpen() ? 'buy it back or win it on Plinko' : 'gone for good') + '</span>');
+  const odds = rollOdds();
+  C.PET_BINS.forEach((b, i) => h.push('<span><i class="pl r' + i + '"></i>' + esc(b.name) + ' &middot; ' + odds.bins[i].toFixed(1) + '%</span>'));
+  h.push('<span><i class="pl grave"></i>Buried &middot; buy it back or win it on Plinko</span>');
   h.push('<span class="pl-note">Reach your goal to roll. Click a pet to wear it; click again to take it off.</span></div>');
   h.push('<div class="pet-cards">');
   for (const p of S.participants) {
@@ -465,9 +457,9 @@ function renderPets() {
     const got = has(p.pets, C.HOMUNCULUS_KIND);
     h.push('<div class="pet-reward' + (got ? ' won" data-act="equip" data-kind="' + C.HOMUNCULUS_KIND + '" role="button" tabindex="0"' : '"') +
            ' title="' + (got ? esc(C.PET_NAMES[C.HOMUNCULUS_KIND]) + ' &middot; every one of them at once'
-                             : 'Account for all ' + C.PET_COUNT + ' to find out') + '">' +
+                             : 'Have all ' + C.PET_COUNT + ' alive to find out') + '">' +
            (got ? '<i class="pi pi-hom"></i>' : '<span class="q">?</span>') +
-           '<span class="rl">' + (got ? esc(C.PET_NAMES[C.HOMUNCULUS_KIND]) : penFound(p) + ' / ' + C.PET_COUNT + ' ' + penWord()) + '</span></div>');
+           '<span class="rl">' + (got ? esc(C.PET_NAMES[C.HOMUNCULUS_KIND]) : penFound(p) + ' / ' + C.PET_COUNT + ' alive') + '</span></div>');
     h.push('</div>');
   }
   h.push('</div>');
@@ -576,9 +568,6 @@ function renderStatus() {
     setEl("quickPour", '+ ' + fmtOz(ui.amount) + ' oz for ' + esc(mine.name), null);
     q.style.setProperty("--pc", mine.color);
   }
-  const peers = S.peerWriters.length ? "HTA r55 also writing" : "";
-  const drift = S.driftWriters.length ? "other builds: " + [...new Set(S.driftWriters.map(w => w.ver))].join(", ") : "";
-  setEl("sbPeers", esc([peers, drift].filter(Boolean).join(" · ")), null);
 }
 
 /* ---- shop lines (activity and recap) ----------------------------------- */
@@ -619,6 +608,16 @@ function spendLine(p, s, when) {
 /* ---- the last day, in short (top of History) ---------------------------- */
 /* Rolls and drownings come from the day logs (format 22). Before those existed,
    petRollDay / graveDay still name the day if nothing has replaced them since. */
+/* The goal's own roll that day. A reroll replaces the day's roll in the record, but its
+   spend keeps what it replaced (from, fromFresh), so the goal line stays what it was. */
+function goalRollOn(p, day) {
+  const rr = spendsOn(p, day).filter(s => s.kind === "reroll").sort((a, b) => String(a.at).localeCompare(String(b.at)))[0];
+  if (rr) return Number(rr.from) >= 0 ? { k: Number(rr.from), fresh: rr.fromFresh, rerolled: true } : null;
+  return rollOn(p, day);
+}
+/* fresh: true, false, or unknown (a reroll saved before fromFresh was kept) */
+const rollVerb = fresh => fresh === true ? "unlocked the " : fresh === false ? "rolled another " : "rolled the ";
+
 function rollOn(p, day) {
   const log = p.rollLog && p.rollLog[day];
   if (log) return Number(log.k) >= 0 ? { k: Number(log.k), fresh: !!log.n } : null;
@@ -672,9 +671,9 @@ function recapHtml() {
   const icon = k => penOf(k) > 0 ? '<i class="pi pi-' + k + '"></i>' : '';
   const names = petList;
   for (const p of S.participants) {
-    const r = rollOn(p, day), g = graveOn(p, day), d = shopDay(p, day), who = '<strong>' + esc(p.name) + '</strong> ';
+    const r = goalRollOn(p, day), g = graveOn(p, day), d = shopDay(p, day), who = '<strong>' + esc(p.name) + '</strong> ';
     const line = (ic, text) => '<li>' + ic + '<span class="rc-t">' + who + text + '</span></li>';   /* name and text wrap as one */
-    if (r) ev.push(line(icon(r.k), (r.fresh ? 'unlocked the ' : 'rolled another ') + esc(petLabel(r.k))));
+    if (r) ev.push(line(icon(r.k), rollVerb(r.fresh) + esc(petLabel(r.k))));
     if (g !== null) ev.push(line('<i class="pi pi-grave"></i>', 'drowned the ' + esc(petLabel(g))));
     for (const s of d.rerolls) ev.push('<li class="rc-shop">' + spendLine(p, s, "") + '</li>');
     for (const s of d.buys) ev.push(line(icon(Number(s.pet)), 'bought the ' + esc(petLabel(Number(s.pet))) + (s.revived ? ' back from the grave' : '')));
@@ -872,7 +871,7 @@ export function openBank(name) {
   const p = findParticipant(name);
   if (!p) return;
   const spent = spentTotal(p), bal = shownBalance(p), chest = chestWinnings(p) - (balance(p) - bal);
-  $("bankShop").hidden = !shopOpen();
+  $("bankShop").hidden = p.name !== S.mine;        /* only your own tokens */
   $("bankShop").dataset.name = p.name;
   $("bankName").innerHTML = esc(p.name) + "&rsquo;s gold";
   $("bankCount").innerHTML = bal + ' <small>token' + (bal === 1 ? '' : 's') + '</small>';
@@ -961,8 +960,6 @@ export function auditStreak(name) {
 
 export function showDiag() {
   const probs = [], t = goalTunables(), L = legacyFlat(), key = todayKey(), h = [];
-  if (S.staleWriters.length) probs.push(S.staleWriters.length + " file(s) in an older format");
-  if (S.driftWriters.length) probs.push(S.driftWriters.length + " file(s) written by another build");
   if (duplicateNames().length) probs.push("duplicate names: " + duplicateNames().join(", "));
   if (S.loadFailed) probs.push(S.loadFailed + " unreadable file(s)");
   if (G.stats.errors) probs.push(G.stats.errors + " animation error(s)");
@@ -970,15 +967,9 @@ export function showDiag() {
 
   h.push('<h4>Health</h4><table class="rt">');
   h.push(rRow("Status", probs.length ? '<span class="bad">' + esc(probs.join(" · ")) + '</span>' : '<span class="ok">all clear</span>'));
-  h.push(rRow("Build", esc(C.REV) + ' <span class="dim">&middot; writes as "' + esc(C.APP_VERSION) + '", up to format ' + C.FORMAT_REV + '</span>'));
-  h.push(rRow("Folder format", S.folderFormat + (S.folderFormat >= C.FORMAT_REV ? ' <span class="dim">web only</span>' : ' <span class="dim">shared with R55</span>')));
+  h.push(rRow("Build", esc(C.REV) + ' <span class="dim">&middot; writes as "' + esc(C.APP_VERSION) + '", format ' + C.FORMAT_REV + '</span>'));
   h.push(rRow("Data folder", esc(dir ? dir.name : "(none)")));
   h.push(rRow("Files", S.participants.length + ' loaded' + (S.loadRecovered ? ' &middot; <span class="bad">' + S.loadRecovered + ' recovered</span>' : '')));
-  if (S.peerWriters.length) {
-    h.push(rRow("Shared with", 'HTA r55 &middot; ' + S.peerWriters.length + ' file(s) last written there <span class="dim">(' +
-                esc([...new Set(S.peerWriters.map(w => w.user))].join(", ")) + ')</span>'));
-  }
-  for (const w of S.driftWriters) h.push(rRow("", '<span class="bad">' + esc(w.name) + '</span> written by ' + esc(w.user) + ' on ' + esc(w.ver)));
   h.push('</table>');
 
   h.push('<h4>People <span class="note">goal and cap are for today</span></h4><table class="rt"><tr><th>Name</th>' +
@@ -1045,11 +1036,6 @@ export function fillSettings() {
   $("annualVal").value = currentAnnualGoal();
   $("startVal").value = challengeStart();
   $("idleVal").value = currentIdleMax();
-  const v22 = S.folderFormat >= C.FORMAT_REV;
-  $("fmtNote").innerHTML = v22
-    ? "Format " + S.folderFormat + ", web only" + (S.settings.upgradedAt ? " since " + esc(S.settings.upgradedAt.slice(0, 10)) : "") + ". Keep the HTA off this folder."
-    : "Format " + S.folderFormat + ", shared with the HTA. Upgrade the web-only copy only.";
-  $("upgradeBtn").hidden = v22;
   renderRoster();
 }
 
@@ -1062,4 +1048,6 @@ export function renderRoster() {
       '<button type="button" class="btn small" data-act="away" data-away="' + (away ? "0" : "1") + '">' + (away ? 'Back' : 'Away') + '</button></div>';
   });
   $("rosterList").innerHTML = h.length ? h.join("") : '<p class="hint">Nobody on the roster yet.</p>';
+  const away = S.participants.filter(p => !isActive(p)).length;
+  $("rosterCount").textContent = S.participants.length + (away ? " · " + away + " away" : "");
 }

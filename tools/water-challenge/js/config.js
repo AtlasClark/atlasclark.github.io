@@ -1,23 +1,18 @@
-/* Atlas Water Challenge (web) - constants.
-   Rules and tunables are ported 1:1 from Atlas_Water_Challenge_R55.hta. The on-disk
-   contract (FORMAT_REV 21, UTF-16 LE + BOM) must stay identical while R55 runs on the
-   share: R55 deletes any field it does not know on its next write. */
+/* Water Challenge (web) - constants: rules, tunables and the on-disk contract
+   (FORMAT_REV, UTF-16 LE + BOM JSON, unknown fields kept). */
 
-export const REV         = "rev 1.21.1";
-export const APP_VERSION = "web 1.21.1";   /* stamped as writerVersion */
-/* A folder stays at LEGACY_FORMAT (byte-compatible with R55) until someone upgrades
-   it from Settings. Format 22 adds tokensSpent and keeps unknown fields; R55 must
-   not be used on a folder after that. */
-export const LEGACY_FORMAT = 21;
+export const REV         = "rev 1.23.0";
+export const APP_VERSION = "web 1.23.0";   /* stamped as writerVersion */
+/* Every file is written at FORMAT_REV. A file stamped higher came from a newer
+   build, and the page asks for a reload. */
 export const FORMAT_REV    = 22;
-export const PEER_VERSIONS = ["r55"];     /* HTA builds that share format 21 without drift */
-/* Every field the page understands. Anything else in a file is kept as-is at 22. */
+/* Every field the page understands. Anything else in a file is kept as-is. */
 export const KNOWN_FIELDS = ["name", "color", "goal", "dayGoals", "away", "created", "equippedPet",
   "petRollDay", "pets", "graves", "graveDay", "lastRoll", "prevRoll", "rollKind", "rollWasNew",
   "deadKind", "tokensSpent", "rerollDay", "rollLog", "graveLog", "spends",
   "writerRev", "writerVersion", "writerUser", "writtenAt", "entries"];
 
-/* ---- the token shop (format 22 only) ----
+/* ---- the token shop ----
    One token is worth one daily roll, so a pet's price is 1 / (chance of rolling
    that exact species): Common 8 share 62.5%, Uncommon 7 share 20.8%, and so on. */
 export const SHOP_PRICES  = [13, 35, 50, 80, 100];   /* by PET_BINS index */
@@ -149,12 +144,12 @@ export const GRAVE_LINES = [
 /* ---- bottle sync (js/bottle.js) ---- */
 export const HIDRATE_TAG       = "hidrate";     /* "by" on bottle entries */
 export const HIDRATE_LABEL     = "bottle";      /* how the activity list shows it */
-export const BOTTLE_USER       = "rclark";      /* the one username that sees and runs the sync, as in R55 */
-export const BOTTLE_BUCKET_MIN = 5;             /* sips grouped into 5-minute entries, as in R55 */
+export const BOTTLE_USER       = "rclark";      /* the one username that sees and runs the sync */
+export const BOTTLE_BUCKET_MIN = 5;             /* sips grouped into 5-minute entries */
 export const BOTTLE_SIP_LIMIT  = 500;
 export const BOTTLE_TIMEOUT_MS = 20000;
 
-/* ---- locks (interoperate with the HTA's sidecar .lock files) ---- */
+/* ---- locks (sidecar .lock files shared by every page on the folder) ---- */
 export const LOCK_RETRIES  = 12;
 export const LOCK_WAIT_MS  = 70;
 export const LOCK_STALE_MS = 15000;
@@ -264,17 +259,19 @@ export const SPLASH_RINGS   = 3;
 export const RING_GROWTH    = 2.3;
 export const RING_FADE      = 0.915;
 
-/* Card layout. The page uses the fewest rows that keep every card at least
-   CARD_COMFORT wide, then shares the cards evenly over those rows (8 people on a
-   narrow screen read 4 + 4, not 5 + 3 of thin cups). The glass scales with the card. */
-export const CARD_MAX      = 188;
+/* Card layout. Each row holds as many cards as stay at least CARD_COMFORT wide (up to
+   MAX_COLS); the rest wrap to the next row, centred. Widening the screen adds one
+   column at a time (8 people: 4 + 4, 5 + 3, 6 + 2, 7 + 1, 8). The glass scales with the card.
+   The glasses may use the screen's full width, up to WRAP_MAX, past the page's own
+   1400 px column, so a big screen fits one row of up to MAX_COLS. */
+export const CARD_MAX      = 212;
 export const CARD_COMFORT  = 144;
 export const CARD_MIN      = 100;
 export const CARD_STEP     = 4;         /* sizes snap to this, so a resize rebuilds less often */
 export const GLASS_W_RATIO = 132 / 188;
 export const GLASS_H_RATIO = 246 / 188;
 export const CARD_GAP      = 10;
-export const MAX_COLS      = 6;
+export const MAX_COLS      = 8;
 export const COMPACT_UNDER = 140;
-export const WRAP_MAX      = 1400;
+export const WRAP_MAX      = 1880;
 export const SHELL_PAD     = 18;
