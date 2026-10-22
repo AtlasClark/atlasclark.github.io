@@ -4,16 +4,16 @@
    browser (IndexedDB) until it is saved. Reference images are never exported. */
 
 import * as C from "../js/config.js";
-import { defs, hats, HAT_KEYS, HOLIDAY_KEYS, CUP_KEYS, FX_KEYS, colourOf, PET_DEFS_FORMAT, fxSpot, drawShapes } from "../js/petdefs.js";
+import { defs, hats, HAT_KEYS, HOLIDAY_KEYS, CUP_KEYS, FX_KEYS, colourOf, PET_DEFS_FORMAT, fxSpot, medalSpot, drawShapes } from "../js/petdefs.js";
 import { COSMETICS } from "../js/cosmetics.js";
 import { CUP_PLACE, CUP_H } from "../js/styleart.js";
-import { drawPortrait, critterCrown, drawHeadstone, drawCoin } from "../js/art.js";
+import { drawPortrait, critterCrown, drawHeadstone, drawCoin, drawMedal } from "../js/art.js";
 import { importAll, importHat, basePalette } from "./importer.js";
 import { Editor, TOOL_HINTS } from "./editor.js";
 import { Preview } from "./preview.js";
 import * as G from "./geom.js";
 
-const REV = "studio 1.14.0";
+const REV = "studio 1.15.1";
 const PETS_URL = "../pets/pets.json";
 const $ = id => document.getElementById(id);
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -24,7 +24,7 @@ const W = {
   builtin: {},            /* kind -> imported built-in pet (never edited) */
   pets: {},               /* kind -> { def, edited } */
   kind: 0, pose: "swim", sel: new Set(), tab: "shape",
-  hue: 205, dead: false, water: true, crown: false, fx: false, snap: false,
+  hue: 205, dead: false, water: true, crown: false, fx: false, medal: false, snap: false,
   tool: "select", brush: 0.07, lastFill: "body", lastStroke: "dark",
   refs: {},               /* kind -> { swim: ref, portrait: ref }; ref = { src, x, y, w, op } */
   hist: {}, pending: null, clip: null,
@@ -38,7 +38,7 @@ const W = {
 
 /* Items are pet kinds and the hats and props ("crown", "jester", "grave", "coin"). A hat or
    prop has one drawing; only the hats are worn, and only the headstone takes a pet's hue. */
-const HAT_NAMES = { crown: "Crown", jester: "Jester hat", grave: "Headstone", coin: "Token coin",
+const HAT_NAMES = { crown: "Crown", jester: "Jester hat", grave: "Headstone", coin: "Token coin", medal: "Day-win medal",
                     santa: "Santa hat", elf: "Elf hat", witch: "Witch hat", pumpkin: "Pumpkin hat",
                     partyGold: "Party hat (gold)", partyStripe: "Party hat (stripes)",
                     dropCrown: "Droplet crown", splashHat: "Splash hat" };
@@ -77,7 +77,7 @@ function rarityOf(k) {
   if (HOLIDAY_OF[k]) return { name: HOLIDAY_OF[k].h.name + ", " + (HOLIDAY_OF[k].role === "crown" ? "goal met" : "under goal"), i: 0 };
   if (isCup(k)) return { name: "Style shop, cup", i: 0 };
   if (isFx(k)) return { name: "Style shop, effect", i: 0 };
-  if (isHat(k)) return { name: { crown: "leader, goal met", jester: "leader, under goal", grave: "a drowned pet", coin: "tokens" }[k], i: 0 };
+  if (isHat(k)) return { name: { crown: "leader, goal met", jester: "leader, under goal", grave: "a drowned pet", coin: "tokens", medal: "yesterday's winner" }[k], i: 0 };
   if (k === C.HOMUNCULUS_KIND) return { name: "Full-pen reward", i: 5 };
   if (k === C.MYSTERY_KIND) return { name: "Secret", i: 6 };
   const base = k >= C.PEN2_FIRST ? k - C.PEN2_FIRST : k;
@@ -93,12 +93,12 @@ const app = {
   get shapes() { const d = this.def; return !d ? null : W.pose === "portrait" ? d.portrait : d.swim; },
   get ghost() { const d = this.def; return d && W.pose === "portrait" && !d.portrait ? d.swim : null; },
   get isHat() { return isHat(W.kind); },
-  get tryOn() { const p = wears(W.kind) && W.pets[W.tryOn]; return p ? { def: p.def, kind: W.tryOn } : null; },
+  get tryOn() { const p = (wears(W.kind) || W.kind === "medal") && W.pets[W.tryOn]; return p ? { def: p.def, kind: W.tryOn, medal: W.kind === "medal" } : null; },
   get isProp() { return isHat(W.kind) && !wears(W.kind); },
   get origin() {
     if (isCup(W.kind)) return { bottom: "glass bottom", rim: "rim", surface: "water surface" }[(CUP_PLACE[W.kind.slice(6)] || {}).at] || "glass bottom";
     if (isFx(W.kind)) return "centre";
-    return { grave: "ground", coin: "centre" }[W.kind] || "crown spot";
+    return { grave: "ground", coin: "centre", medal: "medal spot" }[W.kind] || "crown spot";
   },
   get cupFrame() { return isCup(W.kind) ? cupFrame(W.kind) : null; },
   get pose() { return W.pose; },
@@ -109,6 +109,7 @@ const app = {
   get water() { return W.water; },
   get crown() { return W.crown && !isHat(W.kind); },
   get fx() { return W.fx && !isHat(W.kind); },
+  get medal() { return W.medal && !isHat(W.kind); },
   get range() { const d = this.def; return d && d.range !== undefined ? d.range : 1; },
   get snap() { return W.snap; },
   get brush() { return W.brush; },
@@ -305,7 +306,10 @@ function normalize(p) {
   return { name: typeof p.name === "string" ? p.name : "", crown: Array.isArray(p.crown) ? p.crown : [0, -1], pal,
            swim: Array.isArray(p.swim) ? p.swim : [], portrait: Array.isArray(p.portrait) && p.portrait.length ? p.portrait : null,
            range: typeof p.range === "number" ? Math.max(0, Math.min(1, p.range)) : 1,
-           fx: Array.isArray(p.fx) && p.fx.length === 2 && p.fx.every(Number.isFinite) ? p.fx : null };
+           fx: Array.isArray(p.fx) && p.fx.length === 2 && p.fx.every(Number.isFinite) ? p.fx : null,
+           medal: Array.isArray(p.medal) && p.medal.length === 2 && p.medal.every(Number.isFinite) ? p.medal : null,
+           crownScale: Number.isFinite(p.crownScale) ? p.crownScale : 1, crownRot: Number.isFinite(p.crownRot) ? p.crownRot : 0,
+           medalScale: Number.isFinite(p.medalScale) ? p.medalScale : 1, medalRot: Number.isFinite(p.medalRot) ? p.medalRot : 0 };
 }
 
 function loadFileObj(obj) {
@@ -383,6 +387,10 @@ function petsJson() {
     parts.push('      "crown": ' + tidy(d.crown));
     if (d.range !== undefined && d.range < 1) parts.push('      "range": ' + G.R5(d.range));
     if (d.fx) parts.push('      "fx": ' + tidy(d.fx));
+    if (d.medal) parts.push('      "medal": ' + tidy(d.medal));
+    for (const f of ["crownScale", "crownRot", "medalScale", "medalRot"]) {
+      if (Number.isFinite(d[f]) && d[f] !== (f.endsWith("Scale") ? 1 : 0)) parts.push('      "' + f + '": ' + G.R5(d[f]));
+    }
     parts.push('      "pal": {\n' + Object.entries(d.pal).map(([key, c]) => "        " + JSON.stringify(key) + ": " + tidy(c)).join(",\n") + "\n      }");
     parts.push('      "swim": ' + list(d.swim));
     if (d.portrait) parts.push('      "portrait": ' + list(d.portrait));
@@ -551,7 +559,7 @@ function renderPetList() {
                  { pen: "Second pen" }, ...C.PEN2_BINS.map((b, i) => ({ name: b.name, i, kinds: b.kinds })),
                  { pen: "Hats and props" }, { name: "Crown and jester", i: 0, kinds: ["crown", "jester"] },
                  { name: "Holiday hats", i: 0, kinds: HOLIDAY_KEYS },
-                 { name: "Headstone and coin", i: 0, kinds: ["grave", "coin"] },
+                 { name: "Headstone, coin and medal", i: 0, kinds: ["grave", "coin", "medal"] },
                  { pen: "Style shop" }, { name: "Cup", i: 0, kinds: CUP_KEYS },
                  { name: "Effect particles", i: 0, kinds: FX_KEYS }];
   const el = $("petList");
@@ -617,6 +625,7 @@ function drawThumb(k) {
     if (isCup(k) || isFx(k)) drawFit(ctx, W.pets[k].def, isFx(k) ? 340 : 0);
     else if (k === "grave") drawHeadstone(ctx, 30, 52, 46, 210);
     else if (k === "coin") drawCoin(ctx, 30, 30, 44);
+    else if (k === "medal") drawMedal(ctx, 30, 40, 66);
     else if (isHat(k)) critterCrown(ctx, 30, 40, 54, k);
     else drawPortrait(ctx, 30, 42, 20, k, iconHue(k));
   } catch { }
@@ -644,6 +653,8 @@ function palOptions(cur, none) {
 }
 const deg = v => Math.round((v || 0) * 180 / Math.PI * 10) / 10;
 const num = (f, v, step, extra) => '<input type="number" data-f="' + f + '" data-focus="' + f + '" step="' + (step || 0.01) + '" value="' + (Math.round(v * 1e4) / 1e4) + '"' + (extra || "") + '>';
+const pctIn = (f, v) => '<input type="number" data-f="' + f + '" data-focus="' + f + '" min="20" max="400" step="5" value="' + Math.round((Number.isFinite(v) ? v : 1) * 100) + '">';
+const degIn = (f, v) => '<input type="number" data-f="' + f + '" data-focus="' + f + '" min="-180" max="180" step="5" value="' + Math.round(Number.isFinite(v) ? v : 0) + '">';
 
 function shapeTab() {
   const list = app.shapes;
@@ -825,7 +836,8 @@ function hatTab() {
     crown: "Worn by the day&rsquo;s leader who met their goal. The origin is each pet&rsquo;s crown spot, so draw the hat sitting on it. The same drawing makes the small icons over the glasses and on the leaderboard.",
     jester: "Worn by the day&rsquo;s leader who is still under goal. The origin is each pet&rsquo;s crown spot, so draw the hat sitting on it. The same drawing makes the small icons over the glasses and on the leaderboard.",
     grave: "Stands in a drained glass where a pet drowned, and marks buried pets on the Pets tab. The origin is the ground under it, in units of the pet&rsquo;s size. Pet colours take a tint of the drowned pet&rsquo;s hue.",
-    coin: "One token, face on: 1 unit across, origin at its centre. The bank&rsquo;s gold pile lays it flat in a heap; the shop and history use it as the small coin icon."
+    coin: "One token, face on: 1 unit across, origin at its centre. The bank&rsquo;s gold pile lays it flat in a heap; the shop and history use it as the small coin icon.",
+    medal: "Worn for a day by yesterday&rsquo;s winner. The origin is each pet&rsquo;s medal spot (the middle of the disc), in units of the pet&rsquo;s size. The same drawing makes the small medal icon in the activity list and recap."
   }[k] || (HOLIDAY_OF[k] ? "Worn in place of the " + (HOLIDAY_OF[k].role === "crown" ? "crown (leader who met their goal)" : "jester hat (leader still under goal)") +
     " from the day before " + esc(HOLIDAY_OF[k].h.name) + " to the day after. The origin is each pet&rsquo;s crown spot; the same drawing makes the small hat icons."
     : isCup(k) ? "Style shop cup item. Units are the glass&rsquo;s inside width; the origin is " + CUP_AT[(CUP_PLACE[k.slice(6)] || {}).at || "bottom"] +
@@ -833,7 +845,7 @@ function hatTab() {
     : isFx(k) ? "One particle of the " + esc(COSMETICS[k].name) + " effect, in units of the pet&rsquo;s size, centred on the origin. The effect moves and fades it; " +
       "pet colours follow the colour the effect gives each particle." : "");
   return '<h4>' + esc(HAT_NAMES[k]) + '</h4><p class="note">' + about + '</p>' +
-    (wears(k) ? '<div class="row"><label>Try on</label><select data-f="tryon">' + [...Array(C.PET_MAX).keys()].map(i =>
+    (wears(k) || k === "medal" ? '<div class="row"><label>Try on</label><select data-f="tryon">' + [...Array(C.PET_MAX).keys()].map(i =>
       '<option value="' + i + '"' + (i === W.tryOn ? " selected" : "") + '>' + esc(C.PET_NAMES[i]) + '</option>').join("") + '</select></div>' : '') +
     '<div class="sep"></div><h4>Start over</h4><div class="btns">' +
     '<button type="button" class="btn small" data-act="clear">Clear drawing</button>' +
@@ -847,10 +859,17 @@ function petTab() {
     '<div class="row"><label>Name</label><input type="text" data-f="name" data-focus="name" maxlength="24" placeholder="' + esc(baseName(k)) + '" value="' + esc(d.name || "") + '"></div>' +
     '<p class="note">Leave blank to keep &ldquo;' + esc(baseName(k)) + '&rdquo;. A new name shows on the site.</p>' +
     '<div class="grid2"><div class="row"><label>Crown</label>' + num("cx", d.crown[0]) + '</div><div class="row"><label>&nbsp;</label>' + num("cy", d.crown[1]) + '</div></div>' +
+    '<div class="grid2"><div class="row"><label>Crown size</label>' + pctIn("crs", d.crownScale) + '<span class="val">%</span></div>' +
+      '<div class="row"><label>Tilt</label>' + degIn("crr", d.crownRot) + '<span class="val">&deg;</span></div></div>' +
     '<p class="note">Turn on <b>Crown</b> above to see it; drag the gold diamond to move it.</p>' +
     '<div class="grid2"><div class="row"><label>Effect spot</label>' + num("fxx", fxSpot(d)[0]) + '</div><div class="row"><label>&nbsp;</label>' + num("fxy", fxSpot(d)[1]) + '</div></div>' +
     '<p class="note">Where shop effects (sparkles, hearts, aura...) centre. ' + (d.fx ? 'Set by hand. <button type="button" class="btn small" data-act="fx-auto">Back to auto</button>'
       : 'Auto: the middle of the part above the water.') + ' Turn on <b>Effect</b> above to see it; drag the pink ring to move it.</p>' +
+    '<div class="grid2"><div class="row"><label>Medal spot</label>' + num("mdx", medalSpot(d)[0]) + '</div><div class="row"><label>&nbsp;</label>' + num("mdy", medalSpot(d)[1]) + '</div></div>' +
+    '<div class="grid2"><div class="row"><label>Medal size</label>' + pctIn("mds", d.medalScale) + '<span class="val">%</span></div>' +
+      '<div class="row"><label>Tilt</label>' + degIn("mdr", d.medalRot) + '<span class="val">&deg;</span></div></div>' +
+    '<p class="note">Where the day-win medal hangs. ' + (d.medal ? 'Set by hand. <button type="button" class="btn small" data-act="medal-auto">Back to auto</button>'
+      : 'Auto: just in front of the effect spot.') + ' Turn on <b>Medal</b> above to see it; drag the gold dot to move it.</p>' +
     '<div class="row"><label>Swim range</label><input type="number" data-f="range" data-focus="range" min="0" max="100" step="5" value="' +
       Math.round((d.range !== undefined ? d.range : 1) * 100) + '"><span class="val">%</span></div>' +
     '<p class="note">How far it wanders, as a share of the normal range. Lower it so a big creature moves less; ' +
@@ -937,6 +956,7 @@ function act(a, el) {
       W.pets[W.kind].edited = false; changed();
       return;
     case "fx-auto": return change(() => { app.def.fx = null; });
+    case "medal-auto": return change(() => { app.def.medal = null; });
     case "ref-load": return $("refFile").click();
     case "ref-del": delete (W.refs[W.kind] || {})[W.pose]; W.refDrag = false; autosave(); renderPanels(); editor.redraw(); return;
     case "ref-drag": W.refDrag = el.checked; if (W.refDrag) setTool("select"); return;
@@ -984,7 +1004,7 @@ function wire() {
   });
   $("brush").addEventListener("input", e => { W.brush = Number(e.target.value) / 100; $("brushVal").textContent = e.target.value; });
   $("brushVal").textContent = Math.round(W.brush * 100);
-  for (const [id, key] of [["tWater", "water"], ["tDead", "dead"], ["tCrown", "crown"], ["tFx", "fx"], ["tSnap", "snap"]]) {
+  for (const [id, key] of [["tWater", "water"], ["tDead", "dead"], ["tCrown", "crown"], ["tFx", "fx"], ["tMedal", "medal"], ["tSnap", "snap"]]) {
     $(id).checked = W[key];
     $(id).addEventListener("change", e => { W[key] = e.target.checked; editor.redraw(); renderLayers(); });
   }
@@ -1042,6 +1062,20 @@ function wire() {
     if (t.dataset.f === "fxx" || t.dataset.f === "fxy") {
       const n = Number(t.value);
       if (isFinite(n)) change(() => { const s = fxSpot(app.def).slice(); s[t.dataset.f === "fxx" ? 0 : 1] = n; app.def.fx = s; });
+      return;
+    }
+    if (["crs", "crr", "mds", "mdr"].includes(t.dataset.f)) {
+      const n = Number(t.value), f = t.dataset.f;
+      if (isFinite(n)) change(() => {
+        if (f === "crs") app.def.crownScale = Math.max(0.2, Math.min(4, n / 100));
+        else if (f === "mds") app.def.medalScale = Math.max(0.2, Math.min(4, n / 100));
+        else app.def[f === "crr" ? "crownRot" : "medalRot"] = Math.max(-180, Math.min(180, n));
+      });
+      return;
+    }
+    if (t.dataset.f === "mdx" || t.dataset.f === "mdy") {
+      const n = Number(t.value);
+      if (isFinite(n)) change(() => { const s = medalSpot(app.def).slice(); s[t.dataset.f === "mdx" ? 0 : 1] = n; app.def.medal = s; });
       return;
     }
     if (t.dataset.f === "cx" || t.dataset.f === "cy") { const n = Number(t.value); if (isFinite(n)) change(() => { app.def.crown[t.dataset.f === "cx" ? 0 : 1] = n; }); return; }

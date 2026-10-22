@@ -472,7 +472,7 @@ function drawFloating(ctx, water, pet, W, H, top, offX, offY, r) {
   ctx.save();
   ctx.translate(px, py);
   ctx.scale(Math.abs(flip) < 0.04 ? (flip < 0 ? -0.04 : 0.04) : flip, 1);   /* mid-turn: edge on */
-  drawCritter(ctx, 0, 0, r, ang, pet.duckCrown, false, pet.critterKind || 0, pet.critterHue || 0, pet.duckJester, look.finish);
+  drawCritter(ctx, 0, 0, r, ang, pet.duckCrown, false, pet.critterKind || 0, pet.critterHue || 0, pet.duckJester, look.finish, pet.duckMedal);
   ctx.restore();
   if (look.effect) drawEffect(ctx, look.effect, fx, fy, r, t, pet.critterHue || 0, "front");
 }
@@ -644,7 +644,7 @@ export function startVisit(name, hostName) {
   const sw = { m: { t: 0, face: 1, flip: 1, drift: 0, xs: 0, dive: -1, hop: -1, drop: -1, dropWait: 0,
                     nextDive: rnd(1.5, 5), nextHop: 0.5, splashed: 0 },
                off: Math.PI / 0.31, phase: h.phase + Math.PI / 0.31, play: C.VISIT_PLAY, duckState: 1,
-               critterKind: st.critterKind, critterHue: st.critterHue, duckCrown: st.duckCrown, duckJester: st.duckJester, look: st.look };
+               critterKind: st.critterKind, critterHue: st.critterHue, duckCrown: st.duckCrown, duckJester: st.duckJester, duckMedal: st.duckMedal, look: st.look };
   st.visit = { stage: "out", host: hostName, t: 0, from: { x: petX(st), y: surfaceY(st) }, sw };
   h.guest = name;
   st.m.dive = -1; st.m.hop = -1;
@@ -684,7 +684,7 @@ export function stepVisits(f) {
     const h = anim[v.host];
     /* a glass left the screen, or the pet changed or is going under: home at once */
     if (!h || !h.dcv || !st.dcv || st.duckState !== 1 || st.critterKind !== v.sw.critterKind || !motionOn()) { endVisit(name); continue; }
-    Object.assign(v.sw, { critterHue: st.critterHue, duckCrown: st.duckCrown, duckJester: st.duckJester });
+    Object.assign(v.sw, { critterHue: st.critterHue, duckCrown: st.duckCrown, duckJester: st.duckJester, duckMedal: st.duckMedal });
     v.sw.phase = h.phase + v.sw.off;
     if (v.stage !== "there") {
       v.t += dt / C.VISIT_JUMP_SECS;
@@ -746,7 +746,7 @@ function drawFlights() {
     ctx.save();
     ctx.translate(x, y);
     ctx.scale(right ? -1 : 1, 1);
-    drawCritter(ctx, 0, 0, r, ang, st.duckCrown, false, st.critterKind || 0, st.critterHue || 0, st.duckJester, lookOf(st).finish);
+    drawCritter(ctx, 0, 0, r, ang, st.duckCrown, false, st.critterKind || 0, st.critterHue || 0, st.duckJester, lookOf(st).finish, st.duckMedal);
     ctx.restore();
   }
   flightDirty = flying.length > 0;

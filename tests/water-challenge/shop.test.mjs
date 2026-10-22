@@ -532,3 +532,28 @@ test("hydration day: a shell per 5 oz and a token per 10 oz up to the cap, +10 s
     assert.deepEqual(hyd.hydrationEarned(a), { shells: 0, tokens: 0 }, "undone with the water");
   } finally { M.S.participants = keep; M.dataChanged(); }
 });
+
+test("day wins: the top score with the goal met pays 10 shells, split on a tie; the medal is worn the next day", () => {
+  const M = web.model, keep = M.S.participants, D = ["2026-11-02", "2026-11-03", "2026-11-04", "2026-11-09", "2026-11-10"];
+  setToday("2026-11-10");
+  const mk = name => ({ name, entries: [], spends: [], dayGoals: Object.fromEntries(D.map(d => [d, 60])) });
+  const pour = (p, d, oz) => p.entries.push({ eid: p.name + ":" + d + ":" + oz, ts: d + "T09:00:00", date: d, oz, by: "t" });
+  const a = mk("win-a"), b = mk("win-b");
+  M.S.participants = [a, b];
+  try {
+    pour(a, D[0], 70); pour(b, D[0], 50);                     /* a wins */
+    pour(a, D[1], 30); pour(b, D[1], 20);                     /* a on top but under the goal: nobody */
+    pour(a, D[2], 60); pour(b, D[2], 60);                     /* tied at the goal: 5 each */
+    pour(b, D[3], 66);                                        /* b wins yesterday */
+    M.dataChanged();
+    assert.deepEqual(M.dayWinners(D[0]), ["win-a"]);
+    assert.deepEqual(M.dayWinners(D[1]), [], "a top score under the goal wins nothing");
+    assert.deepEqual(M.dayWinners(D[2]).sort(), ["win-a", "win-b"]);
+    assert.equal(shop.winShells(a), 10 + 5);
+    assert.equal(shop.winShells(b), 5 + 10);
+    assert.equal(shop.winShare(3), 4, "a three-way tie rounds up");
+    assert.ok(M.wearsMedal(b) && !M.wearsMedal(a), "yesterday's winner wears the medal today");
+    pour(a, D[4], 99); M.dataChanged();
+    assert.deepEqual(M.dayWinners(D[4]), [], "today is not over yet");
+  } finally { M.S.participants = keep; M.dataChanged(); }
+});

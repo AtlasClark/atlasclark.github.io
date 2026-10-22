@@ -2,7 +2,7 @@
    pen1art.js, pen2art.js, propart.js, then pets.json); only the gold pile's layout is code. */
 
 import * as C from "./config.js";
-import { defs, hats, drawShapes, drawHat, hatSvgFrom } from "./petdefs.js";
+import { defs, hats, drawShapes, drawHat, hatSvgFrom, medalSpot } from "./petdefs.js";
 import { todayKey, parseKey } from "./util.js";
 import { finishFn, finishWrap } from "./cosmetics.js";
 
@@ -63,7 +63,7 @@ function critterCrown(ctx, cx, cy, r, jester) {
 }
 
 /* finish: an optional cosmetic finish key (cosmetics.js) for the pet's own colours. */
-function drawCritter(ctx, x, y, r, ang, crowned, dead, kind, hue, jester, finish) {
+function drawCritter(ctx, x, y, r, ang, crowned, dead, kind, hue, jester, finish, medal) {
   /* Every pet is drawn from shapes (petdefs.js); an unknown kind draws as the duck. */
   var def = defs[kind] || defs[0];
   ctx.save();
@@ -72,8 +72,23 @@ function drawCritter(ctx, x, y, r, ang, crowned, dead, kind, hue, jester, finish
   if (finish) { ctx.save(); finishWrap(finish, ctx, r, hue); }
   drawShapes(ctx, def.swim, r, hue, def.pal, dead, finishFn(finish));
   if (finish) ctx.restore();
-  if (crowned) critterCrown(ctx, r * def.crown[0], r * def.crown[1], r, jester);
+  if (medal && !dead) { var ms = medalSpot(def); wearAt(ctx, r * ms[0], r * ms[1], def.medalRot, function () { drawHat(ctx, hats.medal, 0, 0, r * (def.medalScale || 1)); }); }
+  if (crowned) wearAt(ctx, r * def.crown[0], r * def.crown[1], def.crownRot, function () { critterCrown(ctx, 0, 0, r * (def.crownScale || 1), jester); });
   ctx.restore();
+}
+
+/* Something a pet wears, at x, y in its own frame, tilted by deg (clockwise). */
+function wearAt(ctx, x, y, deg, draw) {
+  ctx.save();
+  ctx.translate(x, y);
+  if (deg) ctx.rotate(deg * Math.PI / 180);
+  draw();
+  ctx.restore();
+}
+
+/* The day-win medal on its own, disc centred on x, y (icons). */
+function drawMedal(ctx, x, y, r) {
+  drawHat(ctx, hats.medal, x, y, r);
 }
 
 function drawHeadstone(ctx, x, y, r, hue) {
@@ -156,4 +171,4 @@ function drawGoldPile(ctx, W, H, n) {
   ctx.beginPath(); ctx.arc(cx - 3, base - (i - 1) * step - 2, 1.7, 0, 6.2832); ctx.fill();
 }
 
-export { jesterSvg, hatSvg, crownSvg, critterEye, critterCrown, drawCritter, drawHeadstone, drawPortrait, drawGoldPile, drawCoin };
+export { jesterSvg, hatSvg, crownSvg, critterEye, critterCrown, drawCritter, drawHeadstone, drawPortrait, drawGoldPile, drawCoin, drawMedal, wearAt };

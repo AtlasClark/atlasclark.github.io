@@ -578,6 +578,8 @@ li.pour.armed .undo-x { opacity: 1; background: #c4434f; color: #fff; }
 .coin.sm { width: 11px; height: 11px; vertical-align: -1px; margin-right: 3px; }
 .shellico { display: inline-block; width: 17px; height: 17px; vertical-align: -3px; margin-right: 5px; }
 .shellico.sm { width: 12px; height: 12px; vertical-align: -1px; margin-right: 3px; }
+.medalico { display: inline-block; width: 15px; height: 17px; vertical-align: -3px; margin-right: 5px; }
+.recap-prize { margin: 2px 0 4px; font-weight: 700; color: var(--gold-ink); }
 .style-bal { margin: 0 0 14px; font-size: 14px; color: var(--ink-2); }
 .style-bal b { font-size: 18px; }
 .style-bal .run { display: inline-flex; gap: 3px; margin-left: 8px; vertical-align: 1px; }

@@ -157,7 +157,8 @@ test("studio import: each hat and prop draws the same from its studio copy",
     ...Object.fromEntries(P.HOLIDAY_KEYS.map(k => [k, [0, 11, 26].map(pk => c => A.drawCritter(c, 5, 7, 100, -0.2, true, false, pk, 140, k))])),
     ...Object.fromEntries(P.CUP_KEYS.map(k => [k, [c => COS.drawDecor(c, k.slice(6), { x: 4, y: 40, W: 124, H: 239 }, () => 120, 1.3)]])),
     ...Object.fromEntries(P.FX_KEYS.map(k => [k, [c => COS.drawEffect(c, k.slice(7), 60, 100, 30, 1.3, 200, "front")]])),
-    coin: [c => A.drawCoin(c, 5, 7, 40)]
+    coin: [c => A.drawCoin(c, 5, 7, 40)],
+    medal: [0, 11, 26].map(k => c => A.drawCritter(c, 5, 7, 100, -0.2, false, false, k, 140, false, null, true))
   };
   for (const key of P.HAT_KEYS) {
     const hat = I.importHat(key), keep = P.hats[key];
@@ -234,4 +235,17 @@ test("hydration day hats: on June 23 only", () => {
     assert.equal(A.hatKeyFor(false, d), "crown", d);
     assert.equal(A.hatKeyFor(true, d), "jester", d);
   }
+});
+
+test("medal and crown: each pet's size and tilt apply where it wears them", () => {
+  const log = [], ctx = new Proxy({}, { get: (_, k) => k === "canvas" ? {} : (...a) => log.push([k, ...a]), set: () => true });
+  const def = P.defs[0], keep = { ...def };
+  try {
+    Object.assign(def, { medal: [0.1, -0.2], medalScale: 2, medalRot: 90, crownScale: 0.5, crownRot: -30 });
+    A.drawCritter(ctx, 0, 0, 10, 0, true, false, 0, 0, false, null, true);
+    const rot = log.filter(c => c[0] === "rotate").map(c => Math.round(c[1] * 180 / Math.PI));
+    assert.ok(rot.includes(90) && rot.includes(-30), "medal and crown tilts: " + rot);
+    assert.ok(log.some(c => c[0] === "translate" && Math.abs(c[1] - 1) < 1e-9 && Math.abs(c[2] + 2) < 1e-9), "medal at its spot");
+  } finally { Object.keys(def).forEach(k => delete def[k]); Object.assign(def, keep); }
+  assert.ok(P.HAT_KEYS.includes("medal") && P.hats.medal.shapes.length, "the medal is a hat the studio can redraw");
 });

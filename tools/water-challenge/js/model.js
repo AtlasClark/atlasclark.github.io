@@ -245,6 +245,15 @@ export function dayLeaders(key) {
   return out;
 }
 
+/* Who won a finished day for rewards: the top score, goal met. Today is never over. */
+export function dayWinners(key) {
+  if (key >= todayKey()) return [];
+  const rec = dayRec(key);
+  return dayLeaders(key).filter(n => { const p = findParticipant(n); return p && metGoal(rec.by[n] || 0, personalGoal(p, key)); });
+}
+/* Yesterday's winners wear the medal today. */
+export const wearsMedal = (p, key = todayKey()) => !!p && dayWinners(shiftKey(key, -1)).includes(p.name);
+
 /* "idle" | "win" | "tie" | "loss" */
 export function dayResult(p, key) {
   const rec = dayRec(key);

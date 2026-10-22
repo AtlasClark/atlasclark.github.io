@@ -24,14 +24,17 @@ import { PROP_ART, HOLIDAY_ART } from "./propart.js";
 import { CUP_ART, FX_ART } from "./styleart.js";
 
 export const PET_DEFS_FORMAT = 1;
-/* A pet may also carry range (0..1): its share of the normal swim range, and fx [x, y]:
-   the centre of a cosmetic effect around it (fxSpot gives a default when unset). */
+/* A pet may also carry range (0..1): its share of the normal swim range, fx [x, y]:
+   the centre of a cosmetic effect around it (fxSpot gives a default when unset), and
+   medal [x, y]: where the day-win medal hangs (medalSpot gives a default). crownScale /
+   medalScale (1 = as drawn) and crownRot / medalRot (degrees, clockwise) size and tilt
+   the crown and medal on that pet. */
 export const defs = {};            /* kind -> pet: the built-in drawing or its replacement */
 export const hats = {};            /* HAT_KEYS -> { pal, shapes }: the built-in drawing or its replacement */
 export const HOLIDAY_KEYS = Object.keys(HOLIDAY_ART);
 export const CUP_KEYS = Object.keys(CUP_ART);          /* "decor:<key>": Style shop cup items */
 export const FX_KEYS = Object.keys(FX_ART);            /* "effect:<key>": effect particles */
-export const HAT_KEYS = ["crown", "jester", "grave", "coin", ...HOLIDAY_KEYS, ...CUP_KEYS, ...FX_KEYS];
+export const HAT_KEYS = ["crown", "jester", "grave", "coin", "medal", ...HOLIDAY_KEYS, ...CUP_KEYS, ...FX_KEYS];
 export const EYE_INK = "#2a2118";
 
 const SHAPES = { ell: 1, path: 1, eye: 1 };
@@ -96,7 +99,11 @@ export function applyDefs(obj) {
     const crown = Array.isArray(p.crown) && p.crown.length === 2 && p.crown.every(fin) ? p.crown : [0, -1];
     const range = fin(p.range) ? Math.max(0, Math.min(1, p.range)) : 1;
     const fx = Array.isArray(p.fx) && p.fx.length === 2 && p.fx.every(fin) ? p.fx : null;
-    defs[k] = { pal, swim, portrait: portrait && portrait.length ? portrait : null, crown, range, fx };
+    const medal = Array.isArray(p.medal) && p.medal.length === 2 && p.medal.every(fin) ? p.medal : null;
+    const fit = (v, d, lo, hi) => fin(v) ? Math.max(lo, Math.min(hi, v)) : d;
+    defs[k] = { pal, swim, portrait: portrait && portrait.length ? portrait : null, crown, range, fx, medal,
+                crownScale: fit(p.crownScale, 1, 0.2, 4), crownRot: fit(p.crownRot, 0, -180, 180),
+                medalScale: fit(p.medalScale, 1, 0.2, 4), medalRot: fit(p.medalRot, 0, -180, 180) };
     if (typeof p.name === "string" && p.name.trim()) C.PET_NAMES[k] = p.name.trim().slice(0, 24);
     took.push(k);
   }
@@ -210,7 +217,17 @@ const n4 = v => String(Math.round(v * 1e4) / 1e4);
 const fxCache = new WeakMap();                     /* swim shapes -> default spot */
 export function fxSpot(def) {
   if (!def) return [0, -0.42];
-  if (def.fx) return def.fx;
+  return def.fx || autoFx(def);
+}
+/* The medal: its own spot, else a little lower and further forward (pets face left)
+   than the automatic effect spot, kept above the waterline. */
+export function medalSpot(def) {
+  if (!def) return [-0.12, -0.3];
+  if (def.medal) return def.medal;
+  const f = autoFx(def);
+  return [Math.round((f[0] - 0.12) * 100) / 100, Math.min(-0.14, Math.round((f[1] + 0.1) * 100) / 100)];
+}
+function autoFx(def) {
   if (fxCache.has(def.swim)) return fxCache.get(def.swim);
   const b = hatBounds(def.swim.filter(s => s.show !== "dead"));
   let spot = [0, -0.42];

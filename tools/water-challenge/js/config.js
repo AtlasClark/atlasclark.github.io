@@ -1,8 +1,8 @@
 /* Water Challenge (web) - constants: rules, tunables and the on-disk contract
    (FORMAT_REV, UTF-16 LE + BOM JSON, unknown fields kept). */
 
-export const REV         = "rev 1.30.1";
-export const APP_VERSION = "web 1.30.1";   /* stamped as writerVersion */
+export const REV         = "rev 1.31.0";
+export const APP_VERSION = "web 1.31.0";   /* stamped as writerVersion */
 /* Every file is written at FORMAT_REV. A file stamped higher came from a newer
    build, and the page asks for a reload. */
 export const FORMAT_REV    = 22;
@@ -98,6 +98,10 @@ export const SHELL_MAX         = 5;
 export const SHELL_FREE_DAYS   = [0, 6];        /* getDay(): Sunday, Saturday */
 export const SHELLS_SINCE      = "2026-10-21";
 export const SHELL_KINDS       = ["cosmetic", "paint"];
+/* Day wins: the top score of a finished day, with the goal met, pays WIN_SHELLS, split
+   between everyone tied on it (rounded up), from SHELLS_SINCE. The
+   winners' pets wear a medal the next day. */
+export const WIN_SHELLS        = 10;
 export const DEFAULT_TITLE     = "Water Challenge";
 export const DEFAULT_TAGLINE   = "Drink responsibly. Brag irresponsibly.";
 export const TITLE_MAX         = 40;

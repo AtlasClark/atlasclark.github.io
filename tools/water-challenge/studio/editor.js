@@ -1,8 +1,8 @@
 /* Pet Studio canvas: draws the pet with the page's own renderer over guides
    (waterline, headroom, grid, reference image) and handles the tools. */
 
-import { drawShapes, tracePath, colourOf, fxSpot } from "../js/petdefs.js";
-import { critterCrown } from "../js/art.js";
+import { drawShapes, tracePath, colourOf, fxSpot, medalSpot } from "../js/petdefs.js";
+import { critterCrown, drawMedal, wearAt } from "../js/art.js";
 import { TALLEST_PET_R, UNDERWATER_TINT, WALL_GAP_R, narrowCup } from "../js/config.js";
 import * as G from "./geom.js";
 
@@ -129,6 +129,10 @@ export class Editor {
       const s = fxSpot(this.app.def), [x, y] = this.toScreen(s[0], s[1]);
       out.push({ type: "fx", x, y });
     }
+    if (this.app.medal && this.app.def && this.app.pose === "swim") {
+      const s = medalSpot(this.app.def), [x, y] = this.toScreen(s[0], s[1]);
+      out.push({ type: "medal", x, y });
+    }
     if (this.app.def && this.app.pose === "swim" && !this.app.isHat && this.app.tool === "select") {
       const lx = narrowCup().reachFor(this.app.range), [, y] = this.toScreen(0, RANGE_HANDLE_Y);
       for (const s of [-1, 1]) out.push({ type: "range", x: this.toScreen(s * lx, 0)[0], y });
@@ -222,6 +226,7 @@ export class Editor {
     app.begin();
     if (h.type === "crown") { this.drag = { type: "crown" }; return; }
     if (h.type === "fx") { this.drag = { type: "fx" }; return; }
+    if (h.type === "medal") { this.drag = { type: "medal" }; return; }
     if (h.type === "range") { this.drag = { type: "range" }; return; }
     const sel = this.selected(), b = G.bounds(sel);
     if (h.type === "scale") {
@@ -300,6 +305,10 @@ export class Editor {
       const p = this.snapPt(w, e);
       app.def.fx = [G.R5(p[0]), G.R5(p[1])];
       app.live();
+    } else if (d.type === "medal") {
+      const p = this.snapPt(w, e);
+      app.def.medal = [G.R5(p[0]), G.R5(p[1])];
+      app.live();
     } else if (d.type === "ref") {
       app.ref.x = G.R5(d.x + w[0] - d.w[0]); app.ref.y = G.R5(d.y + w[1] - d.w[1]);
       app.live();
@@ -320,7 +329,7 @@ export class Editor {
     const d = this.drag, app = this.app;
     this.drag = null;
     if (!d) return;
-    if (["move", "scale", "rot", "rx", "ry", "node", "crown", "fx", "ref", "range"].includes(d.type)) { app.commit(); return; }
+    if (["move", "scale", "rot", "rx", "ry", "node", "crown", "fx", "medal", "ref", "range"].includes(d.type)) { app.commit(); return; }
     if (d.type === "marquee") {
       const x0 = Math.min(d.w[0], d.cur[0]), x1 = Math.max(d.w[0], d.cur[0]), y0 = Math.min(d.w[1], d.cur[1]), y1 = Math.max(d.w[1], d.cur[1]);
       if ((x1 - x0) * this.view.z > 3 || (y1 - y0) * this.view.z > 3) {
@@ -489,7 +498,8 @@ export class Editor {
     const def = app.def, shapes = app.shapes;
     if (def && hat && app.tryOn) {                       /* the pet it sits on, faint, crown spot at the origin */
       const t = app.tryOn.def;
-      L.save(); L.globalAlpha = 0.28; L.translate(-t.crown[0] * z, -t.crown[1] * z);
+      const at = app.tryOn.medal ? medalSpot(t) : t.crown;
+      L.save(); L.globalAlpha = 0.28; L.translate(-at[0] * z, -at[1] * z);
       drawShapes(L, t.swim, z, app.hue, t.pal, false);
       L.restore();
     }
@@ -497,7 +507,8 @@ export class Editor {
       if (!shapes && app.ghost) { L.globalAlpha = 0.3; drawShapes(L, app.ghost, z, app.hue, def.pal, app.dead); L.globalAlpha = 1; }
       if (shapes) drawShapes(L, shapes, z, app.hue, def.pal, app.dead);
       if (this.draft && this.draft.shape) { L.globalAlpha = 0.75; drawShapes(L, [this.draft.shape], z, app.hue, def.pal, false); L.globalAlpha = 1; }
-      if (app.crown && swimPose) critterCrown(L, z * def.crown[0], z * def.crown[1], z, false);   /* only the glass wears it */
+      if (app.medal && swimPose) { const s = medalSpot(def); wearAt(L, z * s[0], z * s[1], def.medalRot, () => drawMedal(L, 0, 0, z * (def.medalScale || 1))); }
+      if (app.crown && swimPose) wearAt(L, z * def.crown[0], z * def.crown[1], def.crownRot, () => critterCrown(L, 0, 0, z * (def.crownScale || 1), false));   /* only the glass wears it */
       if (app.water && swimPose && UNDERWATER_TINT) {
         L.globalCompositeOperation = "source-atop"; L.globalAlpha = UNDERWATER_TINT;
         L.fillStyle = "#3d8fc4"; L.fillRect(-ox, 0, W, H);
@@ -571,7 +582,7 @@ export class Editor {
     }
     for (const h of this.handles()) {
       ctx.lineWidth = 1.5;
-      ctx.fillStyle = h.type === "crown" ? "#f0b429" : h.type === "fx" ? "#ff6fa3" : css("--handle");
+      ctx.fillStyle = h.type === "crown" ? "#f0b429" : h.type === "fx" ? "#ff6fa3" : h.type === "medal" ? "#f2c14e" : css("--handle");
       ctx.strokeStyle = css("--sel");
       ctx.beginPath();
       if (h.type === "rot") {
@@ -583,6 +594,9 @@ export class Editor {
       else if (h.type === "fx") {                       /* the spot, and roughly how far effects reach round it */
         ctx.save(); ctx.setLineDash([4, 4]); ctx.strokeStyle = "#ff6fa3"; ctx.beginPath(); ctx.arc(h.x, h.y, this.view.z * 0.9, 0, G.TAU); ctx.stroke(); ctx.restore();
         ctx.beginPath(); ctx.arc(h.x, h.y, 6, 0, G.TAU);
+      }
+      else if (h.type === "medal") {                    /* the disc, about the size the medal draws */
+        ctx.arc(h.x, h.y, 6, 0, G.TAU);
       }
       else ctx.rect(h.x - HANDLE, h.y - HANDLE, 2 * HANDLE, 2 * HANDLE);
       ctx.fill(); ctx.stroke();

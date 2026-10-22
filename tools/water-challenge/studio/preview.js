@@ -2,7 +2,7 @@
    drawCritter / drawPortrait. A swimming glass, a close-up, the drowned pose and
    the Pets-tab icon at four hues. */
 
-import { drawCritter, drawPortrait, drawHeadstone, drawCoin, drawGoldPile } from "../js/art.js";
+import { drawCritter, drawPortrait, drawHeadstone, drawCoin, drawGoldPile, drawMedal } from "../js/art.js";
 import { hats, hatSvgFrom, fxSpot } from "../js/petdefs.js";
 import { drawEffect, drawDecor } from "../js/cosmetics.js";
 import { UNDERWATER_TINT, SWIM_RANGE, WALL_GAP_R } from "../js/config.js";
@@ -112,6 +112,21 @@ export class Preview {
       });
       return;
     }
+    if (app.kind === "medal") {                                    /* worn by a few pets, then the icon */
+      const gw = Math.min(120, gh * 0.85), r = Math.min(gh * 0.26, 34);
+      [0, 9, 16].forEach((k, i) => {
+        if (x + gw > W - 90) return;
+        this.glass(x, top, gw, gh, 0.5, (L, s) => drawCritter(L, x + gw / 2, s, r, Math.sin(t * 1.3 + i) * 0.05, false, false, k, (app.hue + i * 120) % 360, false, null, true),
+                   i ? "" : "worn the day after a win");
+        x += gw + 12;
+      });
+      const size = 40, iy = top + (gh - size) / 2;
+      ctx.fillStyle = this.css("--panel-2"); ctx.strokeStyle = this.css("--line");
+      ctx.beginPath(); ctx.roundRect(x, iy, size, size, 10); ctx.fill(); ctx.stroke();
+      ctx.save(); ctx.translate(x, iy); ctx.scale(size / 60, size / 60); drawMedal(ctx, 30, 42, 70); ctx.restore();
+      this.label("icon", x + size / 2, top + gh + 14);
+      return;
+    }
     if (app.kind === "grave") {
       const gw = Math.min(104, gh * 0.7), r = Math.min(gw * 0.26, 30);
       [0, 120, 240].forEach((dh, i) => {
@@ -172,7 +187,7 @@ export class Preview {
     this.glass(x, top, gw, gh, 0.58, (L, s) => {
       const px = x + gw / 2 + sway * amp, py = s + Math.sin(t * 2.1) * r1 * 0.05;
       L.save(); L.translate(px, py); L.scale(face, 1);
-      drawCritter(L, 0, 0, r1, Math.sin(t * 1.3) * 0.06, crown, false, k, hue, false);
+      drawCritter(L, 0, 0, r1, Math.sin(t * 1.3) * 0.06, crown, false, k, hue, false, null, app.medal);
       L.restore();
     }, "in the glass");
     x += gw + 18;
@@ -182,9 +197,9 @@ export class Preview {
     this.glass(x, top, cw, gh, 0.5, (L, s) => {
       const cy = s + Math.sin(t * 2.1) * r2 * 0.04, spot = app.fx && app.def ? fxSpot(app.def) : null;
       if (spot) drawEffect(L, "aura", x + cw / 2 + spot[0] * r2, cy + spot[1] * r2, r2, t, hue, "back");
-      drawCritter(L, x + cw / 2, cy, r2, Math.sin(t * 1.3) * 0.05, crown, false, k, hue, false);
+      drawCritter(L, x + cw / 2, cy, r2, Math.sin(t * 1.3) * 0.05, crown, false, k, hue, false, null, app.medal);
       if (spot) drawEffect(L, "sparkles", x + cw / 2 + spot[0] * r2, cy + spot[1] * r2, r2, t, hue, "front");
-    }, "close-up" + (crown ? ", crowned" : "") + (app.fx ? ", effects" : ""));
+    }, "close-up" + (crown ? ", crowned" : "") + (app.fx ? ", effects" : "") + (app.medal ? ", medal" : ""));
     x += cw + 18;
 
     /* drowned: upside down on the bottom, as the glass rests it */

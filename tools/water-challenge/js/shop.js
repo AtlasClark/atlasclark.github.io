@@ -5,7 +5,7 @@
    Every action here saves; callers run them inside store.serial(). */
 
 import * as C from "./config.js";
-import { S, tokensEarned, capBonus } from "./model.js";
+import { S, tokensEarned, capBonus, dayWinners } from "./model.js";
 import { saveParticipant, petKindFor } from "./store.js";
 import { has, todayKey, localStamp, shiftKey, parseKey, aAn } from "./util.js";
 import { applyRoll, dayRng, grantHomunculus, isGrave, petBinIndex, penOf, binsFor, rollPen, pen2Open } from "./pets.js";
@@ -324,7 +324,15 @@ function runs(p) {
   return out;
 }
 export const shellAward = run => Math.min(C.SHELL_MAX, Math.max(1, run));
-export function shellsEarned(p) { return Object.values(runs(p)).reduce((a, r) => a + shellAward(r), 0) + hydrationEarned(p).shells; }
+export function shellsEarned(p) { return Object.values(runs(p)).reduce((a, r) => a + shellAward(r), 0) + hydrationEarned(p).shells + winShells(p); }
+/* Day wins pay WIN_SHELLS, split between that day's winners (model.dayWinners). */
+export const winShare = n => n ? Math.ceil(C.WIN_SHELLS / n) : 0;
+export function winShells(p) {
+  const days = new Set((p.entries || []).filter(e => Number(e.oz) > 0 && e.date >= C.SHELLS_SINCE).map(e => e.date));
+  let n = 0;
+  for (const d of days) { const w = dayWinners(d); if (w.includes(p.name)) n += winShare(w.length); }
+  return n;
+}
 export const shellsSpent = p => (p.spends || []).reduce((a, s) => a + (isShell(s) ? Number(s.cost) || 0 : 0), 0);
 export const shellBalance = p => shellsEarned(p) - shellsSpent(p);
 /* The run of pour days in a row up to today (or the last pour day before it, across

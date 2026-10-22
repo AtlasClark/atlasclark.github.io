@@ -8,17 +8,17 @@ import { S, personalGoal, capFor, totalOn, metGoal, pastCap, atCap, dayScoreFor,
          currentGoal, currentGoalFor, currentAnnualGoal, currentIdleMax, goalTunables, legacyFlat,
          challengeStart, challengeEnd, yearElapsed, teamYearTotal, yearTargets, seasonStats,
          recentDays, topOf, dayRec, dayLeaders, dayResult, wonDay, satOut, tokensEarned,
-         duplicateNames, isAway, openAwaySince, goalForDate, petEventTimes, allDateKeys } from "./model.js";
+         duplicateNames, isAway, openAwaySince, goalForDate, petEventTimes, allDateKeys, dayWinners, wearsMedal } from "./model.js";
 import { petKindFor, ownsEquipped, graveEquipped, petHueFor, isGrave, gravesOf, petsOwned,
          graveLine, petLabel, petName, petRarityOf, petBinIndex, petGridOrder, penFound,
          penOf, penKinds, pen2Open, penAlive, penBuried,
          hashHue, hueOf, rarityLabel, undoEffect, rollOdds } from "./pets.js";
-import { crownSvg, jesterSvg, hatSvg, drawPortrait, drawCritter, drawHeadstone, drawGoldPile, drawCoin, hatKeyFor } from "./art.js";
+import { crownSvg, jesterSvg, hatSvg, drawPortrait, drawCritter, drawHeadstone, drawGoldPile, drawCoin, hatKeyFor, drawMedal } from "./art.js";
 import * as G from "./glass.js";
 import { diag, dir } from "./store.js";
 import { defs as petDefs, hats as petHats, petSource } from "./petdefs.js";
 import { shownKind, hiddenPets, shownBalance, hiddenIds, rollHoldLeft, rollCardDone } from "./reveal.js";
-import { balance, spentTotal, spendsOn, earnedTotal, chestWinnings, shopDay, lookOf } from "./shop.js";
+import { balance, spentTotal, spendsOn, earnedTotal, chestWinnings, shopDay, lookOf, winShare } from "./shop.js";
 import { COSMETICS, drawShell } from "./cosmetics.js";
 import { isHydrationDay, teamSplash } from "./hydration.js";
 import { setHydrationDay } from "./hydfx.js";
@@ -235,6 +235,7 @@ function updateGlasses() {
     show("sku_" + i, danger);
     st.duckCrown = best > 0 && dayScoreFor(total, p, key) >= best - C.RATIO_EPSILON;
     st.duckJester = st.duckCrown && !over;
+    st.duckMedal = wearsMedal(p, key);
     const hat = st.duckJester ? "j" : "c";
     if (st.hatIs !== hat) { st.hatIs = hat; setEl("cr_" + i, hatSvg(26, 17, "crown", st.duckJester), null); }
     setEl("cr_" + i, null, st.duckCrown ? "crown-wrap on" : "crown-wrap");
@@ -289,11 +290,12 @@ function renderLeaderboard() {
    for a second click and says what it does to the pets first. */
 let rollTimer = 0;
 function renderActivity() {
-  const key = todayKey(), pets = [], pours = [];
+  const key = todayKey(), pets = [], pours = [], won = dayWinners(shiftKey(key, -1));
   let holdFor = Infinity;                          /* a roll held by time alone: render again when it shows */
   const atOf = ts => (ts && new Date(ts).getTime()) || 0;
   for (const p of S.participants) {
     for (const e of p.entries) if (e.date === key) pours.push({ p, e, at: atOf(e.ts) });
+    if (won.includes(p.name)) pets.push({ kind: "medal", p, n: winShare(won.length), ts: "" });
     const t = petEventTimes(p, key), held = rollHoldLeft(p);
     if (held && held !== Infinity) holdFor = Math.min(holdFor, held);
     const goal = goalRollOn(p, key);
@@ -317,12 +319,14 @@ function renderActivity() {
   }
   clearTimeout(rollTimer);
   if (holdFor !== Infinity) rollTimer = setTimeout(render, holdFor + 50);
-  pets.sort((a, b) => atOf(b.ts) - atOf(a.ts));
+  pets.sort((a, b) => (a.kind === "medal") - (b.kind === "medal") || atOf(b.ts) - atOf(a.ts));   /* medals last */
   pours.sort((a, b) => b.at - a.at);
   if (ui.armed && !pours.some(x => x.e.eid === ui.armed)) ui.armed = "";
 
   const h = pets.map(a => {
     const when = '<span class="t">' + (a.ts ? esc(prettyTime(a.ts)) : "today") + '</span>';
+    if (a.kind === "medal") return '<li class="ev-pet"><span class="tag">medal</span><i class="medalico"></i><strong>' + esc(a.p.name) +
+                                   '</strong> won yesterday: +' + a.n + ' shells and a medal for today</li>';
     if (a.kind === "spend") return '<li class="ev-shop">' + spendLine(a.p, a.s, when) + '</li>';
     if (a.kind === "plinko") return '<li class="ev-shop" title="' + a.drops.length + ' drops, ' + esc(prettyTime(a.from)) + ' to ' +
                                     esc(prettyTime(a.ts)) + '">' + plinkoLine(a.p, a.drops, key, when) + '</li>';
@@ -468,6 +472,7 @@ export function ensureIcons() {
   css.push(".pi-hom{background-image:url(" + iconUrl(ctx => drawCritter(ctx, 30, 50, 17, 0, false, false, C.HOMUNCULUS_KIND, 210)) + ")}");
   css.push(".coin{background:center/contain no-repeat url(" + iconUrl(ctx => drawCoin(ctx, 30, 30, 58)) + ");box-shadow:none}");
   css.push(".shellico{background:center/contain no-repeat url(" + iconUrl(ctx => drawShell(ctx, 30, 30, 58)) + ")}");
+  css.push(".medalico{background:center/contain no-repeat url(" + iconUrl(ctx => drawMedal(ctx, 30, 42, 70)) + ")}");
   const el = document.createElement("style");
   el.id = "petIcons";
   el.textContent = css.join("\n");
@@ -701,7 +706,7 @@ function recapHtml() {
   if (!day) return "";
   ensureIcons();
   const yest = shiftKey(today, -1) === day, rows = standingsFor(day), played = rows.filter(r => r.total > 0);
-  const leaders = dayLeaders(day), team = dayTotal(day);
+  const leaders = dayLeaders(day), team = dayTotal(day), winners = dayWinners(day);
   const before = keys.filter(d => d < day).slice(0, 7);
   const avg = before.length ? before.reduce((a, d) => a + dayTotal(d), 0) / before.length : 0;
   const goalers = played.filter(r => metGoal(r.total, r.goal));
@@ -711,7 +716,9 @@ function recapHtml() {
              : leaders.length > 1 ? esc(leaders.join(" & ")) + " tied for the day" : esc(leaders[0]) + " won the day";
   const h = ['<section class="recap"><div class="recap-head"><p class="eyebrow">' + (yest ? "Yesterday" : "Last day played") +
              ' &middot; ' + esc(date) + '</p><h3>' + (leaders.length ? hatSvg(26, 17, "rc-crown", !goalers.some(g => leaders.includes(g.name))) : "") +
-             head + '</h3><p class="recap-sub">' + played.length + ' played &middot; ' + goalers.length + ' reached their goal &middot; ' +
+             head + '</h3>' + (winners.length ? '<p class="recap-prize"><i class="medalico"></i>' + esc(winners.join(" & ")) + ' ' +
+             (winners.length > 1 ? 'take ' + winShare(winners.length) + ' shells each' : 'takes ' + winShare(1) + ' shells') +
+             (yest ? ' and wear' + (winners.length > 1 ? '' : 's') + ' the medal today' : '') + '</p>' : '') + '<p class="recap-sub">' + played.length + ' played &middot; ' + goalers.length + ' reached their goal &middot; ' +
              fmtOz(team) + ' fl oz together' +
              (avg > 0 ? ' <span class="' + (team >= avg ? "up" : "down") + '">' + (team >= avg ? "&#9650; " : "&#9660; ") +
                         Math.abs(Math.round((team / avg - 1) * 100)) + '% on the week before</span>' : '') + '</p></div>'];

@@ -6,7 +6,8 @@
    coin:  one token seen face on, 1 unit across, origin at its centre. The bank's gold
           pile squashes it into a heap; the page's small coin icons use it as is.
    Holiday hats (santa, elf, witch, pumpkin, partyGold, partyStripe): drawn like the crown
-          and jester, which they replace around their holiday (config HOLIDAY_HATS). */
+          and jester, which they replace around their holiday (config HOLIDAY_HATS).
+   medal: the day-win medal, units of r, origin at the disc's centre (the pet's medal spot). */
 
 const HUE = (dh, s, l, a = 1) => ({ hue: 1, dh, s, l, a });
 const FIX = c => ({ c });
@@ -27,6 +28,16 @@ const S = (path, stroke, w) => ({ t: "path", d: d(path), stroke, w, cap: "round"
 const PI = 3.1416, TAU = 6.2832;
 
 export const PROP_ART = {
+  /* Worn the day after a day win, hanging at the pet's medal spot. */
+  medal: { pal: { gold: FIX("#f2c14e"), edge: FIX("#a87516"), shine: FIX("#fff3c4"),
+             red: FIX("#d9434e"), blue: FIX("#3d7fd6") }, shapes: [
+    P("M 0.221 -0.51 L 0.085 -0.51 L -0.068 -0.136 L 0.051 -0.102 Z", "blue", "edge", 0.02),
+    P("M -0.221 -0.51 L -0.085 -0.51 L 0.068 -0.136 L -0.051 -0.102 Z", "red", "edge", 0.02),
+    E(0, 0, 0.187, 0.187, "gold", { stroke: "edge", w: 0.04 }),
+    E(0, 0, 0.1326, 0.1326, null, { stroke: "edge", w: 0.017 }),
+    P("M 0 -0.0935 L 0.024 -0.033 L 0.0889 -0.0289 L 0.0388 0.0126 L 0.0549 0.0756 L 0 0.0408 L -0.0549 0.0756 L -0.0388 0.0126 L -0.0889 -0.0289 L -0.024 -0.033 Z", "shine"),
+    E(-0.085, -0.085, 0.0374, 0.0204, "shine", { rot: -0.7 }) ] },
+
   /* Silver: the crown marks the day's leader; gold stays for meeting your own goal. */
   crown: { pal: { silver: FIX("#d3dce4"), shade: FIX("#b3c0cb"), edge: FIX("#6f808e"), shine: FIX("#f4f8fb"),
                   ruby: FIX("#d9434e"), sapphire: FIX("#4f8fd9") }, shapes: [
