@@ -369,33 +369,25 @@ function renderTeamBar() {
 
 /* ---- warnings ----------------------------------------------------------- */
 /* An old HTA still open somewhere rewrites files and erases their web-only history.
-   Shown while any file is still in its hands, and for HTA_ALERT_DAYS after a logged
-   sighting unless this browser has said "Got it" to the newest one. */
+   One line naming whose copy wrote, for HTA_ALERT_DAYS after its newest write, until
+   this browser says "Got it"; a newer write brings it back. */
 const HTA_OK = "awc-hta-ok";
-function htaRecent() {
+function htaWrites() {
   const since = shiftKey(todayKey(), -C.HTA_ALERT_DAYS);
-  return S.htaLog.filter(e => String(e.seen || e.at).slice(0, 10) >= since);
+  return [...S.htaWriters, ...S.htaLog].filter(e => String(e.at || e.seen || "").slice(0, 10) >= since);
 }
-function whenOf(at) {
-  const d = new Date(String(at).replace(" ", "T"));
-  return isNaN(d) ? esc(at) : esc(d.toTimeString().slice(0, 5)) + " on " + esc(d.toLocaleDateString("en-US", { month: "short", day: "numeric" }));
-}
+const newestWrite = list => list.reduce((a, e) => String(e.at || e.seen || "") > a ? String(e.at || e.seen || "") : a, "");
 function htaWarning() {
-  const now = S.htaWriters, recent = htaRecent();
+  const list = htaWrites();
   let dismissed = "";
   try { dismissed = localStorage.getItem(HTA_OK) || ""; } catch { }
-  const newest = recent.reduce((a, e) => (e.seen || "") > a ? e.seen || "" : a, "");
-  if (!now.length && (!recent.length || newest <= dismissed)) return "";
-  const list = now.length ? now : recent, by = {};
-  for (const e of list) { const k = e.user + "|" + e.ver; (by[k] = by[k] || { user: e.user, ver: e.ver, files: new Set(), at: e.at }).files.add(e.file); if (e.at > by[k].at) by[k].at = e.at; }
-  const bits = Object.values(by).map(g => '<b>' + esc(g.user) + '</b>&rsquo;s copy (' + esc(g.ver) + ') rewrote ' + esc([...g.files].join(", ")) + ' at ' + whenOf(g.at));
-  return '<b>An old HTA is still writing to this folder.</b> ' + bits.join("; ") + '. It erases spent tokens, Plinko and roll history, ' +
-         'and looks from those files. Close every open &ldquo;Atlas Water Challenge&rdquo; HTA window' + (now.length ? '.' :
-         '. <button type="button" class="btn small" data-act="hta-ok">Got it</button>');
+  if (!list.length || newestWrite(list) <= dismissed) return "";
+  const users = [...new Set(list.map(e => e.user))];
+  return '<b>Old HTA writing to this folder:</b> ' + esc(users.join(", ")) + '. Please close all HTA windows. ' +
+         '<button type="button" class="btn small" data-act="hta-ok">Got it</button>';
 }
 export function htaDismiss() {
-  const newest = S.htaLog.reduce((a, e) => (e.seen || "") > a ? e.seen || "" : a, "");
-  try { localStorage.setItem(HTA_OK, newest); } catch { }
+  try { localStorage.setItem(HTA_OK, newestWrite(htaWrites())); } catch { }
   renderStaleWarning();
 }
 
