@@ -10,11 +10,12 @@ import { saveParticipant, petKindFor } from "./store.js";
 import { has, todayKey, localStamp, shiftKey } from "./util.js";
 import { applyRoll, dayRng, grantHomunculus, isGrave, petBinIndex, penOf, binsFor, rollPen, pen2Open } from "./pets.js";
 import { COSMETICS, SLOTS, PAINT_COST } from "./cosmetics.js";
+import { hydrationEarned } from "./hydration.js";
 
 const isShell = s => C.SHELL_KINDS.includes(s.kind);
 export const spentTotal = p => (p.spends || []).reduce((a, s) => a + (isShell(s) ? 0 : Number(s.cost) || 0), 0);
 export const chestWinnings = p => (p.spends || []).reduce((a, s) => a + (s.chest ? Number(s.chest.won) || 0 : 0), 0);
-export const earnedTotal = p => tokensEarned(p) + capBonus(p) + chestWinnings(p);
+export const earnedTotal = p => tokensEarned(p) + capBonus(p) + chestWinnings(p) + hydrationEarned(p).tokens;
 
 /* The Community Chest holds every token put in by a centre landing, less every win.
    It lives in the spend records, so it merges like everything else. Two wins at the
@@ -273,7 +274,7 @@ function runs(p) {
   return out;
 }
 export const shellAward = run => Math.min(C.SHELL_MAX, Math.max(1, run));
-export function shellsEarned(p) { return Object.values(runs(p)).reduce((a, r) => a + shellAward(r), 0); }
+export function shellsEarned(p) { return Object.values(runs(p)).reduce((a, r) => a + shellAward(r), 0) + hydrationEarned(p).shells; }
 export const shellsSpent = p => (p.spends || []).reduce((a, s) => a + (isShell(s) ? Number(s.cost) || 0 : 0), 0);
 export const shellBalance = p => shellsEarned(p) - shellsSpent(p);
 /* The run of pour days in a row up to today (or yesterday, before today's first pour). */

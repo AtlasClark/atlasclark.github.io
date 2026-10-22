@@ -470,3 +470,30 @@ test("effect spot: a pet's own fx wins; otherwise the middle of what sits above 
   assert.deepEqual(P.fxSpot(P.defs[0]), [0, 0.3], "mostly under water: the middle of the whole pet");
   P.applyDefs({ format: 1, pets: {} });
 });
+
+test("hydration day: a shell per 5 oz and a token per 10 oz up to the cap, +10 shells at goal, +5 for the team splash", async () => {
+  const hyd = await import(pathToFileURL(path.join(JS, "hydration.js")));
+  const H = web.C.HYD_DAY, M = web.model, D = "2027-06-23";
+  assert.ok(hyd.isHydrationDay(D) && !hyd.isHydrationDay("2027-06-22") && !hyd.isHydrationDay("2027-06-24"));
+  assert.equal(web.C.HOLIDAY_HATS.find(h => h.m === H.m && h.d === H.d).span, 0, "droplet hats on the day only");
+  const pour = (d, oz) => ({ eid: "hy:" + d + ":" + oz, ts: d + "T09:00:00", date: d, oz, by: "test" });
+  const mk = name => ({ name, entries: [], spends: [], dayGoals: { [D]: 60 } });
+  const a = mk("hyd-a"), b = mk("hyd-b"), keep = M.S.participants;
+  M.S.participants = [a, b];
+  try {
+    const base = p => ({ shells: shop.shellsEarned(p) - hyd.hydrationEarned(p).shells, tokens: shop.earnedTotal(p) - hyd.hydrationEarned(p).tokens });
+    a.entries.push(pour(D, 37)); M.dataChanged();
+    assert.deepEqual(hyd.hydrationEarned(a), { shells: 7, tokens: 3 }, "37 oz: 7 shells, 3 tokens, no goal");
+    a.entries.push(pour(D, 23)); M.dataChanged();
+    assert.deepEqual(hyd.hydrationEarned(a), { shells: 12 + H.goalShells, tokens: 6 }, "60 oz: goal reached");
+    a.entries.push(pour(D, 100)); M.dataChanged();
+    assert.deepEqual(hyd.hydrationEarned(a), { shells: 24 + H.goalShells + H.teamShells, tokens: 12 },
+      "160 oz counts only the 120 oz cap; 160 of 120 team oz meets the splash");
+    assert.deepEqual(hyd.hydrationEarned(b), { shells: 0, tokens: 0 }, "the team splash pays only those who poured");
+    const s = base(a);
+    assert.equal(shop.shellsEarned(a), s.shells + 24 + H.goalShells + H.teamShells);
+    assert.equal(shop.earnedTotal(a), s.tokens + 12);
+    a.entries = []; M.dataChanged();
+    assert.deepEqual(hyd.hydrationEarned(a), { shells: 0, tokens: 0 }, "undone with the water");
+  } finally { M.S.participants = keep; M.dataChanged(); }
+});

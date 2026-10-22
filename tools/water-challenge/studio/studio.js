@@ -13,7 +13,7 @@ import { Editor, TOOL_HINTS } from "./editor.js";
 import { Preview } from "./preview.js";
 import * as G from "./geom.js";
 
-const REV = "studio 1.13.0";
+const REV = "studio 1.14.0";
 const PETS_URL = "../pets/pets.json";
 const $ = id => document.getElementById(id);
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -40,7 +40,8 @@ const W = {
    prop has one drawing; only the hats are worn, and only the headstone takes a pet's hue. */
 const HAT_NAMES = { crown: "Crown", jester: "Jester hat", grave: "Headstone", coin: "Token coin",
                     santa: "Santa hat", elf: "Elf hat", witch: "Witch hat", pumpkin: "Pumpkin hat",
-                    partyGold: "Party hat (gold)", partyStripe: "Party hat (stripes)" };
+                    partyGold: "Party hat (gold)", partyStripe: "Party hat (stripes)",
+                    dropCrown: "Droplet crown", splashHat: "Splash hat" };
 /* holiday hat key -> { holiday, role } from config */
 const HOLIDAY_OF = Object.fromEntries(C.HOLIDAY_HATS.flatMap(h => [[h.crown, { h, role: "crown" }], [h.jester, { h, role: "jester" }]]));
 const isHat = k => HAT_KEYS.includes(k);

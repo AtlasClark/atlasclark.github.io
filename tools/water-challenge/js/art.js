@@ -15,7 +15,7 @@ export function holidayOn(key = todayKey()) {
   if (d) {
     for (const h of C.HOLIDAY_HATS) {
       for (const y of [d.getFullYear() - 1, d.getFullYear(), d.getFullYear() + 1]) {
-        if (Math.abs(Math.round((d - new Date(y, h.m - 1, h.d)) / 864e5)) <= C.HOLIDAY_SPAN) found = h;
+        if (Math.abs(Math.round((d - new Date(y, h.m - 1, h.d)) / 864e5)) <= (h.span ?? C.HOLIDAY_SPAN)) found = h;
       }
     }
   }

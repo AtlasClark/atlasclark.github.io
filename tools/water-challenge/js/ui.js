@@ -20,6 +20,8 @@ import { defs as petDefs, hats as petHats, petSource } from "./petdefs.js";
 import { shownKind, hiddenPets, shownBalance, hiddenIds, rollHoldLeft, rollCardDone } from "./reveal.js";
 import { balance, spentTotal, spendsOn, earnedTotal, chestWinnings, shopDay, lookOf } from "./shop.js";
 import { COSMETICS, drawShell } from "./cosmetics.js";
+import { isHydrationDay, teamSplash } from "./hydration.js";
+import { setHydrationDay } from "./hydfx.js";
 import { $, esc, fmt, fmtOz, fmtGal, todayKey, dateKey, prettyTime, clockStamp, has, parseKey, shiftKey } from "./util.js";
 
 /* Set by app.js: the Shop tab renders from shopui.js, which imports this module. */
@@ -389,6 +391,34 @@ function htaWarning() {
 export function htaDismiss() {
   try { localStorage.setItem(HTA_OK, newestWrite(htaWrites())); } catch { }
   renderStaleWarning();
+}
+
+/* National Hydration Day: the water background and the banner with the rules and
+   the team goal (hydration.js, hydfx.js). */
+let evHtml = "", evTimer = 0;
+function renderEventBanner() {
+  const on = isHydrationDay(), el = $("eventBanner");
+  setHydrationDay(on);
+  if (!on) { el.hidden = true; evHtml = ""; clearInterval(evTimer); evTimer = 0; return; }
+  ensureIcons();
+  const H = C.HYD_DAY, t = teamSplash(), pct = t.goal ? Math.min(100, Math.round(t.total / t.goal * 100)) : 0;
+  const html = '<div class="ev-head"><b><span class="ev-fav" aria-hidden="true">🎉💧</span> ' + esc(H.name) + ' <span class="ev-fav" aria-hidden="true">💧🥳</span></b>' +
+    '<span class="ev-clock" id="evClock"></span><span>In celebration, every ' + H.ozPerShell + ' oz earns a <span class="shellico sm"></span>shell, every ' +
+    H.ozPerToken + ' oz earns a <span class="coin sm"></span>token. Reach your goal today for an extra bonus!</span></div>' +
+    '<div class="ev-team"><span>' + (t.met ? 'Team Goal reached: +' + H.teamShells + ' shells for everyone who poured today.'
+      : 'Team Goal: ' + fmtOz(t.total) + ' of ' + fmtOz(t.goal) + ' oz together for +' + H.teamShells + ' shells each') + '</span>' +
+    '<i class="ev-bar"><b style="width:' + pct + '%"></b></i></div>';
+  if (evHtml !== html) { el.innerHTML = evHtml = html; tickEventClock(); }
+  if (!evTimer) evTimer = setInterval(tickEventClock, 1000);
+  el.hidden = false;
+}
+/* Time left in the day, to local midnight. */
+function tickEventClock() {
+  const el = $("evClock");
+  if (!el) return;
+  const now = new Date(), end = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+  const s = Math.max(0, Math.floor((end - now) / 1000)), p = n => String(n).padStart(2, "0");
+  el.textContent = "⏳ " + Math.floor(s / 3600) + "h " + p(Math.floor(s / 60) % 60) + "m " + p(s % 60) + "s left";
 }
 
 function renderStaleWarning() {
@@ -886,6 +916,7 @@ function renderBrand() {
 export function render() {
   maskEls = [];
   renderBrand();
+  renderEventBanner();
   G.setActive(ui.tab === "today");
   if (ui.tab === "today") {
     renderGlasses(); renderLeaderboard(); renderActivity();

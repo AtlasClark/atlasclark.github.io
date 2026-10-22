@@ -14,7 +14,9 @@ import { loadPetDefs, useFolderDefs, useSiteDefs } from "./petdefs.js";
 import { bottleOn, bottleCfg, signedIn, loadBottle, setRelay, newRelayKey, pingRelay, signIn, signOut, fetchSips, applySips } from "./bottle.js";
 import { openRadial, wireRadial } from "./radial.js";
 import { initShop, renderShop, shopTabChanged } from "./shopui.js";
-import { pouredOn, shellRun, shellAward } from "./shop.js";
+import { shellsEarned, earnedTotal } from "./shop.js";
+import { isHydrationDay } from "./hydration.js";
+import { goalWave } from "./hydfx.js";
 import { ui, render, setTab, setMsg, showBanner, tickMasks, relayout, forceRebuild, resetIcons,
          toggleSwatches, openBank, auditStreak, showDiag, closeOverlays, fillSettings, renderRoster,
          renderActivityNow, showUnlock, uiHooks, htaDismiss } from "./ui.js";
@@ -35,6 +37,7 @@ function playUnlock(info) {
   if (cardsShown.has(key)) { if (info.msg) setMsg(info.msg, true); return; }
   cardsShown.add(key);
   if (!info.bought) rollCardQueued(info.name);       /* the roll stays hidden until the card closes */
+  if (!info.bought && isHydrationDay()) goalWave();  /* someone reached their goal */
   if (info.equipped) G.dropIn(info.name, 12);       /* held off-screen until the card closes */
   setTimeout(() => showUnlock(info), G.pourLeft(info.name) * 1000 + 150);
 }
@@ -344,7 +347,7 @@ async function addWater(name, oz) {
     if (!p) { setMsg(name + " is no longer on the roster.", false); return; }
     if (!isActive(p)) await setAwayNow(p, false);
     const key = todayKey(), before = totalOn(p, key), now = new Date(), stamp = localStamp(now);
-    const firstToday = key >= C.SHELLS_SINCE && !pouredOn(p, key);         /* the day's first pour earns shells */
+    const shells0 = shellsEarned(p), tokens0 = earnedTotal(p);              /* what this pour earns, shown below */
     const eid = "m:" + stamp + ":" + Math.floor(Math.random() * 1000000000);
     p.entries.push({ eid, ts: stamp, date: key, oz, by: S.me || "unknown" });
     if (!(await store.saveParticipant(p, null))) {
@@ -352,8 +355,8 @@ async function addWater(name, oz) {
       setMsg(p.name + "'s file is busy. Try again.", false);
       return;
     }
-    const after = totalOn(p, key), goal = currentGoalFor(p), run = firstToday ? shellRun(p, key) : 0;
-    const shells = run ? " · +" + shellAward(run) + " shell" + (shellAward(run) === 1 ? "" : "s") + (run > 1 ? " (" + run + " days in a row)" : "") : "";
+    const after = totalOn(p, key), goal = currentGoalFor(p), ds = shellsEarned(p) - shells0, dt = earnedTotal(p) - tokens0;
+    const shells = (ds > 0 ? " · +" + ds + " shell" + (ds === 1 ? "" : "s") : "") + (dt > 0 ? " · +" + dt + " token" + (dt === 1 ? "" : "s") : "");
     if (!metGoal(before, goal) && metGoal(after, goal)) {
       const g = streaks(p).goal;
       setMsg(p.name + " hit the goal: " + fmt(after) + " oz" + (g > 1 ? " · " + g + "-day streak" : "") + shells, true);

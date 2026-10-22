@@ -96,6 +96,19 @@ code { font-family: var(--mono); font-size: .92em; background: var(--solid-2); p
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 .shell { min-height: 100vh; padding: 24px 18px 70px; }
+
+/* ---- National Hydration Day ---- */
+.hyd-bg { position: fixed; inset: 0; width: 100%; height: 100%; z-index: -1; pointer-events: none; }
+.hyd-wave { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 45; pointer-events: none; }
+.banner.event { display: grid; gap: 8px; color: #06344f; background: linear-gradient(120deg, #bfe9ff, #e6f8ff 55%, #c6f0ff);
+  border: 1px solid #7cc8ef; box-shadow: 0 8px 24px rgba(20,110,170,.18); }
+.banner.event .ev-head { display: grid; justify-items: center; gap: 5px; text-align: center; font-size: 15px; }
+.banner.event .ev-head b { font-size: 24px; letter-spacing: -.015em; line-height: 1.15; }
+.banner.event .ev-fav { font-size: .9em; }
+.banner.event .ev-clock { padding: 2px 12px; border-radius: 999px; background: rgba(31,127,192,.14); font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.banner.event .ev-team { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; font-size: 12.5px; font-weight: 700; }
+.banner.event .ev-bar { flex: 1 1 160px; height: 8px; border-radius: 999px; background: rgba(6,52,79,.15); overflow: hidden; }
+.banner.event .ev-bar b { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #2f9be6, #5fd0ff); transition: width .4s; }
 .wrap { max-width: 1400px; margin: 0 auto; }
 
 /* ---- header ---- */

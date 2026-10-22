@@ -226,3 +226,12 @@ test("folder pet art: _pets.json in the data folder is read, never as a person, 
   const list = await web.store.loadAll();
   assert.equal(list.length, 0); assert.equal(web.model.S.loadFailed, 0, "the loader skips _pets.json");
 });
+
+test("hydration day hats: on June 23 only", () => {
+  assert.equal(A.hatKeyFor(false, "2027-06-23"), "dropCrown");
+  assert.equal(A.hatKeyFor(true, "2027-06-23"), "splashHat");
+  for (const d of ["2027-06-22", "2027-06-24"]) {
+    assert.equal(A.hatKeyFor(false, d), "crown", d);
+    assert.equal(A.hatKeyFor(true, d), "jester", d);
+  }
+});
