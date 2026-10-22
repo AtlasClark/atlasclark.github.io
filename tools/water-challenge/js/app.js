@@ -14,7 +14,7 @@ import { loadPetDefs, useFolderDefs, useSiteDefs } from "./petdefs.js";
 import { bottleOn, bottleCfg, signedIn, loadBottle, setRelay, newRelayKey, pingRelay, signIn, signOut, fetchSips, applySips } from "./bottle.js";
 import { openRadial, wireRadial } from "./radial.js";
 import { initShop, renderShop, shopTabChanged } from "./shopui.js";
-import { checkIn } from "./shop.js";
+import { pouredOn, shellRun, shellAward } from "./shop.js";
 import { ui, render, setTab, setMsg, showBanner, tickMasks, relayout, forceRebuild, resetIcons,
          toggleSwatches, openBank, auditStreak, showDiag, closeOverlays, fillSettings, renderRoster,
          renderActivityNow, showUnlock, uiHooks } from "./ui.js";
@@ -100,21 +100,9 @@ async function refresh() {
     catch (e) { store.diagNote("backup failed: " + (e.message || e)); }
   }
   await reconcile();
-  await checkInMine();
   lastSig = await store.folderSignature();
   ui.lastSync = clockStamp();
   render();
-}
-
-/* Opening the page as yourself checks you in once a day for shells (shop.js). */
-async function checkInMine() {
-  const p = ui.connected && S.mine && findParticipant(S.mine);
-  if (!p) return;
-  try {
-    const r = await checkIn(p);
-    if (r) setMsg("Welcome back, " + p.name + ": +" + r.got + " shell" + (r.got === 1 ? "" : "s") +
-                  (r.run > 1 ? " (" + r.run + " days in a row)" : "") + ".", true);
-  } catch (e) { store.diagNote("check-in: " + (e.message || e)); }
 }
 
 /* After a local change: settle pet events, then repaint. */
@@ -355,6 +343,7 @@ async function addWater(name, oz) {
     if (!p) { setMsg(name + " is no longer on the roster.", false); return; }
     if (!isActive(p)) await setAwayNow(p, false);
     const key = todayKey(), before = totalOn(p, key), now = new Date(), stamp = localStamp(now);
+    const firstToday = key >= C.SHELLS_SINCE && !pouredOn(p, key);         /* the day's first pour earns shells */
     const eid = "m:" + stamp + ":" + Math.floor(Math.random() * 1000000000);
     p.entries.push({ eid, ts: stamp, date: key, oz, by: S.me || "unknown" });
     if (!(await store.saveParticipant(p, null))) {
@@ -362,12 +351,13 @@ async function addWater(name, oz) {
       setMsg(p.name + "'s file is busy. Try again.", false);
       return;
     }
-    const after = totalOn(p, key), goal = currentGoalFor(p);
+    const after = totalOn(p, key), goal = currentGoalFor(p), run = firstToday ? shellRun(p, key) : 0;
+    const shells = run ? " · +" + shellAward(run) + " shell" + (shellAward(run) === 1 ? "" : "s") + (run > 1 ? " (" + run + " days in a row)" : "") : "";
     if (!metGoal(before, goal) && metGoal(after, goal)) {
       const g = streaks(p).goal;
-      setMsg(p.name + " hit the goal: " + fmt(after) + " oz" + (g > 1 ? " · " + g + "-day streak" : ""), true);
+      setMsg(p.name + " hit the goal: " + fmt(after) + " oz" + (g > 1 ? " · " + g + "-day streak" : "") + shells, true);
     } else {
-      setMsg(p.name + " +" + fmt(oz) + " oz · " + fmt(after) + " / " + fmt(goal) + " today", true);
+      setMsg(p.name + " +" + fmt(oz) + " oz · " + fmt(after) + " / " + fmt(goal) + " today" + shells, true);
     }
     G.pour(p.name, oz, p.color);
     emit("pour", { name: p.name, oz, color: p.color });

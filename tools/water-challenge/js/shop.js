@@ -262,11 +262,12 @@ export async function paintPet(p, k, hue) {
   return h;
 }
 
-/* ---- shells: earned by checking in ---------------------------------------------- */
-/* Each check-in day pays the length of the run of days in a row it ends, up to
-   SHELL_MAX: 1, 2, 3, 4, 5, 5, ... A missed day starts the run again at 1. */
+/* ---- shells: earned by pouring ----------------------------------------------- */
+/* Each day with a pour (from SHELLS_SINCE) pays the length of the run of pour days in
+   a row it ends, up to SHELL_MAX: 1, 2, 3, 4, 5, 5, ... A day without one starts the run
+   again at 1. Taken from the entries, so it merges and undoes like the water itself. */
 function runs(p) {
-  const days = Object.keys(p.checkins || {}).filter(k => /^\d{4}-\d{2}-\d{2}$/.test(k)).sort(), out = {};
+  const days = [...new Set((p.entries || []).filter(e => Number(e.oz) > 0 && e.date >= C.SHELLS_SINCE).map(e => e.date))].sort(), out = {};
   let run = 0, prev = "";
   for (const d of days) { run = prev && shiftKey(prev, 1) === d ? run + 1 : 1; out[d] = run; prev = d; }
   return out;
@@ -275,18 +276,9 @@ export const shellAward = run => Math.min(C.SHELL_MAX, Math.max(1, run));
 export function shellsEarned(p) { return Object.values(runs(p)).reduce((a, r) => a + shellAward(r), 0); }
 export const shellsSpent = p => (p.spends || []).reduce((a, s) => a + (isShell(s) ? Number(s.cost) || 0 : 0), 0);
 export const shellBalance = p => shellsEarned(p) - shellsSpent(p);
-/* The run of days in a row up to today (0 when not checked in today or yesterday). */
+/* The run of pour days in a row up to today (or yesterday, before today's first pour). */
 export function shellRun(p, key = todayKey()) {
   const r = runs(p);
   return r[key] || r[shiftKey(key, -1)] || 0;
 }
-
-/* Today's check-in for the person this page belongs to. Returns { got, run } the first
-   time each day, null otherwise. */
-export async function checkIn(p, key = todayKey()) {
-  if (!p || (p.checkins && p.checkins[key])) return null;
-  p.checkins = Object.assign({}, p.checkins, { [key]: 1 });
-  if (!(await saveParticipant(p, null))) { delete p.checkins[key]; return null; }
-  const run = runs(p)[key];
-  return { got: shellAward(run), run };
-}
+export const pouredOn = (p, key = todayKey()) => (p.entries || []).some(e => e.date === key && Number(e.oz) > 0);

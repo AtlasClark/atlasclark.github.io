@@ -1,15 +1,15 @@
 /* Water Challenge (web) - constants: rules, tunables and the on-disk contract
    (FORMAT_REV, UTF-16 LE + BOM JSON, unknown fields kept). */
 
-export const REV         = "rev 1.26.0";
-export const APP_VERSION = "web 1.26.0";   /* stamped as writerVersion */
+export const REV         = "rev 1.26.1";
+export const APP_VERSION = "web 1.26.1";   /* stamped as writerVersion */
 /* Every file is written at FORMAT_REV. A file stamped higher came from a newer
    build, and the page asks for a reload. */
 export const FORMAT_REV    = 22;
 /* Every field the page understands. Anything else in a file is kept as-is. */
 export const KNOWN_FIELDS = ["name", "color", "goal", "dayGoals", "away", "created", "equippedPet",
   "petRollDay", "pets", "graves", "graveDay", "lastRoll", "prevRoll", "rollKind", "rollWasNew",
-  "deadKind", "tokensSpent", "rerollDay", "rollLog", "graveLog", "spends", "checkins",
+  "deadKind", "tokensSpent", "rerollDay", "rollLog", "graveLog", "spends",
   "writerRev", "writerVersion", "writerUser", "writtenAt", "entries"];
 
 /* ---- the token shop ----
@@ -69,11 +69,13 @@ export const HOLIDAY_HATS = [
   { name: "New Year",  m: 1,  d: 1,  crown: "partyGold", jester: "partyStripe" }
 ];
 export const HOLIDAY_SPAN = 1;
-/* Shells: the Style shop's own currency, apart from goal tokens. Opening the page as
-   yourself (with your glass set) checks you in once a day: 1 shell the first day, one
-   more for each day in a row, up to SHELL_MAX a day; a missed day starts again at 1.
-   Spends of these kinds are paid in shells, never tokens. */
+/* Shells: the Style shop's own currency, apart from goal tokens. Each day a person
+   logs any water earns shells: 1 the first day, one more for each day in a row, up to
+   SHELL_MAX a day; a day without a pour starts again at 1. Counted from the entries
+   themselves, from SHELLS_SINCE on (no backlog). Spends of SHELL_KINDS are paid in
+   shells, never tokens. */
 export const SHELL_MAX         = 5;
+export const SHELLS_SINCE      = "2026-10-21";
 export const SHELL_KINDS       = ["cosmetic", "paint"];
 export const DEFAULT_TITLE     = "Water Challenge";
 export const DEFAULT_TAGLINE   = "Drink responsibly. Brag irresponsibly.";

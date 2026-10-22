@@ -7,7 +7,7 @@ import { S } from "./model.js";
 import * as store from "./store.js";
 import { SLOTS, COSMETICS, itemsIn, PAINT_COST, drawDecor, drawEffect } from "./cosmetics.js";
 import { defs, fxSpot } from "./petdefs.js";
-import { ownsCosmetic, cosmeticBlock, buyCosmetic, wearCosmetic, lookOf, paintBlock, paintPet, shellBalance, shellRun, shellAward, shellsEarned } from "./shop.js";
+import { ownsCosmetic, cosmeticBlock, buyCosmetic, wearCosmetic, lookOf, paintBlock, paintPet, shellBalance, shellRun, shellAward, shellsEarned, pouredOn } from "./shop.js";
 import { hueOf, petLabel } from "./pets.js";
 import { drawCritter } from "./art.js";
 import { $, esc, todayKey } from "./util.js";
@@ -55,12 +55,13 @@ export function renderStyle() {
   if (!p) return;
   const tab = TABS.find(t => t.key === ui.styleTab) || TABS[1], look = lookOf(p);
   /* the shell purse: balance, the run of days in a row, and what tomorrow brings */
-  const run = shellRun(p), today = !!(p.checkins && p.checkins[todayKey()]), bal = shellBalance(p);
+  const run = shellRun(p), today = pouredOn(p), bal = shellBalance(p);
   $("styleBal").innerHTML = '<span class="shellico"></span><b>' + bal + '</b> shell' + (bal === 1 ? '' : 's') +
     ' <span class="dim">&middot; ' + shellsEarned(p) + ' earned</span><span class="run" title="' + run + ' day' + (run === 1 ? '' : 's') + ' in a row">' +
     [1, 2, 3, 4, 5].map(i => '<i' + (i <= Math.min(run, C.SHELL_MAX) ? ' class="on"' : '') + '></i>').join("") + '</span>' +
-    '<br><span class="dim">' + (today ? 'Checked in today (+' + shellAward(run) + '). Come back tomorrow for +' + shellAward(run + 1) + '.'
-                                      : 'Open the page each day: +1 the first day, one more for each day in a row, up to +' + C.SHELL_MAX + '.') + '</span>';
+    '<br><span class="dim">' + (today ? 'Poured today (+' + shellAward(run) + '). Pour tomorrow for +' + shellAward(run + 1) + '.'
+                                      : 'Your first pour each day earns shells: +' + shellAward(run + 1) + ' today' +
+                                        (run ? ' (' + (run + 1) + ' days in a row)' : '') + ', up to +' + C.SHELL_MAX + ' a day.') + '</span>';
   $("styleTabs").innerHTML = TABS.map(t => {
     const n = t.key === "colour" ? 0 : itemsIn(t.key).filter(i => ownsCosmetic(p, i.id)).length;
     return '<button type="button" class="pen-tab' + (t.key === tab.key ? ' on' : '') + '" data-tab="' + t.key + '">' + esc(t.name) +
@@ -169,7 +170,8 @@ function drawRoom() {
   ctx.beginPath(); ctx.roundRect(gx, gy, W, H, [8, 8, 22, 22]); ctx.fill();
   ctx.save(); ctx.beginPath(); ctx.roundRect(gx, gy, W, H, [8, 8, 22, 22]); ctx.clip();
   ctx.beginPath(); ctx.moveTo(gx, gy + H);
-  for (let x = 0; x <= W; x += 4) ctx.lineTo(gx + x, top + wave(x));
+  for (let x = 0; x < W; x += 4) ctx.lineTo(gx + x, top + wave(x));
+  ctx.lineTo(gx + W, top + wave(W));                                  /* the surface reaches the far wall */
   ctx.lineTo(gx + W, gy + H); ctx.closePath();
   ctx.fillStyle = p.color; ctx.globalAlpha = 0.85; ctx.fill(); ctx.globalAlpha = 1;
   ctx.restore();
@@ -189,7 +191,8 @@ function drawRoom() {
   /* below the surface takes the water's colour, as in the real glass */
   ctx.save(); ctx.beginPath(); ctx.roundRect(gx, gy, W, H, [8, 8, 22, 22]); ctx.clip();
   ctx.beginPath(); ctx.moveTo(gx, gy + H);
-  for (let x = 0; x <= W; x += 4) ctx.lineTo(gx + x, top + wave(x));
+  for (let x = 0; x < W; x += 4) ctx.lineTo(gx + x, top + wave(x));
+  ctx.lineTo(gx + W, top + wave(W));                                  /* the surface reaches the far wall */
   ctx.lineTo(gx + W, gy + H); ctx.closePath();
   ctx.fillStyle = p.color; ctx.globalAlpha = 0.28; ctx.fill();
   ctx.restore();

@@ -389,8 +389,9 @@ test("cosmetics: buy once, wear and take off, recolour; the look only shows what
   const { rich, mem } = await fresh();
   const cos = await import(pathToFileURL(path.join(JS, "cosmetics.js")));
   const pets = web.pets, id = "decor:straw", price = cos.COSMETICS[id].price;
-  rich.checkins = {};
-  for (let i = 0; i < 20; i++) rich.checkins["2026-01-" + String(i + 1).padStart(2, "0")] = 1;   /* 1+2+3+4+5x16 = 90 shells */
+  const pour = d => ({ eid: "sh:" + d, ts: d + "T09:00:00", date: d, oz: 8, by: "test" });
+  rich.entries = rich.entries.filter(e => e.date < web.C.SHELLS_SINCE);
+  for (let i = 0; i < 20; i++) rich.entries.push(pour(web.util.shiftKey(web.C.SHELLS_SINCE, i)));   /* 1+2+3+4+5x16 = 90 shells */
   assert.equal(shop.shellBalance(rich), 90);
   const before = shop.shellBalance(rich), tokens = shop.balance(rich);
   assert.equal(shop.cosmeticBlock(rich, "decor:nope"), "Not for sale.");
@@ -410,7 +411,6 @@ test("cosmetics: buy once, wear and take off, recolour; the look only shows what
   assert.deepEqual(disk.look, { decor: "straw" }, "the look is saved in the person's file");
   assert.ok(disk.spends.some(s => s.kind === "cosmetic" && s.item === id));
   assert.equal(disk.tokensSpent, shop.spentTotal(rich), "tokensSpent leaves shells out");
-  assert.equal(Object.keys(disk.checkins).length, 20, "check-ins are saved");
 
   const k = Number(Object.keys(rich.pets).find(x => Number(x) < web.C.PET_COUNT));
   assert.ok(Number.isInteger(k));
@@ -436,25 +436,23 @@ test("cosmetics: every item has a slot, a price and draws without error", async 
   }
 });
 
-test("shells: 1 the first day, one more each day in a row up to 5, back to 1 after a gap; once a day", { skip: skipReason }, async () => {
-  const { rich, mem } = await fresh();
-  const p = rich, day = web.util.todayKey(), back = n => web.util.shiftKey(day, -n);
-  p.checkins = {};
-  assert.equal(shop.shellBalance(p), 0);
-  for (const n of [9, 8, 7]) p.checkins[back(n)] = 1;                 /* 1 + 2 + 3 */
-  for (const n of [5, 4, 3, 2, 1]) p.checkins[back(n)] = 1;           /* gap, then 1 + 2 + 3 + 4 + 5 */
-  assert.equal(shop.shellsEarned(p), 6 + 15);
-  assert.equal(shop.shellRun(p), 5, "yesterday's run still counts before today's visit");
-  const r = await shop.checkIn(p);
-  assert.deepEqual(r, { got: 5, run: 6 }, "capped at 5 a day");
-  assert.equal(await shop.checkIn(p), null, "once a day");
-  assert.equal(shop.shellsEarned(p), 26);
-  const disk = JSON.parse(mem.text(web.store.participantFileName(p.name)));
-  assert.ok(disk.checkins[day], "saved");
-  /* another window saved an older copy without today's check-in: it is kept */
-  const stale = JSON.parse(JSON.stringify(p)); delete stale.checkins[day];
-  await web.store.saveParticipant(stale, null);
-  assert.ok(JSON.parse(mem.text(web.store.participantFileName(p.name))).checkins[day], "check-in days only ever add");
+test("shells: from pour days since SHELLS_SINCE: 1, then one more each day in a row up to 5, back to 1 after a gap", () => {
+  const S0 = web.C.SHELLS_SINCE, day = n => web.util.shiftKey(S0, n);
+  const pour = (d, oz = 8) => ({ eid: "sh:" + d + ":" + oz, ts: d + "T09:00:00", date: d, oz, by: "test" });
+  const p = { name: "shelltest", entries: [pour(day(-3)), pour(day(-1))], spends: [] };
+  assert.equal(shop.shellsEarned(p), 0, "nothing before SHELLS_SINCE");
+  for (const n of [0, 1, 2]) p.entries.push(pour(day(n)), pour(day(n), 4));   /* 1 + 2 + 3, however many pours a day */
+  for (const n of [4, 5, 6, 7, 8, 9]) p.entries.push(pour(day(n)));           /* gap, then 1 + 2 + 3 + 4 + 5 + 5 */
+  assert.equal(shop.shellsEarned(p), 6 + 20);
+  assert.equal(shop.shellRun(p, day(9)), 6);
+  assert.equal(shop.shellRun(p, day(10)), 6, "before today's first pour, yesterday's run still counts");
+  assert.equal(shop.shellRun(p, day(11)), 0);
+  assert.ok(shop.pouredOn(p, day(9)) && !shop.pouredOn(p, day(10)));
+  p.entries = p.entries.filter(e => e.date !== day(9));                        /* undo the day's only pour */
+  assert.equal(shop.shellsEarned(p), 6 + 15, "an undone day pays nothing");
+  p.spends.push({ id: "s:x", at: day(8) + "T10:00:00", kind: "paint", cost: 1, pet: 0, hue: 10 });
+  assert.equal(shop.shellBalance(p), 6 + 15 - 1);
+  assert.equal(shop.spentTotal(p), 0, "shell spends never touch goal tokens");
 });
 
 test("effect spot: a pet's own fx wins; otherwise the middle of what sits above the water", async () => {
