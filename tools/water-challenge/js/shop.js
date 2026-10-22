@@ -1,4 +1,4 @@
-/* The token shop: reroll today's pet, Plinko, buying a species outright, and
+/* The token shop: reroll today's pet and Plinko; shards (repeats bring in pets); and
    cosmetics (looks for the glass and the worn pet, cosmetics.js).
    Tokens are earned one per goal day (model.tokensEarned) and spent through a log
    of spends in each person's file.
@@ -7,13 +7,15 @@
 import * as C from "./config.js";
 import { S, tokensEarned, capBonus } from "./model.js";
 import { saveParticipant, petKindFor } from "./store.js";
-import { has, todayKey, localStamp, shiftKey, parseKey } from "./util.js";
+import { has, todayKey, localStamp, shiftKey, parseKey, aAn } from "./util.js";
 import { applyRoll, dayRng, grantHomunculus, isGrave, petBinIndex, penOf, binsFor, rollPen, pen2Open } from "./pets.js";
 import { COSMETICS, SLOTS, PAINT_COST } from "./cosmetics.js";
 import { hydrationEarned } from "./hydration.js";
 
 const isShell = s => C.SHELL_KINDS.includes(s.kind);
-export const spentTotal = p => (p.spends || []).reduce((a, s) => a + (isShell(s) ? 0 : Number(s.cost) || 0), 0);
+const isShard = s => C.SHARD_KINDS.includes(s.kind);
+const notTokens = s => isShell(s) || isShard(s);
+export const spentTotal = p => (p.spends || []).reduce((a, s) => a + (notTokens(s) ? 0 : Number(s.cost) || 0), 0);
 export const chestWinnings = p => (p.spends || []).reduce((a, s) => a + (s.chest ? Number(s.chest.won) || 0 : 0), 0);
 export const earnedTotal = p => tokensEarned(p) + capBonus(p) + chestWinnings(p) + hydrationEarned(p).tokens;
 
@@ -27,7 +29,6 @@ export function chestRaw() {
 }
 export const chestTotal = () => Math.max(0, chestRaw());
 export const balance = p => earnedTotal(p) - spentTotal(p);
-export const priceOf = kind => C.SHOP_PRICES[petBinIndex(kind)];
 
 function spend(p, kind, cost, extra) {
   const s = Object.assign({ id: "s:" + Date.now().toString(36) + Math.random().toString(36).slice(2, 7),
@@ -52,6 +53,8 @@ export function rerollBlock(p) {
   if (p.rollWasNew && penOf(Number(p.rollKind)) === 1 && has(p.pets, C.HOMUNCULUS_KIND)) {
     return "Today's roll completed the pen.";
   }
+  const t = tierOf(Number(p.rollKind));                          /* a repeat: its shard goes back */
+  if (!p.rollWasNew && t >= 0 && shards(p)[t] < 1) return "Today's " + C.PET_BINS[t].name + " shard is already spent.";
   if (balance(p) < C.REROLL_COST) return "Needs " + C.REROLL_COST + " token.";
   return "";
 }
@@ -96,11 +99,10 @@ function slotOdds() {
 export const plinkoOdds = () => C.PET_BINS.map((_, i) => slotOdds().get(i) || 0);
 export const chestOdds = () => slotOdds().get(C.CHEST) || 0;
 
-/* What a rarity can give on Plinko: species they don't have alive (unowned or
-   buried) first; once every one is alive, any of them (a duplicate). */
+/* What a rarity can give on Plinko: any of its species. One not alive joins (a buried
+   one comes back); one already alive is a repeat and gives a shard. */
 export function plinkoPool(bin, p) {
-  const kinds = binsFor(rollPen(p))[bin].kinds, missing = kinds.filter(k => !has(p.pets, k));
-  return missing.length ? missing : kinds.slice();
+  return binsFor(rollPen(p))[bin].kinds.slice();
 }
 
 /* A real drop: a fair 50/50 bounce at every peg, and the slot it ends in decides the
@@ -147,38 +149,76 @@ function give(p, k, hue) {
   p.pets[String(k)] = hue;
 }
 
-/* ---- buying ---------------------------------------------------------------- */
-export function buyBlock(p, k) {
-  if (penOf(k) === 0) return "Not for sale.";
-  if (penOf(k) === 2 && !pen2Open(p)) return "Opens with the second pen.";
-  if (has(p.pets, k)) return "Already owned.";
-  if (balance(p) < priceOf(k)) return "Needs " + priceOf(k) + " tokens.";
-  return "";
+/* ---- shards: repeats bring in pets --------------------------------------------- */
+/* A repeat gives a shard of its rarity: a goal roll or reroll whose day log says
+   n: 0, or a Plinko win already alive. "fuse" spends turn SHARD_FUSE of a rarity into
+   1 of the next; "shard" spends bring in one pet. All of it comes from the day logs
+   and spends, so it merges across PCs and an undone or rerolled roll takes its shard
+   back. skip (reveal.js): { roll: leave out today's roll, ids: Plinko spends to leave out }. */
+export const tierOf = k => penOf(k) > 0 ? petBinIndex(k) : -1;
+export function shards(p, skip = {}) {
+  const n = C.PET_BINS.map(() => 0), today = todayKey();
+  for (const [key, r] of Object.entries(p.rollLog || {})) {
+    if (!r || r.n !== 0 || !(Number(r.k) >= 0) || (skip.roll && key === today)) continue;
+    const t = tierOf(Number(r.k));
+    if (t >= 0) n[t]++;
+  }
+  for (const s of p.spends || []) {
+    const t = Number(s.tier);
+    if (s.kind === "plinko" && !s.chest && !s.fresh && Number(s.pet) >= 0 && !(skip.ids && skip.ids.has(s.id))) {
+      const u = tierOf(Number(s.pet));
+      if (u >= 0) n[u]++;
+    } else if (s.kind === "fuse" && t >= 0 && t < n.length - 1) { n[t] -= C.SHARD_FUSE; n[t + 1]++; }
+    else if (s.kind === "shard" && t >= 0 && t < n.length) n[t]--;
+  }
+  return n;
 }
 
-export async function buy(p, k) {
-  if (buyBlock(p, k)) return null;
+export function fuseBlock(p, t) {
+  if (!(t >= 0 && t < C.PET_BINS.length - 1)) return "Nothing above " + (C.PET_BINS[t] ? C.PET_BINS[t].name : "that") + ".";
+  if (shards(p)[t] < C.SHARD_FUSE) return "Needs " + C.SHARD_FUSE + " " + C.PET_BINS[t].name + " shards.";
+  return "";
+}
+/* SHARD_FUSE shards of rarity t become 1 of t + 1. Returns the new rarity or null. */
+export async function fuse(p, t) {
+  if (fuseBlock(p, t)) return null;
+  spend(p, "fuse", C.SHARD_FUSE, { tier: t });
+  return (await saveParticipant(p, null)) ? t + 1 : null;
+}
+
+export function pickBlock(p, k) {
+  if (penOf(k) === 0) return "Not in the pen.";
+  if (penOf(k) === 2 && !pen2Open(p)) return "Opens with the second pen.";
+  if (has(p.pets, k)) return "Already alive.";
+  const t = petBinIndex(k);
+  if (shards(p)[t] < 1) return "Needs " + aAn(C.PET_BINS[t].name) + " shard.";
+  return "";
+}
+/* One shard of its rarity brings in a pet not alive; a buried one keeps its colour. */
+export async function pickPet(p, k) {
+  if (pickBlock(p, k)) return null;
   const revived = isGrave(p, k), hue = revived ? Number(p.graves[String(k)]) : newHue(k);
   give(p, k, hue);
   wear(p, k);
   const homunculus = grantHomunculus(p);
-  spend(p, "buy", priceOf(k), { pet: k, revived });
+  spend(p, "shard", 1, { pet: k, tier: petBinIndex(k), revived });
   if (!(await saveParticipant(p, null, null, revived ? [String(k)] : null))) return null;
   return { kind: k, hue, homunculus, revived };
 }
 
-/* Plinko drops of p this page must not show yet: [{ id, pet, fresh, revived, was, chest }].
+/* Plinko drops of p this page must not show yet (wins, repeats and their shards, chest
+   drops): [{ id, pet, fresh, revived, was, chest }].
    The result is saved before the ball falls, so a drop stays hidden until its ball
    lands here (landed ids), or for holdMs after it when this page never shows the ball. */
 export function pendingDrops(p, inFlight, landed, now, holdMs) {
   const out = new Map();
   for (const s of p.spends || []) {
-    if (s.kind !== "plinko" || landed.has(s.id) || !(s.fresh || s.chest)) continue;
+    if (s.kind !== "plinko" || landed.has(s.id) || !(s.fresh || s.chest || Number(s.pet) >= 0)) continue;
     const age = now - new Date(s.at).getTime();
     if (age > -5000 && age < holdMs) out.set(s.id, s);              /* a few seconds of clock skew between PCs */
   }
   for (const ev of inFlight) {
-    if (ev.name !== p.name || !(ev.fresh || ev.chest) || landed.has(ev.id)) continue;
+    if (ev.name !== p.name || !(ev.fresh || ev.chest || ev.kind >= 0) || landed.has(ev.id)) continue;
     out.set(ev.id, { id: ev.id, pet: ev.kind, fresh: ev.fresh, revived: ev.revived, was: ev.was, chest: ev.chest });
   }
   return [...out.values()];
@@ -186,11 +226,12 @@ export function pendingDrops(p, inFlight, landed, now, holdMs) {
 
 /* Today's and a given day's shop events, for the activity feed and the recap. */
 /* One person's shop day in short, for the recap: what Plinko gave and cost (new pets,
-   pets back from the grave, repeats, chest), what was bought, the rerolls. */
+   pets back from the grave, repeats, chest), pets bought (old) or brought in with
+   shards, shards combined, the rerolls. */
 export function shopDay(p, key) {
-  const d = { drops: 0, spent: 0, fresh: [], revived: [], repeats: 0, empty: 0, chestIn: 0, chestWon: 0, buys: [], rerolls: [], style: [] };
+  const d = { drops: 0, spent: 0, fresh: [], revived: [], repeats: 0, empty: 0, chestIn: 0, chestWon: 0, buys: [], picks: [], fuses: [], rerolls: [], style: [] };
   for (const s of spendsOn(p, key)) {
-    if (!isShell(s)) d.spent += Number(s.cost) || 0;
+    if (!notTokens(s)) d.spent += Number(s.cost) || 0;
     if (s.kind === "plinko") {
       d.drops++;
       if (s.chest) { d.chestIn += Number(s.chest.add) || 0; d.chestWon += Number(s.chest.won) || 0; }
@@ -199,6 +240,8 @@ export function shopDay(p, key) {
       else if (s.fresh) d.fresh.push(Number(s.pet));
       else d.repeats++;
     } else if (s.kind === "buy") d.buys.push(s);
+    else if (s.kind === "shard") d.picks.push(s);
+    else if (s.kind === "fuse") d.fuses.push(s);
     else if (s.kind === "reroll") d.rerolls.push(s);
     else if (s.kind === "cosmetic" || s.kind === "paint") d.style.push(s);
   }

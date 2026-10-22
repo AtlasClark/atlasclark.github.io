@@ -161,7 +161,7 @@ function extraFields(p) {
 }
 
 /* Goal tokens spent: every spend but the ones paid in shells. */
-const tokenSpend = spends => spends.reduce((a, s) => a + (C.SHELL_KINDS.includes(s.kind) ? 0 : Number(s.cost) || 0), 0);
+const tokenSpend = spends => spends.reduce((a, s) => a + (C.SHELL_KINDS.includes(s.kind) || C.SHARD_KINDS.includes(s.kind) ? 0 : Number(s.cost) || 0), 0);
 
 export function toJson(p) {
   const out = [], spends = p.spends || [];

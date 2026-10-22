@@ -30,14 +30,6 @@ async function pourToGoal(p, day) {
   return e;
 }
 
-test("prices are one token per roll: 1 / chance of rolling that exact species", () => {
-  const total = C.PET_BINS.reduce((a, b) => a + b.weight, 0);
-  C.PET_BINS.forEach((b, i) => {
-    const fair = total / (b.weight / b.kinds.length);
-    assert.ok(Math.abs(C.SHOP_PRICES[i] - fair) / fair < 0.06, b.name + ": " + C.SHOP_PRICES[i] + " vs " + fair.toFixed(1));
-  });
-});
-
 test("plinko: the path decides the slot, at true Galton-board odds", () => {
   const odds = shop.plinkoOdds(), chest = shop.chestOdds();
   assert.ok(Math.abs(odds.reduce((a, b) => a + b, 0) + chest - 1) < 1e-12, "odds add up to 1");
@@ -72,60 +64,94 @@ test("plinko: every bounce is a fair coin, independent of the last", () => {
   assert.ok(Math.abs(same / pairs - 0.5) < 0.003);
 });
 
-test("plinko: a pet they don't have alive first (buried ones included); duplicates only once all are alive", () => {
-  const p = { name: "x", pets: { 0: 1, 1: 1, 2: 1, 6: 1, 7: 1, 8: 1, 9: 1, 3: 1, 4: 1, 11: 1, 12: 1, 13: 1, 14: 1 },
-              graves: { 15: 1, 10: 1 } };
-  const seenUnc = new Set();
+test("plinko: any pet of the rarity, alive, unowned or buried; a pet already alive is a repeat", () => {
+  const p = { name: "x", pets: { 0: 1, 1: 1, 2: 1, 6: 1, 7: 1, 8: 1, 9: 1 }, graves: { 10: 1 } };
+  const commons = new Set();
   for (let i = 0; i < 20000; i++) {
     const d = shop.plinkoDrop(p);
     if (d.chest) continue;                                   /* the centre cup gives no pet */
     assert.ok(d.kind >= 0, "every rarity always has something to give");
-    if (d.bin === 0) assert.equal(d.kind, 10, "the one Common not alive (it is buried)");
-    if (d.bin === 1) seenUnc.add(d.kind);
+    if (d.bin === 0) commons.add(d.kind);
   }
-  assert.deepEqual([...seenUnc], [15], "the buried Uncommon is the only one not alive");
-  const full = { name: "y", pets: Object.fromEntries(C.PET_BINS[0].kinds.map(k => [k, 1])), graves: {} };
-  const commons = new Set();
-  for (let i = 0; i < 5000; i++) { const d = shop.plinkoDrop(full); if (d.bin === 0) commons.add(d.kind); }
-  assert.equal(commons.size, C.PET_BINS[0].kinds.length, "all alive: any Common, as a duplicate");
+  assert.deepEqual([...commons].sort((a, b) => a - b), [...C.PET_BINS[0].kinds].sort((a, b) => a - b), "owned, buried and new alike");
+});
+test("shards: repeats from day logs and Plinko; combine 3 into the next rarity; 1 brings in a pet", () => {
+  const T = C.PET_BINS.map(b => b.kinds[0]);                 /* one kind per rarity */
+  const p = { name: "sh", pets: { [T[0]]: 1 }, graves: {}, spends: [],
+              rollLog: { "2026-10-01": { k: T[0], n: 0 }, "2026-10-02": { k: T[1], n: 1 }, "2026-10-03": { k: -1, n: 0 },
+                         "2026-10-04": { k: C.MYSTERY_KIND, n: 1 }, "2026-10-05": { k: T[0], n: 0 } } };
+  p.spends.push({ id: "a", kind: "plinko", pet: T[0], fresh: false, bin: 0, cost: 1 },
+                { id: "b", kind: "plinko", pet: T[2], fresh: true, bin: 2, cost: 1 },
+                { id: "c", kind: "plinko", pet: -1, bin: C.CHEST, chest: { add: 1, won: 0 }, cost: 1 });
+  assert.deepEqual(shop.shards(p), [3, 0, 0, 0, 0], "two repeat rolls and a repeat drop; new pets, undone rolls and the chest give none");
+  assert.deepEqual(shop.shards(p, { ids: new Set(["a"]), roll: false }), [2, 0, 0, 0, 0], "a drop still falling is left out");
+  assert.equal(shop.fuseBlock(p, 0), "");
+  assert.match(shop.fuseBlock(p, 1), /Needs 3 Uncommon/);
+  assert.match(shop.fuseBlock(p, C.PET_BINS.length - 1), /Nothing above/);
+  p.spends.push({ id: "f", kind: "fuse", tier: 0, cost: C.SHARD_FUSE });
+  assert.deepEqual(shop.shards(p), [0, 1, 0, 0, 0], "3 Common into 1 Uncommon");
+  const unc = C.PET_BINS[1].kinds[0];
+  assert.equal(shop.pickBlock(p, unc), "");
+  assert.equal(shop.pickBlock(p, T[0]), "Already alive.");
+  assert.match(shop.pickBlock(p, T[2]), /Needs a Rare shard/);
+  assert.equal(shop.pickBlock(p, C.HOMUNCULUS_KIND), "Not in the pen.");
+  p.spends.push({ id: "g", kind: "shard", tier: 1, pet: unc, cost: 1 });
+  assert.deepEqual(shop.shards(p), [0, 0, 0, 0, 0]);
+  assert.equal(shop.spentTotal(p), 3, "only the three Plinko tokens: shard spends are never tokens");
+  delete p.rollLog["2026-10-05"];                            /* that roll undone */
+  assert.deepEqual(shop.shards(p), [-1, 0, 0, 0, 0], "an undone repeat takes its shard back, even when spent");
 });
 
-test("buy: anything not alive in the pen, costs its price, is worn and logged", { skip: skipReason }, async () => {
+test("shards: using one brings the pet in, worn and saved; a buried one keeps its colour", { skip: skipReason }, async () => {
   const { rich, mem } = await fresh();
-  const owned = Object.keys(rich.pets).map(Number).find(k => k < C.PET_COUNT);
-  if (owned !== undefined) assert.equal(shop.buyBlock(rich, owned), "Already owned.");
-  assert.equal(shop.buyBlock(rich, C.HOMUNCULUS_KIND), "Not for sale.");
-  const target = web.pets.petGridOrder().find(k => !own(rich, k) && !web.pets.isGrave(rich, k) && shop.priceOf(k) <= shop.balance(rich));
-  if (target === undefined) return;
-  const before = shop.balance(rich);
-  const r = await shop.buy(rich, target);
-  assert.ok(r);
-  assert.equal(shop.balance(rich), before - shop.priceOf(target));
-  assert.ok(own(rich, target));
+  const owned = web.pets.petGridOrder().find(k => own(rich, k));
+  const target = web.pets.petGridOrder().find(k => !own(rich, k) && !web.pets.isGrave(rich, k));
+  if (owned === undefined || target === undefined) return;
+  const t = web.pets.petBinIndex(target), tokens = shop.balance(rich);
+  rich.rollLog = Object.assign({}, rich.rollLog, { "2026-01-01": { k: C.PET_BINS[t].kinds.find(k => own(rich, k)) ?? owned, n: 0 } });
+  const before = shop.shards(rich)[t];
+  if (before < 1) return;
+  const r = await shop.pickPet(rich, target);
+  assert.ok(r && own(rich, target));
   assert.equal(web.store.petKindFor(rich), rich.equippedPet);
+  assert.equal(shop.shards(rich)[t], before - 1);
+  assert.equal(shop.balance(rich), tokens, "no tokens spent");
   const file = JSON.parse(mem.text(web.store.participantFileName(rich.name)));
-  assert.ok(file.spends.some(s => s.kind === "buy" && s.pet === target && s.cost === shop.priceOf(target)));
+  assert.ok(file.spends.some(s => s.kind === "shard" && s.pet === target && s.tier === t));
   assert.equal(file.tokensSpent, shop.spentTotal(rich));
-  const poor = { ...rich, spends: [...rich.spends, { id: "s:big", at: "x", kind: "buy", cost: 9999 }] };
-  assert.match(shop.buyBlock(poor, web.pets.petGridOrder().find(k => !own(rich, k)) ?? 0), /Needs|owned/);
+  /* buried: drown it, then bring it back */
+  const hue = rich.pets[String(target)];
+  delete rich.pets[String(target)]; rich.graves[String(target)] = hue;
+  rich.rollLog["2026-01-02"] = rich.rollLog["2026-01-01"];
+  await web.store.saveParticipant(rich, null, [String(target)]);
+  const back = await shop.pickPet(rich, target);
+  assert.ok(back && back.revived);
+  assert.equal(rich.pets[String(target)], hue, "keeps the colour it had");
+  assert.ok(!web.pets.isGrave(rich, target));
 });
 
-test("buy: a buried pet comes back from the grave with its colour", { skip: skipReason }, async () => {
-  const { rich, mem } = await fresh();
-  const k = web.pets.petGridOrder().find(x => own(rich, x) && x < C.PET_COUNT && shop.priceOf(x) <= shop.balance(rich));
-  if (k === undefined) return;
-  const hue = rich.pets[String(k)];
-  delete rich.pets[String(k)]; rich.graves[String(k)] = hue;          /* as if it drowned */
-  await web.store.saveParticipant(rich, null, [String(k)]);
-  assert.equal(shop.buyBlock(rich, k), "");
-  const r = await shop.buy(rich, k);
-  assert.ok(r && r.revived);
-  assert.ok(own(rich, k) && !web.pets.isGrave(rich, k));
-  assert.equal(rich.pets[String(k)], hue, "keeps the colour it had");
-  const file = JSON.parse(mem.text(web.store.participantFileName(rich.name)));
-  assert.ok(!(String(k) in file.graves), "the grave is gone from the file too");
+test("shards: a repeat goal roll pays one, a reroll takes it back, and a spent one blocks the reroll", { skip: skipReason }, async () => {
+  const { rich, day, M } = await fresh();
+  /* own the whole first pen, so today's roll must be a repeat */
+  for (const k of web.pets.petGridOrder(1)) { rich.pets[String(k)] = 1; if (rich.graves) delete rich.graves[String(k)]; }
+  delete rich.pets[String(C.HOMUNCULUS_KIND)]; rich.pets[String(C.HOMUNCULUS_KIND)] = 210;
+  await web.store.saveParticipant(rich, null);
+  const s0 = shop.shards(rich).reduce((a, b) => a + b, 0);
+  await pourToGoal(rich, day);
+  if (rich.petRollDay !== day || Number(rich.rollKind) === C.MYSTERY_KIND || web.pets.penOf(Number(rich.rollKind)) !== 1) return;
+  assert.equal(rich.rollWasNew, false);
+  const t = shop.tierOf(Number(rich.rollKind));
+  assert.equal(shop.shards(rich).reduce((a, b) => a + b, 0), s0 + 1, "the repeat paid a shard");
+  rich.spends.push({ id: "s:use", at: day + "T13:00:00", kind: "shard", tier: t, pet: -1, cost: 1 });
+  if (shop.shards(rich)[t] < 1) assert.match(shop.rerollBlock(rich), /shard is already spent/);
+  rich.spends = rich.spends.filter(s => s.id !== "s:use");
+  if (shop.rerollBlock(rich)) return;
+  await shop.reroll(rich);
+  const r = rich.rollLog[day];
+  assert.equal(shop.shards(rich).reduce((a, b) => a + b, 0), s0 + (r && r.n === 0 && Number(r.k) >= 0 && shop.tierOf(Number(r.k)) >= 0 ? 1 : 0),
+               "only the reroll's own result counts");
+  void M;
 });
-
 test("reroll: after today's roll, once, for a token; it sticks through undo and redo", { skip: skipReason }, async () => {
   const { rich, day, M } = await fresh();
   assert.match(shop.rerollBlock(rich), /goal first/);
@@ -295,14 +321,14 @@ test("plinko: a drop stays hidden until its ball lands on this page", () => {
   const p = { name: "Kirby", spends: [
     { id: "s:a", kind: "plinko", at: stamp, pet: 7, fresh: true, was: 2 },
     { id: "s:b", kind: "plinko", at: stamp, pet: 3, fresh: true, revived: true },
-    { id: "s:c", kind: "plinko", at: stamp, pet: 9, fresh: false },          /* a duplicate: nothing to hide */
+    { id: "s:c", kind: "plinko", at: stamp, pet: 9, fresh: false },          /* a repeat: its shard waits too */
     { id: "s:e", kind: "plinko", at: stamp, pet: -1, chest: { add: 1, won: 30 } },
     { id: "s:d", kind: "buy", at: stamp, pet: 12 } ] };
   const hold = 12000, ids = l => l.map(d => d.id);
   let h = shop.pendingDrops(p, [], new Set(), t0 + 2000, hold);
-  assert.deepEqual(ids(h), ["s:a", "s:b", "s:e"], "fresh wins and chest drops are hidden");
+  assert.deepEqual(ids(h), ["s:a", "s:b", "s:c", "s:e"], "wins, repeats and chest drops are hidden");
   assert.equal(h[0].was, 2, "with the pet worn before");
-  assert.deepEqual(ids(shop.pendingDrops(p, [], new Set(["s:a", "s:e"]), t0 + 2000, hold)), ["s:b"], "landed here: shown");
+  assert.deepEqual(ids(shop.pendingDrops(p, [], new Set(["s:a", "s:e"]), t0 + 2000, hold)), ["s:b", "s:c"], "landed here: shown");
   assert.equal(shop.pendingDrops(p, [], new Set(), t0 + hold + 1, hold).length, 0, "the wait runs out");
   const ball = { id: "s:z", name: "Kirby", kind: 15, fresh: true, was: 7 };
   assert.ok(ids(shop.pendingDrops(p, [ball], new Set(["s:a", "s:b"]), t0 + hold * 5, hold)).includes("s:z"), "a ball still falling is hidden");
@@ -365,7 +391,7 @@ test("second pen: opens for good once all 25 are alive; rolls, Plinko and the sh
   const { S, day, M, mem } = await fresh();
   const p = S.participants.find(x => M.isActive(x)), P = web.pets;
   assert.equal(P.pen2Open(p), false);
-  assert.equal(shop.buyBlock(p, C.PEN2_FIRST), "Opens with the second pen.");
+  assert.equal(shop.pickBlock(p, C.PEN2_FIRST), "Opens with the second pen.");
   wholePen(p);
   await web.store.saveParticipant(p, null);
   await web.pets.reconcilePets();
@@ -381,7 +407,7 @@ test("second pen: opens for good once all 25 are alive; rolls, Plinko and the sh
   await web.store.saveParticipant(p, null, ["3"]);
   await web.pets.reconcilePets();
   assert.ok(P.pen2Open(p), "stays open");
-  assert.equal(shop.priceOf(C.PEN2_FIRST + 21), shop.priceOf(21), "same price by rarity");
+  assert.equal(shop.tierOf(C.PEN2_FIRST + 21), shop.tierOf(21), "same shard rarity");
   assert.equal(P.petBinIndex(C.PEN2_FIRST + 5), P.petBinIndex(5), "the Old Boot is the second pen's ???");
 });
 

@@ -1,14 +1,14 @@
 /* Plinko results are drawn and saved when the token drops (so a closed tab can't
    lose them); the board only shows the fall. Until a ball lands on this page, its
-   result stays hidden everywhere: the buy drawer, the glass, the Pets tab, the
-   activity list, balances and the Community Chest. A drop seen only in the data
+   result stays hidden everywhere: the shard counts and pet grid, the glass, the Pets
+   tab, the activity list, balances and the Community Chest. A drop seen only in the data
    (made on another PC) is hidden until its live replay lands here, or for HOLD_MS. */
 
 import * as C from "./config.js";
 import { S, petEventTimes } from "./model.js";
 import { todayKey } from "./util.js";
 import { petKindFor } from "./store.js";
-import { pendingDrops, balance, chestRaw } from "./shop.js";
+import { pendingDrops, balance, chestRaw, shards } from "./shop.js";
 
 export const HOLD_MS = C.LIVE_SHOW_MS + 3000;
 export const landed = new Set();                  /* drop ids whose ball landed on this page */
@@ -55,6 +55,11 @@ export function shownKind(p) {
 
 export function shownBalance(p) {
   return balance(p) - pending(p).reduce((a, d) => a + (d.chest ? Number(d.chest.won) || 0 : 0), 0);
+}
+
+/* Shards as this page may show them: no repeat still falling or still on its card. */
+export function shownShards(p) {
+  return shards(p, { roll: rollHoldLeft(p) > 0, ids: new Set(pending(p).map(d => d.id)) });
 }
 
 export function shownChest() {

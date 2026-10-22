@@ -22,7 +22,7 @@ import { balance, spentTotal, spendsOn, earnedTotal, chestWinnings, shopDay, loo
 import { COSMETICS, drawShell } from "./cosmetics.js";
 import { isHydrationDay, teamSplash } from "./hydration.js";
 import { setHydrationDay } from "./hydfx.js";
-import { $, esc, fmt, fmtOz, fmtGal, todayKey, dateKey, prettyTime, clockStamp, has, parseKey, shiftKey } from "./util.js";
+import { $, esc, fmt, fmtOz, fmtGal, todayKey, dateKey, prettyTime, clockStamp, has, parseKey, shiftKey, aAn } from "./util.js";
 
 /* Set by app.js: the Shop tab renders from shopui.js, which imports this module. */
 export const uiHooks = { renderShop: null, bottle: null };
@@ -481,7 +481,7 @@ function renderPets() {
   h.push('<div class="pet-legend">');
   const odds = rollOdds();
   C.PET_BINS.forEach((b, i) => h.push('<span><i class="pl r' + i + '"></i>' + esc(b.name) + ' &middot; ' + odds.bins[i].toFixed(1) + '%</span>'));
-  h.push('<span><i class="pl grave"></i>Buried &middot; buy it back or win it on Plinko</span>');
+  h.push('<span><i class="pl grave"></i>Buried &middot; bring it back with a shard or win it on Plinko</span>');
   h.push('<span class="pl-note">Reach your goal to roll. Click a pet to wear it; click again to take it off.</span></div>');
   h.push('<div class="pet-cards">');
   for (const p of S.participants) {
@@ -644,11 +644,12 @@ function plinkoLine(p, drops, key, when) {
   if (d.revived.length) bits.push('won ' + petList(d.revived) + ' back from the grave');
   if (d.chestWon) bits.push('won the Community Chest <span class="rar chest">' + d.chestWon + ' tokens</span>');
   if (d.chestIn - (d.chestWon ? 1 : 0) > 0) bits.push((d.chestIn - (d.chestWon ? 1 : 0)) + ' into the chest');
-  if (d.repeats) bits.push(d.repeats + ' repeat' + (d.repeats === 1 ? '' : 's'));
+  if (d.repeats) bits.push(d.repeats + ' repeat' + (d.repeats === 1 ? '' : 's') + ' (+' + d.repeats + ' shard' + (d.repeats === 1 ? '' : 's') + ')');
   if (d.empty) bits.push(d.empty + ' returned');
   return '<span class="tag">plinko</span>' + when + '<strong>' + esc(p.name) + '</strong> dropped ' + d.drops + ' tokens' +
          (bits.length ? ': ' + bits.join(' &middot; ') : '');
 }
+const tierLabel = t => (C.PET_BINS[Number(t)] || { name: "?" }).name;
 function spendLine(p, s, when) {
   const k = Number(s.pet), name = '<strong>' + esc(p.name) + '</strong> ';
   if (s.kind === "buy") return '<span class="tag">shop</span>' + when + name + 'bought the ' + esc(petLabel(k)) +
@@ -657,7 +658,11 @@ function spendLine(p, s, when) {
     (s.chest.won ? 'won the Community Chest <span class="rar chest">' + s.chest.won + ' tokens</span>' : 'put a token in the Community Chest');
   if (s.kind === "plinko") return '<span class="tag">plinko</span>' + when + name + (k < 0 ? 'landed on an empty rarity' :
                                   'won ' + (s.fresh ? "the " : "another ") + esc(petLabel(k)) + (s.revived ? ' back from the grave' : '') +
-                                  ' <span class="rar">' + esc(rarityLabel(k)) + '</span>');
+                                  ' <span class="rar">' + esc(rarityLabel(k)) + '</span>' + (s.fresh ? '' : ' <span class="dim">+1 shard</span>'));
+  if (s.kind === "shard") return '<span class="tag">shards</span>' + when + name + 'used ' + esc(aAn(tierLabel(s.tier))) + ' shard on the ' +
+                                 esc(petLabel(k)) + (s.revived ? ' (back from the grave)' : '');
+  if (s.kind === "fuse") return '<span class="tag">shards</span>' + when + name + 'combined ' + C.SHARD_FUSE + ' ' + esc(tierLabel(s.tier)) +
+                                ' shards into 1 ' + esc(tierLabel(Number(s.tier) + 1));
   if (s.kind === "reroll") return '<span class="tag">reroll</span>' + when + name + 'rerolled the ' + esc(petLabel(Number(s.from))) +
                                   ' into ' + (k >= 0 ? (s.fresh ? "the " : "another ") + esc(petLabel(k)) : "nothing");
   if (s.kind === "cosmetic") return '<span class="tag">style</span>' + when + name + 'bought ' + esc((COSMETICS[s.item] || { name: "a look" }).name) +
@@ -739,9 +744,11 @@ function recapHtml() {
     if (g !== null) ev.push(line('<i class="pi pi-grave"></i>', 'drowned the ' + esc(petLabel(g))));
     for (const s of d.rerolls) ev.push('<li class="rc-shop">' + spendLine(p, s, "") + '</li>');
     for (const s of d.buys) ev.push(line(icon(Number(s.pet)), 'bought the ' + esc(petLabel(Number(s.pet))) + (s.revived ? ' back from the grave' : '')));
+    for (const s of d.picks) ev.push(line(icon(Number(s.pet)), 'used ' + esc(aAn(tierLabel(s.tier))) + ' shard on the ' + esc(petLabel(Number(s.pet))) +
+                                          (s.revived ? ' (back from the grave)' : '')));
     if (d.fresh.length) ev.push(line(icon(d.fresh[0]), 'won ' + names(d.fresh) + ' on Plinko'));
     if (d.revived.length) ev.push(line(icon(d.revived[0]), 'won ' + names(d.revived) + ' back from the grave on Plinko'));
-    if (d.drops || d.buys.length || d.rerolls.length) shop.push({ p, d });
+    if (d.drops || d.buys.length || d.picks.length || d.fuses.length || d.rerolls.length) shop.push({ p, d });
   }
   h.push('<div><h4>Pets</h4>' + (ev.length ? '<ul class="rc-pets">' + ev.join("") + '</ul>' : '<p class="dim">No pet news.</p>') + '</div>');
 
@@ -780,13 +787,13 @@ export function weekStats(today = todayKey()) {
       if (roll && roll.fresh === true) r.found.push(roll.k);
       for (const s of sd.rerolls) if (s.fresh && Number(s.pet) >= 0) r.found.push(Number(s.pet));
       r.found.push(...sd.fresh);
-      for (const s of sd.buys) (s.revived ? r.revived : r.found).push(Number(s.pet));
+      for (const s of [...sd.buys, ...sd.picks]) (s.revived ? r.revived : r.found).push(Number(s.pet));
       r.revived.push(...sd.revived);
       if (grave !== null) r.drowned.push(grave);
-      if (sd.drops || sd.buys.length || sd.rerolls.length) {
-        if (!r.shop) r.shop = { drops: 0, spent: 0, fresh: [], revived: [], repeats: 0, empty: 0, chestIn: 0, chestWon: 0, buys: [], rerolls: [] };
+      if (sd.drops || sd.buys.length || sd.picks.length || sd.fuses.length || sd.rerolls.length) {
+        if (!r.shop) r.shop = { drops: 0, spent: 0, fresh: [], revived: [], repeats: 0, empty: 0, chestIn: 0, chestWon: 0, buys: [], picks: [], fuses: [], rerolls: [] };
         for (const f of ["drops", "spent", "repeats", "empty", "chestIn", "chestWon"]) r.shop[f] += sd[f];
-        for (const f of ["fresh", "revived", "buys", "rerolls"]) r.shop[f].push(...sd[f]);
+        for (const f of ["fresh", "revived", "buys", "picks", "fuses", "rerolls"]) r.shop[f].push(...sd[f]);
       }
     }
     for (const d of prevDays) {
@@ -893,6 +900,8 @@ function recapShop(shop) {
     if (d.chestIn) bits.push(d.chestIn + ' into the chest');
     if (d.empty) bits.push(d.empty + ' returned');
     if (d.buys.length) bits.push(d.buys.length + ' bought');
+    if (d.picks && d.picks.length) bits.push(d.picks.length + ' from shards');
+    if (d.fuses && d.fuses.length) bits.push(d.fuses.length + ' combine' + (d.fuses.length === 1 ? '' : 's'));
     if (d.rerolls.length) bits.push('rerolled');
     if (d.style && d.style.length) bits.push(d.style.length + ' style');
     h.push('<li><i class="dot" style="background:' + p.color + '"></i><strong>' + esc(p.name) + '</strong>' +
@@ -995,7 +1004,7 @@ function playUnlock(info) {
     const box = $("unlock"), card = $("ulCard"), chip = $("ulRarity");
     const reduce = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     const tier = tierOf(info.kind), label = petLabel(info.kind);
-    $("ulWho").textContent = info.kind === C.MYSTERY_KIND ? info.name + " found something" : info.name + " reached the goal";
+    $("ulWho").textContent = info.title ? info.title : info.kind === C.MYSTERY_KIND ? info.name + " found something" : info.name + " reached the goal";
     $("ulName").innerHTML = "";
     $("ulBurst").innerHTML = "";
     $("ulQ").hidden = false;

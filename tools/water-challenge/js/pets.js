@@ -101,15 +101,10 @@ export function grantHomunculus(p) {
   return true;
 }
 
-/* What a bin can still give: never a grave, preferring species not yet owned. */
+/* What a bin can give a roll: any species not buried, owned or not (a repeat gives a
+   shard, shop.js). */
 export function binPool(b, p) {
-  const live = [], fresh = [];
-  for (const k of b.kinds) {
-    if (p && isGrave(p, k)) continue;
-    live.push(k);
-    if (!(p && has(p.pets, k))) fresh.push(k);
-  }
-  return fresh.length ? fresh : live;
+  return b.kinds.filter(k => !(p && isGrave(p, k)));
 }
 
 function dropLast(pool, last) {
@@ -261,7 +256,7 @@ export function announce(p, res, how) {
   } else {
     bus.unlock({ name: p.name, kind: k, hue: res.hue, fresh: res.fresh, equipped: petKindFor(p) === k,
                  msg: p.name + verb + (res.fresh ? " unlocked the " : " rolled another ") + petLabel(k) +
-                      " (" + petRarityOf(k).name + ")" + (res.fresh ? "!" : ", which they already had.") });
+                      " (" + petRarityOf(k).name + ")" + (res.fresh ? "!" : ": +1 " + petRarityOf(k).name + " shard.") });
   }
 }
 

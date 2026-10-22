@@ -33,6 +33,19 @@ test("rolls: the seeded draws and a fresh pen's rolls match the recorded sample"
   }
 });
 
+test("rolls: any pet of the rarity, owned or not (a repeat pays a shard); never a buried one", () => {
+  const C = web.C, owned = C.PET_BINS[0].kinds[0], buried = C.PET_BINS[0].kinds[1], seen = new Set();
+  for (let i = 0; i < 4000; i++) {
+    const p = { name: "r" + i, pets: { [owned]: 5 }, graves: { [buried]: 5 }, entries: [] };
+    const r = web.pets.applyRoll(p, web.pets.dayRng(p.name, "2026-11-02"), "2026-11-02");
+    if (web.pets.petBinIndex(r.kind) === 0 && r.kind < C.PET_COUNT) seen.add(r.kind);
+    if (r.kind === owned) assert.deepEqual([r.fresh, p.rollLog["2026-11-02"].n], [false, 0], "a repeat is logged n: 0");
+  }
+  assert.ok(seen.has(owned), "the owned Common still comes up");
+  assert.ok(!seen.has(buried), "the buried Common never does");
+  assert.equal(seen.size, C.PET_BINS[0].kinds.length - 1);
+});
+
 function entry(day, n, oz) {
   return { eid: "t:" + day + ":" + n, ts: day + "T13:0" + n + ":00", date: day, oz, by: "test" };
 }

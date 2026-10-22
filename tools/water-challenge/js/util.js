@@ -87,3 +87,6 @@ export const bus = {
   petReset(name) { /* replaced at boot */ },
   unlock(info) { /* replaced at boot: { name, kind, hue, fresh, equipped, rolled } */ }
 };
+
+/* "a Rare", "an Uncommon". */
+export const aAn = w => (/^[aeiou]/i.test(String(w)) ? "an " : "a ") + w;

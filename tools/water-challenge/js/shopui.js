@@ -1,15 +1,16 @@
 /* The Shop tab: who is shopping, their balance, Plinko (with drops from every open
-   shop replayed live), today's reroll, and pets for sale. */
+   shop replayed live), today's reroll, and shards (combine, bring in a pet). */
 
 import * as C from "./config.js";
 import { S, findParticipant, activeParticipants, tokensEarned, capBonus } from "./model.js";
 import * as store from "./store.js";
-import { balance, spentTotal, priceOf, rerollBlock, reroll, plinkoBlock, plinkoPlay, plinkoOdds, chestOdds, buyBlock, buy, chestWinnings } from "./shop.js";
-import { landed as landedIds, setFlying, HOLD_MS, hiddenPets, shownBalance, shownChest, anyPending, rollHoldLeft } from "./reveal.js";
+import { balance, spentTotal, rerollBlock, reroll, plinkoBlock, plinkoPlay, plinkoOdds, chestOdds, chestWinnings,
+         fuseBlock, fuse, pickBlock, pickPet, tierOf } from "./shop.js";
+import { landed as landedIds, setFlying, HOLD_MS, hiddenPets, shownBalance, shownChest, anyPending, rollHoldLeft, shownShards } from "./reveal.js";
 import { onLive, emit } from "./live.js";
 import { petLabel, petGridOrder, rarityLabel, petBinIndex, isGrave, announce, penOf, pen2Open, penAlive } from "./pets.js";
 import { PlinkoBoard } from "./plinko.js";
-import { $, esc, has, todayKey, prettyTime, localStamp, bus } from "./util.js";
+import { $, esc, has, todayKey, prettyTime, localStamp, bus, aAn } from "./util.js";
 import { setMsg, ensureIcons, ui, render } from "./ui.js";
 import { initStyle, renderStyle } from "./styleui.js";
 
@@ -34,7 +35,11 @@ export function initShop(h) {
   });
   $("buyGrid").addEventListener("click", e => {
     const c = e.target.closest("[data-buy]");
-    if (c) doBuy(Number(c.dataset.buy));
+    if (c) doPick(Number(c.dataset.buy));
+  });
+  $("shardBar").addEventListener("click", e => {
+    const b = e.target.closest("[data-fuse]");
+    if (b) doFuse(Number(b.dataset.fuse));
   });
   window.addEventListener("resize", () => { if (board && ui.tab === "shop") board.resize($("plinkoWrap").clientWidth); });
   /* A drop from another page: joined part-way through if the shop is showing and it
@@ -45,6 +50,10 @@ export function initShop(h) {
     hooks.pollSoon();
   });
 }
+
+/* A shard of rarity t, drawn in that rarity's colour. */
+export const shardIcon = t => '<svg class="shardico t' + t + '" viewBox="0 0 10 13" aria-hidden="true"><path d="M5 .6 9.4 4.8 5 12.4 .6 4.8Z"/></svg>';
+const tierName = t => C.PET_BINS[t].name;
 
 /* A browser spends only its own glass's tokens ("your glass", set with the name), so
    nobody spends someone else's by a stray click. The other chips just show balances. */
@@ -92,12 +101,21 @@ export function renderShop() {
         (p.rerollDay === todayKey() ? ' <span class="pill">rerolled</span>' : '') + '</div></div>'
       : '') +
     '<button type="button" id="rerollBtn" class="btn primary"' + (rb ? ' disabled' : '') + '>Reroll &middot; ' + C.REROLL_COST + ' token</button>' +
-    (rb ? '<p class="hint">' + esc(rb) + '</p>' : '<p class="hint">Normal odds. Replaces today\'s pet.</p>');
+    (rb ? '<p class="hint">' + esc(rb) + '</p>' : '<p class="hint">Normal odds. Replaces today\'s pet' +
+          (rolledToday && !p.rollWasNew && tierOf(k) >= 0 ? ' and its shard' : '') + '.</p>');
 
   /* A win still falling on the board is shown as it was before the drop. */
   const hidden = hiddenPets(p);
   clearTimeout(holdTimer);
   if (anyPending()) holdTimer = setTimeout(render, HOLD_MS);
+  /* shards: a count per rarity with its combine button, then the pets they bring in */
+  const sh = shownShards(p), top = C.PET_BINS.length - 1;
+  $("shardBar").innerHTML = C.PET_BINS.map((b, t) =>
+    '<div class="shard-tier r' + t + '">' + shardIcon(t) + '<b>' + sh[t] + '</b><span class="sn">' + esc(b.name) + '</span>' +
+    (t < top ? '<button type="button" class="btn small" data-fuse="' + t + '"' + (sh[t] < C.SHARD_FUSE ? ' disabled' : '') +
+               ' title="Combine ' + C.SHARD_FUSE + ' ' + esc(b.name) + ' shards into 1 ' + esc(tierName(t + 1)) + ' shard">' +
+               C.SHARD_FUSE + ' &rarr; 1 ' + shardIcon(t + 1) + '</button>'
+             : '<span class="dim sx">top</span>') + '</div>').join("");
   const h = [];
   /* both pens once the second is open, one tab each */
   const twoPens = pen2Open(p), pen = twoPens ? (ui.shopPen || 2) : 1;
@@ -106,15 +124,15 @@ export function renderShop() {
     (x === 1 ? 'First pen' : 'Second pen') + ' <b>' + penAlive(p, x) + '</b></button>').join("");
   for (const kind of petGridOrder(pen)) {
     const held = hidden.has(kind), owned = has(p.pets, kind) && !held, buried = isGrave(p, kind) || (held && hidden.get(kind));
-    const why = held ? (balance(p) < priceOf(kind) ? "Needs " + priceOf(kind) + " tokens." : "") : buyBlock(p, kind), price = priceOf(kind);
+    const t = petBinIndex(kind), why = sh[t] < 1 ? "Needs " + aAn(tierName(t)) + " shard." : held ? "" : pickBlock(p, kind);
     const state = owned ? "owned" : why ? "short" : "can";
-    h.push('<button type="button" class="buy-cell r' + petBinIndex(kind) + ' ' + state + (buried ? ' buried' : '') + '"' +
+    h.push('<button type="button" class="buy-cell r' + t + ' ' + state + (buried ? ' buried' : '') + '"' +
            (state === "can" ? ' data-buy="' + kind + '"' : ' disabled') +
            ' title="' + esc(owned || buried ? C.PET_NAMES[kind] : "???") + ' &middot; ' + esc(rarityLabel(kind)) +
-           (buried ? ' &middot; buried: buying brings it back' : '') + (why && !owned ? ' &middot; ' + esc(why) : '') + '">' +
+           (buried ? ' &middot; buried: a shard brings it back' : '') + (why && !owned ? ' &middot; ' + esc(why) : '') + '">' +
            '<i class="pi pi-' + (buried ? "grave" : kind) + '"></i>' +
            '<span class="bn">' + (owned || buried ? esc(C.PET_NAMES[kind]) : "???") + '</span>' +
-           '<span class="bp">' + (owned ? "owned" : '<span class="coin sm"></span>' + price + (buried ? ' <small>revive</small>' : '')) + '</span></button>');
+           '<span class="bp">' + (owned ? "owned" : shardIcon(t) + '1' + (buried ? ' <small>revive</small>' : '')) + '</span></button>');
   }
   $("buyGrid").innerHTML = h.join("");
   renderFeed();
@@ -129,7 +147,7 @@ function renderFeed() {
          : '<span class="rar r' + f.bin + '">' + esc(C.PET_BINS[f.bin].name) + '</span> ' +
            (f.kind < 0 ? '<span class="dim">nothing left there, token returned</span>'
                        : esc(petLabel(f.kind)) + (f.revived ? ' <span class="pill good">back from the grave</span>'
-                                                 : f.fresh ? ' <span class="pill good">new</span>' : ' <span class="dim">(had it)</span>'))) + '</li>').join("")
+                                                 : f.fresh ? ' <span class="pill good">new</span>' : ' <span class="dim">+1 shard</span>'))) + '</li>').join("")
     : '<li class="dim">No drops yet.</li>';
 }
 
@@ -152,7 +170,7 @@ function landed(ev) {
     setMsg("Nothing left in " + C.PET_BINS[ev.bin].name + ". Token returned.", false);
   } else if (ev.mine) {
     setMsg(ev.name + " won " + (ev.fresh ? "the " : "another ") + petLabel(ev.kind) + " (" + C.PET_BINS[ev.bin].name + ") on Plinko" +
-           (ev.revived ? ", back from the grave!" : ev.fresh ? "!" : ", which they already had."), true);
+           (ev.revived ? ", back from the grave!" : ev.fresh ? "!" : ": +1 " + C.PET_BINS[ev.bin].name + " shard."), true);
     if (ev.homunculus) setMsg(ev.name + " has all " + C.PET_COUNT + " alive. The pen made something new.", true);
   }
 }
@@ -182,8 +200,10 @@ async function doReroll() {
   if (!hooks.guard()) return;
   const p = shopFor();
   if (!p || rerollBlock(p)) return;
+  const t = tierOf(Number(p.rollKind));
   const ok = await hooks.askConfirm("Reroll " + p.name + "'s pet?", C.REROLL_COST + " token. Rolls again at normal odds" +
-    (p.rollWasNew ? "; the " + petLabel(Number(p.rollKind)) + " leaves the collection" : "") + ".", "Reroll");
+    (p.rollWasNew ? "; the " + petLabel(Number(p.rollKind)) + " leaves the collection"
+                  : t >= 0 ? "; the " + tierName(t) + " shard from it goes back" : "") + ".", "Reroll");
   if (!ok) return;
   await store.serial(async () => {
     const r = await reroll(p);
@@ -194,21 +214,38 @@ async function doReroll() {
   renderShop();
 }
 
-async function doBuy(kind) {
+async function doPick(kind) {
   if (!hooks.guard()) return;
   const p = shopFor();
-  if (!p || buyBlock(p, kind)) return;
-  const ok = await hooks.askConfirm("Buy the " + petLabel(kind) + " for " + p.name + "?",
-    priceOf(kind) + " tokens." + (isGrave(p, kind) ? " It comes back from the grave." : "") +
-    (store.petKindFor(p) === C.MYSTERY_KIND ? "" : " " + p.name + " will wear it."), "Buy");
+  if (!p || pickBlock(p, kind)) return;
+  const tn = tierName(petBinIndex(kind));
+  const ok = await hooks.askConfirm("Bring in the " + petLabel(kind) + " for " + p.name + "?",
+    "1 " + tn + " shard." + (isGrave(p, kind) ? " It comes back from the grave." : "") +
+    (store.petKindFor(p) === C.MYSTERY_KIND ? "" : " " + p.name + " will wear it."), "Use shard");
   if (!ok) return;
   await store.serial(async () => {
-    const r = await buy(p, kind);
-    if (!r) { setMsg("Purchase failed.", false); return; }
-    setMsg(p.name + (r.revived ? " bought the " + petLabel(kind) + " back from the grave." : " bought the " + petLabel(kind) + "."), true);
+    const r = await pickPet(p, kind);
+    if (!r) { setMsg("That didn't save.", false); return; }
+    setMsg(p.name + " used " + aAn(tn) + " shard on the " + petLabel(kind) + (r.revived ? ", back from the grave." : "."), true);
     const shown = r.homunculus ? C.HOMUNCULUS_KIND : kind;
     bus.unlock({ name: p.name, kind: shown, hue: r.homunculus ? 210 : r.hue, fresh: true,
-                 equipped: store.petKindFor(p) === shown, bought: true });
+                 equipped: store.petKindFor(p) === shown, bought: true, title: p.name + " used " + aAn(tn) + " shard" });
+    await hooks.settle();
+  });
+  renderShop();
+}
+
+async function doFuse(t) {
+  if (!hooks.guard()) return;
+  const p = shopFor();
+  if (!p || fuseBlock(p, t)) return;
+  const ok = await hooks.askConfirm("Combine " + C.SHARD_FUSE + " " + tierName(t) + " shards?",
+    "They become 1 " + tierName(t + 1) + " shard. This can't be split back.", "Combine");
+  if (!ok) return;
+  await store.serial(async () => {
+    const r = await fuse(p, t);
+    if (r === null) { setMsg("That didn't save.", false); return; }
+    setMsg(p.name + " combined " + C.SHARD_FUSE + " " + tierName(t) + " shards into 1 " + tierName(r) + " shard.", true);
     await hooks.settle();
   });
   renderShop();

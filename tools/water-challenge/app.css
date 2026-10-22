@@ -619,6 +619,22 @@ li.pour.armed .undo-x { opacity: 1; background: #c4434f; color: #fff; }
 #rerollBox .btn:disabled, .buy-cell:disabled { cursor: default; }
 #rerollBox .btn:disabled { opacity: .5; filter: grayscale(.6); }
 .buy-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(76px, 1fr)); gap: 6px; }
+.shard-bar { display: grid; grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 6px; margin-bottom: 12px; }
+.shard-tier { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 2px 6px; padding: 7px 9px; border-radius: 12px;
+  background: var(--pc-bg); box-shadow: inset 0 0 0 2px var(--r0); }
+.shard-tier.r1 { box-shadow: inset 0 0 0 2px var(--r1); } .shard-tier.r2 { box-shadow: inset 0 0 0 2px var(--r2); }
+.shard-tier.r3 { box-shadow: inset 0 0 0 2px var(--r3); } .shard-tier.r4 { box-shadow: inset 0 0 0 2px var(--r4); }
+.shard-tier > .shardico { width: 13px; height: 17px; }
+.shard-tier b { font-size: 18px; line-height: 1; }
+.shard-tier .sn { grid-column: 1 / -1; font-size: 10.5px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); }
+.shard-tier .btn, .shard-tier .sx { grid-column: 1 / -1; justify-self: start; }
+.shard-tier .btn { display: inline-flex; align-items: center; gap: 3px; padding: 3px 9px; font-size: 11.5px; }
+.shard-tier .btn:disabled { opacity: .45; cursor: default; }
+.shard-tier .sx { font-size: 11px; }
+.shardico { display: inline-block; width: 9px; height: 12px; margin-right: 2px; vertical-align: -1px; }
+.shardico path { stroke: rgba(0,0,0,.35); stroke-width: .8; stroke-linejoin: round; }
+.shardico.t0 path { fill: #9fb3c2; } .shardico.t1 path { fill: #4fae5f; } .shardico.t2 path { fill: #3d86d4; }
+.shardico.t3 path { fill: #9a63d0; } .shardico.t4 path { fill: #d4932f; }
 
 /* ---- style shop ---- */
 .shop-style { margin-top: 22px; }
