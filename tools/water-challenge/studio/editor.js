@@ -63,6 +63,10 @@ export class Editor {
     const b = G.bounds(shapes) || { x0: -1, y0: -1.4, x1: 1, y1: 0.6 };
     const x0 = Math.min(b.x0, -0.8), x1 = Math.max(b.x1, 0.8), y1 = Math.max(b.y1, 0.5);
     let y0 = this.app.pose === "swim" ? Math.min(b.y0, -TALLEST_PET_R - 0.1) : Math.min(b.y0, -1.2);   /* headroom in view */
+    if (this.app.cupFrame) {                                                /* a cup item: the whole glass in view */
+      const f = this.app.cupFrame, hb = G.bounds(shapes) || f;
+      return this.fitBox(Math.min(hb.x0, f.x0) - 0.05, Math.min(hb.y0, f.y0) - 0.05, Math.max(hb.x1, f.x1) + 0.05, Math.max(hb.y1, f.y1) + 0.05);
+    }
     if (this.app.isHat) {                                                   /* the hat, with some head under it */
       const hb = G.bounds(shapes) || { x0: -0.3, y0: -0.45, x1: 0.3, y1: 0 };
       return this.fitBox(Math.min(hb.x0, -0.45), Math.min(hb.y0, -0.5), Math.max(hb.x1, 0.45), Math.max(hb.y1, 0.35));
@@ -507,6 +511,10 @@ export class Editor {
     /* guides over the pet */
     ctx.font = "11px Segoe UI, system-ui, sans-serif";
     ctx.lineWidth = 1.5; ctx.strokeStyle = css("--waterline");
+    if (hat && app.cupFrame) {                                     /* the inside of the glass */
+      const f = app.cupFrame, [ax, ay] = this.toScreen(f.x0, f.y0), [bx, by] = this.toScreen(f.x1, f.y1);
+      ctx.save(); ctx.setLineDash([6, 5]); ctx.strokeStyle = css("--waterline"); ctx.strokeRect(ax, ay, bx - ax, by - ay); ctx.restore();
+    }
     if (hat) {
       ctx.beginPath(); ctx.moveTo(ox - 14, oy); ctx.lineTo(ox + 14, oy); ctx.moveTo(ox, oy - 14); ctx.lineTo(ox, oy + 14); ctx.stroke();
       ctx.fillStyle = css("--waterline"); ctx.fillText(app.origin, ox + 8, oy + 16);

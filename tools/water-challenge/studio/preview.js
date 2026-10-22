@@ -4,7 +4,7 @@
 
 import { drawCritter, drawPortrait, drawHeadstone, drawCoin, drawGoldPile } from "../js/art.js";
 import { hats, hatSvgFrom, fxSpot } from "../js/petdefs.js";
-import { drawEffect } from "../js/cosmetics.js";
+import { drawEffect, drawDecor } from "../js/cosmetics.js";
 import { UNDERWATER_TINT, SWIM_RANGE, WALL_GAP_R } from "../js/config.js";
 import { bounds } from "./geom.js";
 
@@ -89,6 +89,29 @@ export class Preview {
   drawProp(top, gh) {
     const { ctx, w: W, app } = this;
     let x = 14;
+    const t = performance.now() / 1000;
+    if (String(app.kind).startsWith("decor:")) {                   /* a cup item, in glasses at three levels */
+      const key = app.kind.slice(6), gw = Math.min(104, gh * 0.53), gH = Math.min(gh, gw * 1.93 + 7);
+      [0.25, 0.6, 0.92].forEach((lv, i) => {
+        if (x + gw > W - 8) return;
+        const gy = top + gh - gH;
+        this.glass(x, gy, gw, gH, lv, (L, s) => drawDecor(L, key, { x: x + 4, y: gy + 3, W: gw - 8, H: gH - 7 }, () => s, t), i ? "" : "in the glass, three levels");
+        x += gw + 12;
+      });
+      return;
+    }
+    if (String(app.kind).startsWith("effect:")) {                  /* a particle, as its effect uses it */
+      const key = app.kind.slice(7), gw = Math.min(150, gh * 1.1), r = Math.min(gh * 0.24, 34);
+      [app.hue, (app.hue + 120) % 360].forEach((h, i) => {
+        if (x + gw > W - 8) return;
+        this.glass(x, top, gw, gh, 0.5, (L, s) => {
+          drawCritter(L, x + gw / 2, s, r, 0, false, false, 0, h, false);
+          drawEffect(L, key, x + gw / 2, s - r * 0.45, r, t, h, "front");
+        }, i ? "" : "the effect on a pet");
+        x += gw + 12;
+      });
+      return;
+    }
     if (app.kind === "grave") {
       const gw = Math.min(104, gh * 0.7), r = Math.min(gw * 0.26, 30);
       [0, 120, 240].forEach((dh, i) => {

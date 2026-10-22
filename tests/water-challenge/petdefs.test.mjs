@@ -13,6 +13,7 @@ const JS = path.join(ROOT, "tools/water-challenge/js/");
 const C = await import(pathToFileURL(JS + "config.js"));
 const P = await import(pathToFileURL(JS + "petdefs.js"));
 const A = await import(pathToFileURL(JS + "art.js"));
+const COS = await import(pathToFileURL(JS + "cosmetics.js"));
 const web_C = () => C;
 const IMPORTER = path.join(ROOT, "tools/water-challenge/studio/importer.js");
 
@@ -154,11 +155,13 @@ test("studio import: each hat and prop draws the same from its studio copy",
     jester: [0, 11, 26].map(k => c => A.drawCritter(c, 5, 7, 100, -0.2, true, false, k, 140, "jester")),
     grave: [0, 140].map(h => c => A.drawHeadstone(c, 5, 7, 100, h)),
     ...Object.fromEntries(P.HOLIDAY_KEYS.map(k => [k, [0, 11, 26].map(pk => c => A.drawCritter(c, 5, 7, 100, -0.2, true, false, pk, 140, k))])),
+    ...Object.fromEntries(P.CUP_KEYS.map(k => [k, [c => COS.drawDecor(c, k.slice(6), { x: 4, y: 40, W: 124, H: 239 }, () => 120, 1.3)]])),
+    ...Object.fromEntries(P.FX_KEYS.map(k => [k, [c => COS.drawEffect(c, k.slice(7), 60, 100, 30, 1.3, 200, "front")]])),
     coin: [c => A.drawCoin(c, 5, 7, 40)]
   };
   for (const key of P.HAT_KEYS) {
     const hat = I.importHat(key), keep = P.hats[key];
-    assert.ok(key === "grave" || Object.values(hat.pal).every(c => !c.hue), key + ": fixed colours only");
+    assert.ok(key === "grave" || key.startsWith("effect:") || Object.values(hat.pal).every(c => !c.hue), key + ": fixed colours only");
     for (const draw of uses[key]) {
       const before = rec(draw);
       P.hats[key] = hat;

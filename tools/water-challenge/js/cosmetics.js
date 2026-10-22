@@ -4,6 +4,9 @@
    the pet's effect spot, set in the Pet Studio), and a decoration in the cup. Owning
    an item is a "cosmetic" spend (shop.js); what is worn is p.look. Drawing only. */
 
+import { hats, drawShapes } from "./petdefs.js";
+import { CUP_PLACE } from "./styleart.js";
+
 /* ---- the catalogue ---------------------------------------------------------- */
 export const SLOTS = [
   { key: "finish", name: "Finishes", note: "A new coat for whichever pet you wear." },
@@ -82,27 +85,15 @@ export function finishWrap(key, ctx, r, hue) {
 
 /* ---- effects: around the pet, in pet-layer pixels ------------------------------ */
 /* x, cy: the effect's centre (the pet's effect spot); r: the pet's size. "back" is
-   drawn before the pet, "front" after it. */
-function star(ctx, x, y, ro, ri, fill) {
-  ctx.beginPath();
-  for (let i = 0; i < 10; i++) {
-    const a = -Math.PI / 2 + i * Math.PI / 5, rr = i % 2 ? ri : ro;
-    ctx.lineTo(x + rr * Math.cos(a), y + rr * Math.sin(a));
-  }
-  ctx.closePath(); ctx.fillStyle = fill; ctx.fill();
-}
-function heart(ctx, x, y, s, fill) {
-  ctx.beginPath();
-  ctx.moveTo(x, y + s * 0.35);
-  ctx.bezierCurveTo(x - s * 1.1, y - s * 0.35, x - s * 0.45, y - s * 1.05, x, y - s * 0.45);
-  ctx.bezierCurveTo(x + s * 0.45, y - s * 1.05, x + s * 1.1, y - s * 0.35, x, y + s * 0.35);
-  ctx.fillStyle = fill; ctx.fill();
-}
-function note(ctx, x, y, s, fill) {
-  ctx.fillStyle = fill; ctx.strokeStyle = fill; ctx.lineWidth = Math.max(1, s * 0.18);
-  ctx.beginPath(); ctx.ellipse(x, y, s * 0.42, s * 0.3, -0.4, 0, 6.2832); ctx.fill();
-  ctx.beginPath(); ctx.moveTo(x + s * 0.36, y - s * 0.1); ctx.lineTo(x + s * 0.36, y - s * 1.3);
-  ctx.quadraticCurveTo(x + s * 0.9, y - s * 1.05, x + s * 0.8, y - s * 0.6); ctx.stroke();
+   drawn before the pet, "front" after it. Sparkles, hearts and notes draw their
+   particle from the studio drawing (styleart.js "effect:<key>"); aura and fireflies
+   are glows, drawn here. */
+function particle(ctx, key, x, y, r, scale, hue) {
+  const h = hats["effect:" + key];
+  if (!h) return;
+  ctx.save(); ctx.translate(x, y); ctx.scale(scale, scale);
+  drawShapes(ctx, h.shapes, r, hue, h.pal, false);
+  ctx.restore();
 }
 export function drawEffect(ctx, key, x, cy, r, t, hue, layer) {
   ctx.save();
@@ -115,19 +106,18 @@ export function drawEffect(ctx, key, x, cy, r, t, hue, layer) {
     ctx.beginPath(); ctx.arc(x, cy, r * 1.15 * pulse, 0, 6.2832); ctx.fill();
   } else if (layer === "front") {
     if (key === "sparkles") {
+      ctx.shadowColor = "rgba(255,230,120,0.9)"; ctx.shadowBlur = r * 0.2;
       for (let i = 0; i < 5; i++) {
         const a = t * 0.9 + i * 1.2566, tw = 0.5 + 0.5 * Math.sin(t * 4 + i * 1.7);
-        const sx = x + Math.cos(a) * r * 0.95, sy = cy + Math.sin(a) * r * 0.6;
-        ctx.shadowColor = "rgba(255,230,120,0.9)"; ctx.shadowBlur = r * 0.2;
-        star(ctx, sx, sy, Math.max(2.5, r * (0.1 + 0.1 * tw)), Math.max(1, r * 0.035), "rgba(255,240,170," + (0.55 + 0.45 * tw).toFixed(2) + ")");
+        ctx.globalAlpha = 0.55 + 0.45 * tw;
+        particle(ctx, key, x + Math.cos(a) * r * 0.95, cy + Math.sin(a) * r * 0.6, r, Math.max(2.5 / (r * 0.15), (0.1 + 0.1 * tw) / 0.15), hue);
       }
     } else if (key === "hearts" || key === "notes") {
       for (let i = 0; i < 3; i++) {
         const u = (t * 0.32 + i / 3) % 1, a = Math.sin(u * Math.PI);
         ctx.globalAlpha = a * 0.9;
         const hx = x + r * (0.35 + 0.25 * Math.sin(t * 1.3 + i * 2)) * (i % 2 ? -1 : 1), hy = cy - r * 0.35 - u * r * 1.1;
-        if (key === "hearts") heart(ctx, hx, hy, r * 0.16, "hsl(" + (345 + i * 8) + ",85%,62%)");
-        else note(ctx, hx, hy, r * 0.17, "hsl(" + ((hue + 180 + i * 40) % 360) + ",70%,62%)");
+        particle(ctx, key, hx, hy, r, 1, key === "hearts" ? 345 + i * 8 : (hue + 180 + i * 40) % 360);
       }
     } else if (key === "fireflies") {
       for (let i = 0; i < 4; i++) {
@@ -145,75 +135,26 @@ export function drawEffect(ctx, key, x, cy, r, t, hue, layer) {
 
 /* ---- cup decorations: in pet-layer pixels ---------------------------------------- */
 /* box: { x, y, W, H } is the inside of the glass (y = rim); surf(x) gives the water's
-   surface at a pixel x (or the floor when empty). Drawn before the pet; the page's
-   underwater tint then colours whatever is below the surface. */
-function bob(t, k) { return Math.sin(t * 1.6 + k) * 1.4; }
-export function drawDecor(ctx, key, box, surf, t) {
-  const { x, y, W, H } = box, u = W / 124;                                   /* sizes follow the glass */
-  ctx.save();
-  ctx.lineCap = "round"; ctx.lineJoin = "round";
-  if (key === "straw") {
-    const bx = x + W * 0.66, by = y + H - 4, kx = x + W * 0.9, ky = y - H * 0.05, tx = x + W * 1.02, ty = y - H * 0.16;
-    for (const [col, dash] of [["#ffffff", []], ["#e8505b", [6 * u, 6 * u]]]) {
-      ctx.strokeStyle = col; ctx.lineWidth = 7 * u; ctx.setLineDash(dash);
-      ctx.beginPath(); ctx.moveTo(bx, by); ctx.lineTo(kx, ky); ctx.lineTo(tx, ty); ctx.stroke();
-    }
-    ctx.setLineDash([]);
-  } else if (key === "spoon") {
-    const bx = x + W * 0.3, by = y + H - 10 * u, tx = x + W * 0.04, ty = y - H * 0.14;
-    ctx.strokeStyle = "#c6ced6"; ctx.lineWidth = 4 * u;
-    ctx.beginPath(); ctx.moveTo(bx, by); ctx.lineTo(tx, ty); ctx.stroke();
-    ctx.strokeStyle = "rgba(255,255,255,0.7)"; ctx.lineWidth = 1.2 * u;
-    ctx.beginPath(); ctx.moveTo(bx - 1, by - 6 * u); ctx.lineTo(tx + 1, ty + 4 * u); ctx.stroke();
-    ctx.fillStyle = "#b7c0c9";
-    ctx.beginPath(); ctx.ellipse(bx + 3 * u, by + 2 * u, 9 * u, 6 * u, -0.9, 0, 6.2832); ctx.fill();
-  } else if (key === "ice") {
-    for (const [fx, sz, k] of [[0.22, 15, 0], [0.4, 12, 2]]) {
-      const cx = x + W * fx, cy = surf(cx) + 2 * u + bob(t, k), s = sz * u;
-      ctx.save(); ctx.translate(cx, cy); ctx.rotate(0.25 * Math.sin(t * 0.8 + k) + k * 0.3);
-      ctx.fillStyle = "rgba(225,245,255,0.78)"; ctx.strokeStyle = "rgba(255,255,255,0.95)"; ctx.lineWidth = 1.2;
-      ctx.beginPath(); ctx.roundRect(-s / 2, -s / 2, s, s, s * 0.22); ctx.fill(); ctx.stroke();
-      ctx.fillStyle = "rgba(255,255,255,0.9)"; ctx.fillRect(-s * 0.3, -s * 0.3, s * 0.22, s * 0.12);
-      ctx.restore();
-    }
-  } else if (key === "lemon") {
-    const cx = x + W - 9 * u, cy = y + 3 * u, rr = 15 * u;
-    ctx.fillStyle = "#f2d33f"; ctx.beginPath(); ctx.arc(cx, cy, rr, 0, 6.2832); ctx.fill();
-    ctx.fillStyle = "#fff6c2"; ctx.beginPath(); ctx.arc(cx, cy, rr * 0.86, 0, 6.2832); ctx.fill();
-    ctx.fillStyle = "#f7e36a";
-    for (let i = 0; i < 8; i++) {
-      const a0 = i * Math.PI / 4 + 0.06, a1 = a0 + Math.PI / 4 - 0.12;
-      ctx.beginPath(); ctx.moveTo(cx, cy); ctx.arc(cx, cy, rr * 0.76, a0, a1); ctx.closePath(); ctx.fill();
-    }
-  } else if (key === "umbrella") {
-    const sx = x + W * 0.3, sy = y + H * 0.42, tx = x + W * 0.22, ty = y - H * 0.06, cr = 22 * u, ang = -0.3;
-    ctx.strokeStyle = "#c79a5b"; ctx.lineWidth = 2.2 * u;
-    ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(tx, ty - 2 * u); ctx.stroke();
-    ctx.save(); ctx.translate(tx, ty); ctx.rotate(ang);
-    const cols = ["#ff6fa3", "#ffd23f", "#3fc1ff", "#7ee081"];
-    for (let i = 0; i < 4; i++) {
-      ctx.fillStyle = cols[i];
-      ctx.beginPath(); ctx.moveTo(0, 0); ctx.arc(0, 0, cr, Math.PI + i * Math.PI / 4, Math.PI + (i + 1) * Math.PI / 4); ctx.closePath(); ctx.fill();
-    }
-    ctx.strokeStyle = "rgba(0,0,0,0.12)"; ctx.lineWidth = 1;
-    ctx.beginPath(); ctx.arc(0, 0, cr, Math.PI, 2 * Math.PI); ctx.stroke();
-    ctx.restore();
-  } else if (key === "buoy") {
-    const cx = x + W * 0.78, cy = surf(cx) + bob(t, 1), rx = 17 * u, ry = 7 * u;
-    ctx.lineWidth = 6 * u;
-    for (let i = 0; i < 8; i++) {
-      ctx.strokeStyle = i % 2 ? "#f4f7f9" : "#e8505b";
-      ctx.beginPath(); ctx.ellipse(cx, cy, rx, ry, 0, i * Math.PI / 4, (i + 1) * Math.PI / 4 + 0.02); ctx.stroke();
-    }
-  } else if (key === "beachball") {
-    const rr = 12 * u, cx = x + W * 0.24, cy = surf(cx) - rr * 0.55 + bob(t, 2), spin = t * 0.5;
-    const cols = ["#e8505b", "#f4f7f9", "#3f8fd9", "#f4f7f9", "#f7d038", "#f4f7f9"];
-    for (let i = 0; i < 6; i++) {
-      ctx.fillStyle = cols[i];
-      ctx.beginPath(); ctx.moveTo(cx, cy); ctx.arc(cx, cy, rr, spin + i * Math.PI / 3, spin + (i + 1) * Math.PI / 3); ctx.closePath(); ctx.fill();
-    }
-    ctx.fillStyle = "#f4f7f9"; ctx.beginPath(); ctx.arc(cx, cy, rr * 0.2, 0, 6.2832); ctx.fill();
-    ctx.strokeStyle = "rgba(0,0,0,0.15)"; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(cx, cy, rr, 0, 6.2832); ctx.stroke();
+   surface at a pixel x (or the floor when empty). The drawing (styleart.js
+   "decor:<key>", in units of the glass's width) goes on its anchor (CUP_PLACE). Drawn
+   before the pet; the page's underwater tint then colours whatever is below the surface. */
+export function cupOrigin(key, box, surf, t) {
+  const pl = CUP_PLACE[key] || { at: "bottom" }, { x, y, W, H } = box;
+  if (pl.at === "rim") return { x: x + W / 2, y, a: 0 };
+  if (pl.at === "surface") {
+    const px = x + W * pl.x, k = pl.x * 7;
+    return { x: px, y: surf(px) + (pl.dy || 0) * W + Math.sin(t * 1.6 + k) * (pl.bob || 0),
+             a: (pl.wobble ? pl.wobble * Math.sin(t * 0.8 + k) : 0) + (pl.spin ? t * pl.spin : 0) };
   }
+  return { x: x + W / 2, y: y + H, a: 0 };
+}
+export function drawDecor(ctx, key, box, surf, t) {
+  const h = hats["decor:" + key];
+  if (!h) return;
+  const o = cupOrigin(key, box, surf, t);
+  ctx.save();
+  ctx.translate(o.x, o.y);
+  if (o.a) ctx.rotate(o.a);
+  drawShapes(ctx, h.shapes, box.W, 0, h.pal, false);
   ctx.restore();
 }

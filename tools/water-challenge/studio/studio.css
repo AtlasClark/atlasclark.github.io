@@ -73,6 +73,16 @@ button, input, select { font: inherit; color: inherit; }
 .pen-head { margin: 16px 6px 2px; padding-top: 10px; border-top: 1px solid var(--line); font-size: 12px; font-weight: 800;
   letter-spacing: .06em; text-transform: uppercase; color: var(--accent-ink); }
 .pen-head:first-child { margin-top: 4px; padding-top: 0; border-top: 0; }
+.pen-sec { border-top: 1px solid var(--line); }
+.pen-sec:first-child { border-top: 0; }
+.pen-sec > .pen-head { display: flex; align-items: center; gap: 6px; width: calc(100% - 4px); margin: 6px 2px; padding: 6px 4px; border: 0; border-radius: 8px;
+  background: none; cursor: pointer; text-align: left; font: inherit; font-size: 12px; font-weight: 800; }
+.pen-sec > .pen-head:hover { background: var(--panel-2); }
+.pen-sec > .pen-head::before { content: ""; width: 6px; height: 6px; border-right: 2px solid currentColor; border-bottom: 2px solid currentColor;
+  transform: rotate(45deg); transition: transform .15s; margin: 0 4px 3px 2px; }
+.pen-sec.shut > .pen-head::before { transform: rotate(-45deg); margin-bottom: 0; }
+.pen-sec > .pen-head b { margin-left: auto; font-size: 11px; color: var(--faint); font-weight: 700; }
+.pen-sec.shut > .pen-body { display: none; }
 .pet-item { display: flex; align-items: center; gap: 8px; width: 100%; padding: 3px 6px; border: 1px solid transparent; border-radius: 10px;
   background: none; cursor: pointer; text-align: left; }
 .pet-item:hover { background: var(--panel-2); }

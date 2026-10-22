@@ -4,14 +4,16 @@
    browser (IndexedDB) until it is saved. Reference images are never exported. */
 
 import * as C from "../js/config.js";
-import { defs, hats, HAT_KEYS, HOLIDAY_KEYS, colourOf, PET_DEFS_FORMAT, fxSpot } from "../js/petdefs.js";
+import { defs, hats, HAT_KEYS, HOLIDAY_KEYS, CUP_KEYS, FX_KEYS, colourOf, PET_DEFS_FORMAT, fxSpot, drawShapes } from "../js/petdefs.js";
+import { COSMETICS } from "../js/cosmetics.js";
+import { CUP_PLACE, CUP_H } from "../js/styleart.js";
 import { drawPortrait, critterCrown, drawHeadstone, drawCoin } from "../js/art.js";
 import { importAll, importHat, basePalette } from "./importer.js";
 import { Editor, TOOL_HINTS } from "./editor.js";
 import { Preview } from "./preview.js";
 import * as G from "./geom.js";
 
-const REV = "studio 1.11.0";
+const REV = "studio 1.13.0";
 const PETS_URL = "../pets/pets.json";
 const $ = id => document.getElementById(id);
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -28,6 +30,9 @@ const W = {
   hist: {}, pending: null, clip: null,
   dirty: false, savedAt: "", dirHandle: null, refDrag: false,
   target: null,           /* { file, data }: what Save writes in dirHandle */
+  base: {},               /* item -> its drawing in the file as last read or written (canon JSON) */
+  baseSig: null,          /* that file's lastModified:size, to spot someone else's save */
+  touched: new Set(),     /* items changed here since then */
   tryOn: 0                /* the pet shown under a hat while it is edited */
 };
 
@@ -40,16 +45,37 @@ const HAT_NAMES = { crown: "Crown", jester: "Jester hat", grave: "Headstone", co
 const HOLIDAY_OF = Object.fromEntries(C.HOLIDAY_HATS.flatMap(h => [[h.crown, { h, role: "crown" }], [h.jester, { h, role: "jester" }]]));
 const isHat = k => HAT_KEYS.includes(k);
 const wears = k => k === "crown" || k === "jester" || HOLIDAY_KEYS.includes(k);
-const hued = k => !isHat(k) || k === "grave";
+const isCup = k => CUP_KEYS.includes(k), isFx = k => FX_KEYS.includes(k);
+const hued = k => !isHat(k) || k === "grave" || isFx(k);
+for (const k of CUP_KEYS) HAT_NAMES[k] = COSMETICS[k].name;
+for (const k of FX_KEYS) HAT_NAMES[k] = { "effect:sparkles": "Sparkle", "effect:hearts": "Heart", "effect:notes": "Music note" }[k];
+const CUP_AT = { bottom: "the middle of the glass bottom", rim: "the middle of the rim", surface: "the water surface" };
+/* The inside of the glass around a cup item's origin, in widths (surface items: water at 60%). */
+function cupFrame(k) {
+  const pl = CUP_PLACE[k.slice(6)] || { at: "bottom" };
+  if (pl.at === "rim") return { x0: -0.5, x1: 0.5, y0: 0, y1: CUP_H };
+  if (pl.at === "surface") return { x0: -pl.x, x1: 1 - pl.x, y0: -0.4 * CUP_H - (pl.dy || 0), y1: 0.6 * CUP_H - (pl.dy || 0) };
+  return { x0: -0.5, x1: 0.5, y0: -CUP_H, y1: 0 };
+}
 const ITEMS = () => [...Array(C.PET_MAX).keys(), ...HAT_KEYS];
 function baseName(k) { return isHat(k) ? HAT_NAMES[k] : C.PET_BASE_NAMES[k]; }
 function itemName(k) { return isHat(k) ? HAT_NAMES[k] : C.PET_NAMES[k]; }
 function hatDef(h) { return { name: "", crown: [0, 0], pal: h.pal, swim: h.shapes, portrait: null }; }
+/* Items whose drawing here differs from the file's (after Open or a restored draft). */
+function markTouched() {
+  W.touched.clear();
+  for (const k of ITEMS()) {
+    const p = W.pets[k], mine = p && p.edited && p.def.swim.length ? canon(k, p.def) : undefined;
+    if (mine !== W.base[k]) W.touched.add(k);
+  }
+}
 function resetItems() {
   for (const k of ITEMS()) W.pets[k] = { def: G.clone(W.builtin[k]), edited: false };
 }
 function rarityOf(k) {
   if (HOLIDAY_OF[k]) return { name: HOLIDAY_OF[k].h.name + ", " + (HOLIDAY_OF[k].role === "crown" ? "goal met" : "under goal"), i: 0 };
+  if (isCup(k)) return { name: "Style shop, cup", i: 0 };
+  if (isFx(k)) return { name: "Style shop, effect", i: 0 };
   if (isHat(k)) return { name: { crown: "leader, goal met", jester: "leader, under goal", grave: "a drowned pet", coin: "tokens" }[k], i: 0 };
   if (k === C.HOMUNCULUS_KIND) return { name: "Full-pen reward", i: 5 };
   if (k === C.MYSTERY_KIND) return { name: "Secret", i: 6 };
@@ -68,7 +94,12 @@ const app = {
   get isHat() { return isHat(W.kind); },
   get tryOn() { const p = wears(W.kind) && W.pets[W.tryOn]; return p ? { def: p.def, kind: W.tryOn } : null; },
   get isProp() { return isHat(W.kind) && !wears(W.kind); },
-  get origin() { return { grave: "ground", coin: "centre" }[W.kind] || "crown spot"; },
+  get origin() {
+    if (isCup(W.kind)) return { bottom: "glass bottom", rim: "rim", surface: "water surface" }[(CUP_PLACE[W.kind.slice(6)] || {}).at] || "glass bottom";
+    if (isFx(W.kind)) return "centre";
+    return { grave: "ground", coin: "centre" }[W.kind] || "crown spot";
+  },
+  get cupFrame() { return isCup(W.kind) ? cupFrame(W.kind) : null; },
   get pose() { return W.pose; },
   get sel() { return W.sel; },
   get tool() { return W.tool; },
@@ -123,6 +154,7 @@ function undo(redo) {
 
 function changed() {
   W.dirty = true;
+  W.touched.add(W.kind);
   syncDefs();
   autosave();
   renderAll();
@@ -307,7 +339,9 @@ async function readSaved() {
     try {
       if (await W.dirHandle.queryPermission({ mode: "readwrite" }) === "granted") {
         W.target = await targetOf(W.dirHandle);
-        try { return await readJson(W.dirHandle, W.target.file); } catch { }
+        const st = await fileState();
+        if (st && st.f) { const obj = await readJson(W.dirHandle, W.target.file); W.baseSig = st.sig; return obj; }
+        if (st) W.baseSig = st.sig;                                      /* no file yet: watch for one */
         if (W.target.data) { try { return await readJson(W.dirHandle, SITE_FILE); } catch { } }   /* saved there under the old name */
       }
     } catch { }
@@ -366,13 +400,27 @@ function petsJson() {
 }
 
 async function saveToRepo() {
-  const { text, count } = petsJson();
   try {
     if (!W.dirHandle && !(await pickSaveFolder())) return;
     if (await W.dirHandle.requestPermission({ mode: "readwrite" }) !== "granted") { toast("Permission refused. Nothing saved."); return; }
     W.target = await targetOf(W.dirHandle);
+    saving = true;
+    /* someone else saved since this studio last read the file: take their changes first */
+    const st = await fileState();
+    if (st && st.sig !== W.baseSig) {
+      const r = await pullTheirs(st);
+      if (r.conflicts.length && !confirm("Someone else also saved " + list3(r.conflicts) + " since you opened " + W.target.file + ".\n\n" +
+                                         "OK keeps your version of " + (r.conflicts.length === 1 ? "it" : "them") + ". Cancel takes theirs.")) {
+        for (const k of r.conflicts) { takeTheirs(k, r.theirs[k]); W.touched.delete(k); }
+      }
+      if (r.changed.length || r.conflicts.length) { syncDefs(); renderAll(); for (const k of [...r.changed, ...r.conflicts]) drawThumb(k); }
+    }
+    const { text, count } = petsJson();
     const fh = await W.dirHandle.getFileHandle(W.target.file, { create: true }), w = await fh.createWritable();
     await w.write(text); await w.close();
+    const after = await fileState();
+    W.base = itemsOf(JSON.parse(text)); W.baseSig = after ? after.sig : null; W.touched.clear();
+    saving = false;
     W.dirty = false;
     W.savedAt = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
     autosave();
@@ -388,7 +436,64 @@ async function saveToRepo() {
     }
   } catch (e) {
     if (e.name !== "AbortError") toast("Save failed: " + (e.message || e));
+  } finally { saving = false; }
+}
+
+/* ---- two studios, one file ------------------------------------------------------ */
+/* While a save folder is open, the file is checked every WATCH_MS. Someone else's
+   save is taken in at once for every item not changed here since the last read or
+   save; an item changed on both sides keeps this studio's version, and Save asks. */
+const WATCH_MS = 4000;
+let saving = false;
+const canon = (k, def) => JSON.stringify(isHat(k) ? hatDef({ pal: def.pal || {}, shapes: def.swim || [] }) : normalize(def));
+function itemsOf(obj) {
+  const out = {};
+  for (const [key, p] of Object.entries((obj && obj.pets) || {})) {
+    const k = Number(key);
+    if (Number.isInteger(k) && k >= 0 && k < C.PET_MAX && p && Array.isArray(p.swim) && p.swim.length) out[k] = canon(k, p);
   }
+  for (const key of HAT_KEYS) {
+    const h = obj && obj.hats && obj.hats[key];
+    if (h && Array.isArray(h.shapes) && h.shapes.length) out[key] = canon(key, { pal: h.pal, swim: h.shapes });
+  }
+  return out;
+}
+async function fileState() {
+  if (!W.dirHandle || !W.target) return null;
+  try { if (await W.dirHandle.queryPermission({ mode: "readwrite" }) !== "granted") return null; } catch { return null; }
+  try { const f = await (await W.dirHandle.getFileHandle(W.target.file)).getFile(); return { sig: f.lastModified + ":" + f.size, f }; }
+  catch { return { sig: "none", f: null }; }
+}
+function takeTheirs(k, j) {
+  W.pets[k] = j ? { def: JSON.parse(j), edited: true } : { def: G.clone(W.builtin[k]), edited: false };
+  if (k === W.kind) W.sel.clear();
+}
+/* Their file against what this studio last read: changed (taken in) and conflicts. */
+async function pullTheirs(st) {
+  let obj = { pets: {} };
+  if (st.f) { try { obj = JSON.parse((await st.f.text()).replace(/^\uFEFF/, "")); } catch { return { changed: [], conflicts: [], theirs: {} }; } }
+  const theirs = itemsOf(obj), changed = [], conflicts = [];
+  for (const key of new Set([...Object.keys(W.base), ...Object.keys(theirs)])) {
+    if (W.base[key] === theirs[key]) continue;
+    const k = itemKey(key);
+    (W.touched.has(k) ? conflicts : changed).push(k);
+  }
+  for (const k of changed) takeTheirs(k, theirs[k]);
+  W.base = theirs; W.baseSig = st.sig;
+  return { changed, conflicts, theirs };
+}
+const list3 = ks => { const n = ks.map(k => itemName(k)); return n.length <= 3 ? n.join(", ") : n.slice(0, 3).join(", ") + " and " + (n.length - 3) + " more"; };
+async function watchFile() {
+  if (saving || document.hidden) return;
+  const st = await fileState();
+  if (!st || W.baseSig === null || st.sig === W.baseSig) return;
+  const r = await pullTheirs(st);
+  if (!r.changed.length && !r.conflicts.length) return;
+  syncDefs(); renderAll();
+  for (const k of [...r.changed, ...r.conflicts]) drawThumb(k);
+  if (W.touched.size === 0) { W.dirty = false; renderSaveState(); }
+  toast("Someone saved " + W.target.file + (r.changed.length ? ": " + list3(r.changed) + " updated here" : "") +
+        (r.conflicts.length ? (r.changed.length ? ". " : ". ") + list3(r.conflicts) + " changed on both sides: yours is kept, and Save will ask." : "."));
 }
 
 function exportFile() {
@@ -404,6 +509,7 @@ async function openFile(file) {
     if (W.dirty && !confirm("Replace the unsaved work with " + file.name + "?")) return;
     loadFileObj(obj);
     W.hist = {}; W.sel.clear(); W.dirty = true;
+    markTouched();
     syncDefs(); autosave(); renderAll(); editor.fit();
     toast("Loaded " + Object.values(W.pets).filter(p => p.edited).length + " drawn pets from " + file.name);
   } catch (e) { toast("Could not open it: " + (e.message || e)); }
@@ -444,19 +550,34 @@ function renderPetList() {
                  { pen: "Second pen" }, ...C.PEN2_BINS.map((b, i) => ({ name: b.name, i, kinds: b.kinds })),
                  { pen: "Hats and props" }, { name: "Crown and jester", i: 0, kinds: ["crown", "jester"] },
                  { name: "Holiday hats", i: 0, kinds: HOLIDAY_KEYS },
-                 { name: "Headstone and coin", i: 0, kinds: ["grave", "coin"] }];
+                 { name: "Headstone and coin", i: 0, kinds: ["grave", "coin"] },
+                 { pen: "Style shop" }, { name: "Cup", i: 0, kinds: CUP_KEYS },
+                 { name: "Effect particles", i: 0, kinds: FX_KEYS }];
   const el = $("petList");
   if (!el.dataset.built) {
-    el.innerHTML = order.map(g => g.pen ? '<div class="pen-head">' + esc(g.pen) + '</div>' : '<div class="rar-head">' + esc(g.name) + '</div>' + g.kinds.map(k =>
-      '<button type="button" class="pet-item" data-kind="' + k + '"><canvas width="80" height="80"></canvas>' +
-      '<span class="nm"></span><span class="mark"></span></button>').join("")).join("");
+    /* one foldable section per collection; which are shut is remembered in this browser */
+    const shut = shutSections(), secs = [];
+    for (const g of order) {
+      if (g.pen) { secs.push({ name: g.pen, groups: [] }); continue; }
+      secs[secs.length - 1].groups.push(g);
+    }
+    el.innerHTML = secs.map(sec => {
+      const n = sec.groups.reduce((a, g) => a + g.kinds.length, 0);
+      return '<section class="pen-sec' + (shut.includes(sec.name) ? ' shut' : '') + '" data-sec="' + esc(sec.name) + '">' +
+        '<button type="button" class="pen-head" data-sec-toggle aria-expanded="' + !shut.includes(sec.name) + '"><span>' + esc(sec.name) + '</span><b>' + n + '</b></button>' +
+        '<div class="pen-body">' + sec.groups.map(g => '<div class="rar-head">' + esc(g.name) + '</div>' + g.kinds.map(k =>
+          '<button type="button" class="pet-item" data-kind="' + k + '"><canvas width="80" height="80"></canvas>' +
+          '<span class="nm"></span><span class="mark"></span></button>').join("")).join("") + '</div></section>';
+    }).join("");
     el.dataset.built = "1";
     for (const k of ITEMS()) drawThumb(k);
   }
+  const cur = el.querySelector('.pet-item[data-kind="' + W.kind + '"]'), sec = cur && cur.closest(".pen-sec");
+  if (sec && sec.classList.contains("shut")) toggleSection(sec, true);   /* never hide what is open */
   for (const b of el.querySelectorAll(".pet-item")) {
     const k = itemKey(b.dataset.kind), p = W.pets[k];
     b.classList.toggle("on", k === W.kind);
-    b.querySelector(".nm").innerHTML = esc(itemName(k)) + '<small>' + (isHat(k) ? (wears(k) ? 'on pets and in icons' : k === "grave" ? 'in drained glasses and icons' : 'the bank pile and icons') : '#' + k + (p.def.portrait ? ' · portrait' : '')) + '</small>';
+    b.querySelector(".nm").innerHTML = esc(itemName(k)) + '<small>' + (isCup(k) ? 'in the glass' : isFx(k) ? 'effect particle' : isHat(k) ? (wears(k) ? 'on pets and in icons' : k === "grave" ? 'in drained glasses and icons' : 'the bank pile and icons') : '#' + k + (p.def.portrait ? ' · portrait' : '')) + '</small>';
     b.querySelector(".mark").className = "mark" + (p.edited ? " edited" : "");
     b.title = p.edited ? "Drawn in the studio" : "Built-in drawing";
   }
@@ -465,6 +586,26 @@ function renderPetList() {
 }
 
 const itemKey = v => isHat(v) ? v : Number(v);
+const SHUT_KEY = "pet-studio-shut";
+function shutSections() { try { return JSON.parse(localStorage.getItem(SHUT_KEY) || "[]") || []; } catch { return []; } }
+function toggleSection(sec, open) {
+  const shut = !open;
+  sec.classList.toggle("shut", shut);
+  sec.querySelector(".pen-head").setAttribute("aria-expanded", String(!shut));
+  const list = shutSections().filter(n => n !== sec.dataset.sec);
+  if (shut) list.push(sec.dataset.sec);
+  try { localStorage.setItem(SHUT_KEY, JSON.stringify(list)); } catch { }
+}
+/* A drawing scaled to fit a 60 x 60 thumbnail. */
+function drawFit(ctx, def, hue) {
+  const b = G.bounds(def.swim);
+  if (!b) return;
+  const z = Math.min(48 / Math.max(0.01, b.x1 - b.x0), 48 / Math.max(0.01, b.y1 - b.y0));
+  ctx.save(); ctx.translate(30 - (b.x0 + b.x1) / 2 * z, 30 - (b.y0 + b.y1) / 2 * z);
+  drawShapes(ctx, def.swim, z, hue, def.pal, false);
+  ctx.restore();
+}
+
 function drawThumb(k) {
   const c = document.querySelector('.pet-item[data-kind="' + k + '"] canvas');
   if (!c) return;
@@ -472,7 +613,8 @@ function drawThumb(k) {
   ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, 80, 80);
   ctx.setTransform(80 / 60, 0, 0, 80 / 60, 0, 0);
   try {
-    if (k === "grave") drawHeadstone(ctx, 30, 52, 46, 210);
+    if (isCup(k) || isFx(k)) drawFit(ctx, W.pets[k].def, isFx(k) ? 340 : 0);
+    else if (k === "grave") drawHeadstone(ctx, 30, 52, 46, 210);
     else if (k === "coin") drawCoin(ctx, 30, 30, 44);
     else if (isHat(k)) critterCrown(ctx, 30, 40, 54, k);
     else drawPortrait(ctx, 30, 42, 20, k, iconHue(k));
@@ -684,7 +826,11 @@ function hatTab() {
     grave: "Stands in a drained glass where a pet drowned, and marks buried pets on the Pets tab. The origin is the ground under it, in units of the pet&rsquo;s size. Pet colours take a tint of the drowned pet&rsquo;s hue.",
     coin: "One token, face on: 1 unit across, origin at its centre. The bank&rsquo;s gold pile lays it flat in a heap; the shop and history use it as the small coin icon."
   }[k] || (HOLIDAY_OF[k] ? "Worn in place of the " + (HOLIDAY_OF[k].role === "crown" ? "crown (leader who met their goal)" : "jester hat (leader still under goal)") +
-    " from the day before " + esc(HOLIDAY_OF[k].h.name) + " to the day after. The origin is each pet&rsquo;s crown spot; the same drawing makes the small hat icons." : "");
+    " from the day before " + esc(HOLIDAY_OF[k].h.name) + " to the day after. The origin is each pet&rsquo;s crown spot; the same drawing makes the small hat icons."
+    : isCup(k) ? "Style shop cup item. Units are the glass&rsquo;s inside width; the origin is " + CUP_AT[(CUP_PLACE[k.slice(6)] || {}).at || "bottom"] +
+      ", and the dashed box is the inside of the glass. Anything past the walls is cut off on the page. Fixed colours."
+    : isFx(k) ? "One particle of the " + esc(COSMETICS[k].name) + " effect, in units of the pet&rsquo;s size, centred on the origin. The effect moves and fades it; " +
+      "pet colours follow the colour the effect gives each particle." : "");
   return '<h4>' + esc(HAT_NAMES[k]) + '</h4><p class="note">' + about + '</p>' +
     (wears(k) ? '<div class="row"><label>Try on</label><select data-f="tryon">' + [...Array(C.PET_MAX).keys()].map(i =>
       '<option value="' + i + '"' + (i === W.tryOn ? " selected" : "") + '>' + esc(C.PET_NAMES[i]) + '</option>').join("") + '</select></div>' : '') +
@@ -830,7 +976,11 @@ function wire() {
     const p = e.target.closest("[data-pose]"); if (p) setPose(p.dataset.pose);
   });
   $("sideTabs").addEventListener("click", e => { const b = e.target.closest("[data-tab]"); if (b) { W.tab = b.dataset.tab; renderPanels(); } });
-  $("petList").addEventListener("click", e => { const b = e.target.closest("[data-kind]"); if (b) setKind(itemKey(b.dataset.kind)); });
+  $("petList").addEventListener("click", e => {
+    const t = e.target.closest("[data-sec-toggle]");
+    if (t) { const sec = t.closest(".pen-sec"); toggleSection(sec, sec.classList.contains("shut")); return; }
+    const b = e.target.closest("[data-kind]"); if (b) setKind(itemKey(b.dataset.kind));
+  });
   $("brush").addEventListener("input", e => { W.brush = Number(e.target.value) / 100; $("brushVal").textContent = e.target.value; });
   $("brushVal").textContent = Math.round(W.brush * 100);
   for (const [id, key] of [["tWater", "water"], ["tDead", "dead"], ["tCrown", "crown"], ["tFx", "fx"], ["tSnap", "snap"]]) {
@@ -988,7 +1138,7 @@ async function start() {
   resetItems();
   try { W.dirHandle = (await idb.get("dir")) || null; } catch { }
   let note = "";
-  try { loadFileObj(await readSaved()); } catch (e) { note = "pets.json could not be read: " + (e.message || e); }
+  try { const obj = await readSaved(); loadFileObj(obj); W.base = itemsOf(obj); } catch (e) { note = "pets.json could not be read: " + (e.message || e); }
   try {
     const draft = await idb.get("draft");
     if (draft && draft.refs) W.refs = draft.refs;
@@ -996,6 +1146,7 @@ async function start() {
       resetItems();
       for (const [k, def] of Object.entries(draft.pets || {})) W.pets[k] = { def: normalize(def), edited: true };
       W.dirty = true;
+      markTouched();
       note = "Unsaved work from last time is back. Save to repo when ready.";
     }
   } catch { }
@@ -1006,7 +1157,8 @@ async function start() {
   renderAll();
   editor.fit();
   if (note) toast(note);
-  window.STUDIO = { W, app, editor, petsJson, syncDefs };     /* for checks from the console */
+  setInterval(() => { watchFile().catch(() => { }); }, WATCH_MS);
+  window.STUDIO = { W, app, editor, petsJson, syncDefs, watchFile };     /* for checks from the console */
 }
 
 start();
