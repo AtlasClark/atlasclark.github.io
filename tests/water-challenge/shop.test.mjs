@@ -318,6 +318,7 @@ async function chestDrop(p, roll) {
 
 test("community chest: the token goes in; an empty chest only adds; a win takes it all", { skip: skipReason }, async () => {
   const { S, rich } = await fresh();
+  for (const p of S.participants) p.spends = (p.spends || []).filter(s => !s.chest);   /* whatever the data holds: start empty */
   const other = S.participants.find(p => p !== rich && shop.balance(p) >= 2);
   assert.equal(shop.chestTotal(), 0, "starts empty");
   const b0 = shop.balance(rich);

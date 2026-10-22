@@ -11,7 +11,9 @@ export const S = {
   me: "",                 /* identity stamped on entries */
   mine: null,             /* the participant this browser belongs to; "" = none, null = not asked yet */
   dataVer: 0,             /* bumps on every data change; cheap cache key */
-  newerRevSeen: false, loadRecovered: 0, loadFailed: 0
+  newerRevSeen: false,
+  htaWriters: [],         /* files whose last writer was an old HTA, as loaded now */
+  htaLog: [],             /* every logged sighting: { file, ver, user, at, seen } */ loadRecovered: 0, loadFailed: 0
 };
 
 export function defaultSettings() {

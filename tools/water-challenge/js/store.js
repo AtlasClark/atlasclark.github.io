@@ -420,6 +420,8 @@ export async function loadAll() {
   }
   /* A file from a newer format: this page is out of date (the banner says reload). */
   S.newerRevSeen = list.some(o => Number(o.writerRev) > C.FORMAT_REV);
+  S.htaWriters = list.filter(oldWriter).map(o => ({ file: o.name, ver: String(o.writerVersion || "format " + (o.writerRev || "?")),
+                                                    user: String(o.writerUser || "unknown"), at: String(o.writtenAt || "") }));
   list.sort((a, b) => a.name < b.name ? -1 : 1);
   return list;
 }
@@ -569,3 +571,32 @@ export async function resolveDataDir(h) {
   return h;
 }
 
+/* ---- old HTA writers --------------------------------------------------------- */
+/* Written by an HTA build ("r55") or at an older format: that writer drops every field
+   it does not know, so its files have lost their shop and day-log history. */
+export function oldWriter(o) {
+  const v = String(o.writerVersion || ""), rev = Number(o.writerRev) || 0;
+  return /^r\d+$/i.test(v) || (rev > 0 && rev < C.FORMAT_REV);
+}
+
+/* Adds today's sightings to the log in _alerts/ and reads the whole log back into
+   S.htaLog. One entry per file and write time, so a page that sees it again adds nothing. */
+export async function noteHtaWriters() {
+  if (!dir) { S.htaLog = []; return; }
+  let sub = null, log = [];
+  try { sub = await dir.getDirectoryHandle(C.ALERTS_SUBDIR, { create: S.htaWriters.length > 0 }); } catch { sub = null; }
+  if (!sub) { S.htaLog = []; return; }
+  try {
+    const fh = await fileOrNull(C.HTA_LOG, sub);
+    if (fh) log = JSON.parse(decodeBytes(await (await fh.getFile()).arrayBuffer()) || "[]");
+  } catch { log = []; }
+  if (!Array.isArray(log)) log = [];
+  const key = e => e.file + "|" + e.at, have = new Set(log.map(key)), seen = localStamp(new Date());
+  const fresh = S.htaWriters.filter(w => !have.has(key(w))).map(w => Object.assign({ seen, by: S.me || "" }, w));
+  if (fresh.length) {
+    log = log.concat(fresh).slice(-200);
+    try { await writeText(C.HTA_LOG, JSON.stringify(log, null, 1), sub); note("old HTA write logged: " + fresh.map(w => w.file).join(", ")); }
+    catch (e) { note("could not log the HTA write: " + (e.message || e)); }
+  }
+  S.htaLog = log;
+}

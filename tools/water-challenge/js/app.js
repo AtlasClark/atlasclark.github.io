@@ -17,7 +17,7 @@ import { initShop, renderShop, shopTabChanged } from "./shopui.js";
 import { pouredOn, shellRun, shellAward } from "./shop.js";
 import { ui, render, setTab, setMsg, showBanner, tickMasks, relayout, forceRebuild, resetIcons,
          toggleSwatches, openBank, auditStreak, showDiag, closeOverlays, fillSettings, renderRoster,
-         renderActivityNow, showUnlock, uiHooks } from "./ui.js";
+         renderActivityNow, showUnlock, uiHooks, htaDismiss } from "./ui.js";
 import { $, esc, bus, todayKey, localStamp, fmt, fmtOz, trim, parseKey, shiftKey, clockStamp } from "./util.js";
 
 let lastSig = "", pollTimer = 0;
@@ -93,6 +93,7 @@ async function syncFolderPets() {
 async function refresh() {
   await store.loadSettings();
   S.participants = await store.loadAll();
+  try { await store.noteHtaWriters(); } catch (e) { store.diagNote("HTA log: " + (e.message || e)); }
   dataChanged();
   await syncFolderPets();
   if (backedUp !== todayKey()) {   /* before anything is written today */
@@ -531,6 +532,7 @@ function wire() {
   uiHooks.bottle = bottleView;
   initShop({ settle, guard, askConfirm, pollSoon, whoAmI: () => askIdentity(false) });
   $("cog").onclick = () => $("settingsPanel").hidden ? openSettings() : closeSettings();
+  $("staleBanner").addEventListener("click", e => { if (e.target.closest("[data-act=hta-ok]")) htaDismiss(); });
   $("spClose").onclick = closeSettings;
   for (const d of document.querySelectorAll("#settingsPanel .sp-card")) d.addEventListener("toggle", rememberCards);
   $("applySettings").onclick = applySettings;

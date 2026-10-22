@@ -1,8 +1,8 @@
 /* Water Challenge (web) - constants: rules, tunables and the on-disk contract
    (FORMAT_REV, UTF-16 LE + BOM JSON, unknown fields kept). */
 
-export const REV         = "rev 1.26.1";
-export const APP_VERSION = "web 1.26.1";   /* stamped as writerVersion */
+export const REV         = "rev 1.27.0";
+export const APP_VERSION = "web 1.27.0";   /* stamped as writerVersion */
 /* Every file is written at FORMAT_REV. A file stamped higher came from a newer
    build, and the page asks for a reload. */
 export const FORMAT_REV    = 22;
@@ -40,6 +40,13 @@ export const LIVE_SHOW_MS = 9000;          /* a drop seen later than this shows 
 /* ---- files ---- */
 export const SETTINGS_FILE  = "_settings.json";
 export const REMOVED_SUBDIR = "_removed";
+/* Old HTA writers: a copy of the retired HTA left open still rewrites participant files
+   (at format 21, dropping every web-only field: spends, day logs, looks). Each sighting
+   is logged in ALERTS_SUBDIR/HTA_LOG (a sub-folder, which the HTA never reads) and shown
+   as a banner for HTA_ALERT_DAYS. */
+export const ALERTS_SUBDIR  = "_alerts";
+export const HTA_LOG        = "hta.json";
+export const HTA_ALERT_DAYS = 7;
 /* Pet art for this folder only, saved there by the Pet Studio for testing. While it
    is there it replaces the site's pets/pets.json; delete it to go back. */
 export const FOLDER_PETS_FILE = "_pets.json";

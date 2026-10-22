@@ -81,3 +81,30 @@ test("settings: the folder's title and tagline are saved when set, read back, an
   await web.store.loadSettings();
   assert.equal(S.settings.title, ""); assert.equal(S.settings.tagline, "");
 });
+
+test("old HTA writers: spotted on load, logged once in _alerts/, and the log outlives the next save", { skip: skipReason }, async () => {
+  const { S, mem } = await setup();
+  for (const p of S.participants) await web.store.saveParticipant(p, null);   /* everything current first */
+  S.participants = await web.store.loadAll();
+  assert.equal(S.htaWriters.length, 0);
+  const p = S.participants[0], name = web.store.participantFileName(p.name);
+  const disk = JSON.parse(mem.text(name));
+  for (const f of ["spends", "rollLog", "graveLog", "tokensSpent", "rerollDay"]) delete disk[f];   /* what the HTA keeps */
+  Object.assign(disk, { writerRev: 21, writerVersion: "r55", writerUser: "someone", writtenAt: "2026-10-22T00:00:00" });
+  mem._f.set(name, { bytes: web.store.encodeUtf16le(JSON.stringify(disk)), mtime: Date.now() });
+
+  S.participants = await web.store.loadAll();
+  assert.deepEqual(S.htaWriters, [{ file: p.name, ver: "r55", user: "someone", at: "2026-10-22T00:00:00" }]);
+  await web.store.noteHtaWriters();
+  await web.store.noteHtaWriters();
+  const log = JSON.parse(mem._d.get("_alerts").text("hta.json"));
+  assert.equal(log.length, 1, "logged once");
+  assert.equal(log[0].user, "someone");
+
+  await web.store.saveParticipant(web.model.findParticipant(p.name), null);      /* a web page re-saves it */
+  S.participants = await web.store.loadAll();
+  assert.equal(S.htaWriters.length, 0, "no longer in the HTA's hands");
+  await web.store.noteHtaWriters();
+  assert.equal(S.htaLog.length, 1, "but the sighting is kept");
+  assert.ok(web.store.oldWriter({ writerRev: 21 }) && web.store.oldWriter({ writerVersion: "r54" }) && !web.store.oldWriter({ writerRev: 22, writerVersion: "web 1.27.0" }));
+});

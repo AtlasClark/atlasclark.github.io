@@ -368,6 +368,37 @@ function renderTeamBar() {
 }
 
 /* ---- warnings ----------------------------------------------------------- */
+/* An old HTA still open somewhere rewrites files and erases their web-only history.
+   Shown while any file is still in its hands, and for HTA_ALERT_DAYS after a logged
+   sighting unless this browser has said "Got it" to the newest one. */
+const HTA_OK = "awc-hta-ok";
+function htaRecent() {
+  const since = shiftKey(todayKey(), -C.HTA_ALERT_DAYS);
+  return S.htaLog.filter(e => String(e.seen || e.at).slice(0, 10) >= since);
+}
+function whenOf(at) {
+  const d = new Date(String(at).replace(" ", "T"));
+  return isNaN(d) ? esc(at) : esc(d.toTimeString().slice(0, 5)) + " on " + esc(d.toLocaleDateString("en-US", { month: "short", day: "numeric" }));
+}
+function htaWarning() {
+  const now = S.htaWriters, recent = htaRecent();
+  let dismissed = "";
+  try { dismissed = localStorage.getItem(HTA_OK) || ""; } catch { }
+  const newest = recent.reduce((a, e) => (e.seen || "") > a ? e.seen || "" : a, "");
+  if (!now.length && (!recent.length || newest <= dismissed)) return "";
+  const list = now.length ? now : recent, by = {};
+  for (const e of list) { const k = e.user + "|" + e.ver; (by[k] = by[k] || { user: e.user, ver: e.ver, files: new Set(), at: e.at }).files.add(e.file); if (e.at > by[k].at) by[k].at = e.at; }
+  const bits = Object.values(by).map(g => '<b>' + esc(g.user) + '</b>&rsquo;s copy (' + esc(g.ver) + ') rewrote ' + esc([...g.files].join(", ")) + ' at ' + whenOf(g.at));
+  return '<b>An old HTA is still writing to this folder.</b> ' + bits.join("; ") + '. It erases spent tokens, Plinko and roll history, ' +
+         'and looks from those files. Close every open &ldquo;Atlas Water Challenge&rdquo; HTA window' + (now.length ? '.' :
+         '. <button type="button" class="btn small" data-act="hta-ok">Got it</button>');
+}
+export function htaDismiss() {
+  const newest = S.htaLog.reduce((a, e) => (e.seen || "") > a ? e.seen || "" : a, "");
+  try { localStorage.setItem(HTA_OK, newest); } catch { }
+  renderStaleWarning();
+}
+
 function renderStaleWarning() {
   const el = $("staleBanner"), dup = duplicateNames();
   let html = "";
@@ -375,6 +406,8 @@ function renderStaleWarning() {
     html = "<b>Duplicate names:</b> " + esc(dup.join(", ")) + ". Streaks will be wrong until one of each is renamed or removed.";
   } else if (S.newerRevSeen) {
     html = "The folder was written by a newer version. Reload before logging.";
+  } else {
+    html = htaWarning();
   }
   if (html) { if (el.innerHTML !== html) el.innerHTML = html; el.hidden = false; }
   else el.hidden = true;
@@ -1091,6 +1124,7 @@ export function auditStreak(name) {
 export function showDiag() {
   const probs = [], t = goalTunables(), L = legacyFlat(), key = todayKey(), h = [];
   if (duplicateNames().length) probs.push("duplicate names: " + duplicateNames().join(", "));
+  if (S.htaWriters.length) probs.push(S.htaWriters.length + " file(s) last written by an old HTA");
   if (S.loadFailed) probs.push(S.loadFailed + " unreadable file(s)");
   if (G.stats.errors) probs.push(G.stats.errors + " animation error(s)");
   if (diag.lastError) probs.push("last error: " + diag.lastError);
@@ -1099,6 +1133,10 @@ export function showDiag() {
   h.push(rRow("Status", probs.length ? '<span class="bad">' + esc(probs.join(" · ")) + '</span>' : '<span class="ok">all clear</span>'));
   h.push(rRow("Build", esc(C.REV) + ' <span class="dim">&middot; writes as "' + esc(C.APP_VERSION) + '", format ' + C.FORMAT_REV + '</span>'));
   h.push(rRow("Data folder", esc(dir ? dir.name : "(none)")));
+  for (const e of S.htaLog.slice(-8).reverse()) {
+    h.push(rRow("Old HTA write", '<span class="bad">' + esc(e.file) + '</span> by ' + esc(e.user) + ' (' + esc(e.ver) + ') at ' + esc(String(e.at).replace("T", " ")) +
+                ' <span class="dim">&middot; seen ' + esc(String(e.seen || "").replace("T", " ")) + (e.by ? ' by ' + esc(e.by) : '') + '</span>'));
+  }
   h.push(rRow("Files", S.participants.length + ' loaded' + (S.loadRecovered ? ' &middot; <span class="bad">' + S.loadRecovered + ' recovered</span>' : '')));
   h.push('</table>');
 
