@@ -437,22 +437,31 @@ test("cosmetics: every item has a slot, a price and draws without error", async 
   }
 });
 
-test("shells: from pour days since SHELLS_SINCE: 1, then one more each day in a row up to 5, back to 1 after a gap", () => {
+test("shells: from pour days since SHELLS_SINCE: 1, then one more each day in a row up to 5; weekends without a pour skip, weekdays restart", () => {
   const S0 = web.C.SHELLS_SINCE, day = n => web.util.shiftKey(S0, n);
+  const dow = n => web.util.parseKey(day(n)).getDay();
+  assert.deepEqual([0, 3, 4, 5, 7, 10, 12].map(dow), [3, 6, 0, 1, 3, 6, 1], "SHELLS_SINCE is a Wednesday");
   const pour = (d, oz = 8) => ({ eid: "sh:" + d + ":" + oz, ts: d + "T09:00:00", date: d, oz, by: "test" });
   const p = { name: "shelltest", entries: [pour(day(-3)), pour(day(-1))], spends: [] };
   assert.equal(shop.shellsEarned(p), 0, "nothing before SHELLS_SINCE");
-  for (const n of [0, 1, 2]) p.entries.push(pour(day(n)), pour(day(n), 4));   /* 1 + 2 + 3, however many pours a day */
-  for (const n of [4, 5, 6, 7, 8, 9]) p.entries.push(pour(day(n)));           /* gap, then 1 + 2 + 3 + 4 + 5 + 5 */
-  assert.equal(shop.shellsEarned(p), 6 + 20);
-  assert.equal(shop.shellRun(p, day(9)), 6);
-  assert.equal(shop.shellRun(p, day(10)), 6, "before today's first pour, yesterday's run still counts");
-  assert.equal(shop.shellRun(p, day(11)), 0);
-  assert.ok(shop.pouredOn(p, day(9)) && !shop.pouredOn(p, day(10)));
-  p.entries = p.entries.filter(e => e.date !== day(9));                        /* undo the day's only pour */
-  assert.equal(shop.shellsEarned(p), 6 + 15, "an undone day pays nothing");
+  for (const n of [0, 1, 2]) p.entries.push(pour(day(n)), pour(day(n), 4));   /* Wed-Fri: 1 + 2 + 3, however many pours a day */
+  assert.equal(shop.shellsEarned(p), 6);
+  for (const n of [5, 6]) p.entries.push(pour(day(n)));                       /* no weekend pour, Mon-Tue: 4 + 5 */
+  assert.equal(shop.shellsEarned(p), 15, "a weekend without a pour keeps the run");
+  for (const n of [8, 9]) p.entries.push(pour(day(n)));                       /* no Wed pour, Thu-Fri: 1 + 2 */
+  assert.equal(shop.shellsEarned(p), 18, "a weekday without a pour starts again at 1");
+  p.entries.push(pour(day(10)));                                              /* Sat: 3 */
+  assert.equal(shop.shellsEarned(p), 21, "a weekend pour still counts in the run");
+  assert.equal(shop.shellRun(p, day(10)), 3);
+  assert.equal(shop.shellRun(p, day(11)), 3, "before today's first pour, yesterday's run still counts");
+  assert.equal(shop.shellRun(p, day(12)), 3, "Monday before the first pour: the run from before the weekend");
+  assert.equal(shop.shellRun(p, day(13)), 0, "a missed Monday ends it");
+  assert.ok(shop.pouredOn(p, day(10)) && !shop.pouredOn(p, day(11)));
+  p.entries = p.entries.filter(e => e.date !== day(10));                       /* undo the day's only pour */
+  assert.equal(shop.shellsEarned(p), 18, "an undone day pays nothing");
+  assert.equal(shop.shellRun(p, day(12)), 2, "an undone Saturday: Friday's run carries to Monday");
   p.spends.push({ id: "s:x", at: day(8) + "T10:00:00", kind: "paint", cost: 1, pet: 0, hue: 10 });
-  assert.equal(shop.shellBalance(p), 6 + 15 - 1);
+  assert.equal(shop.shellBalance(p), 18 - 1);
   assert.equal(shop.spentTotal(p), 0, "shell spends never touch goal tokens");
 });
 

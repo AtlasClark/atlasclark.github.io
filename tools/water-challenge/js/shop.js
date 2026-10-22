@@ -7,7 +7,7 @@
 import * as C from "./config.js";
 import { S, tokensEarned, capBonus } from "./model.js";
 import { saveParticipant, petKindFor } from "./store.js";
-import { has, todayKey, localStamp, shiftKey } from "./util.js";
+import { has, todayKey, localStamp, shiftKey, parseKey } from "./util.js";
 import { applyRoll, dayRng, grantHomunculus, isGrave, petBinIndex, penOf, binsFor, rollPen, pen2Open } from "./pets.js";
 import { COSMETICS, SLOTS, PAINT_COST } from "./cosmetics.js";
 import { hydrationEarned } from "./hydration.js";
@@ -265,21 +265,31 @@ export async function paintPet(p, k, hue) {
 
 /* ---- shells: earned by pouring ----------------------------------------------- */
 /* Each day with a pour (from SHELLS_SINCE) pays the length of the run of pour days in
-   a row it ends, up to SHELL_MAX: 1, 2, 3, 4, 5, 5, ... A day without one starts the run
-   again at 1. Taken from the entries, so it merges and undoes like the water itself. */
+   a row it ends, up to SHELL_MAX: 1, 2, 3, 4, 5, 5, ... A weekday without one starts the
+   run again at 1; weekend days (SHELL_FREE_DAYS) without one are passed over. Taken from
+   the entries, so it merges and undoes like the water itself. */
+const freeDay = k => C.SHELL_FREE_DAYS.includes(parseKey(k).getDay());
+/* Every day after a and before b is a free day, so a run on a carries on to b. */
+function joins(a, b) {
+  for (let k = shiftKey(a, 1); k < b; k = shiftKey(k, 1)) if (!freeDay(k)) return false;
+  return true;
+}
 function runs(p) {
   const days = [...new Set((p.entries || []).filter(e => Number(e.oz) > 0 && e.date >= C.SHELLS_SINCE).map(e => e.date))].sort(), out = {};
   let run = 0, prev = "";
-  for (const d of days) { run = prev && shiftKey(prev, 1) === d ? run + 1 : 1; out[d] = run; prev = d; }
+  for (const d of days) { run = prev && joins(prev, d) ? run + 1 : 1; out[d] = run; prev = d; }
   return out;
 }
 export const shellAward = run => Math.min(C.SHELL_MAX, Math.max(1, run));
 export function shellsEarned(p) { return Object.values(runs(p)).reduce((a, r) => a + shellAward(r), 0) + hydrationEarned(p).shells; }
 export const shellsSpent = p => (p.spends || []).reduce((a, s) => a + (isShell(s) ? Number(s.cost) || 0 : 0), 0);
 export const shellBalance = p => shellsEarned(p) - shellsSpent(p);
-/* The run of pour days in a row up to today (or yesterday, before today's first pour). */
+/* The run of pour days in a row up to today (or the last pour day before it, across
+   any weekend days without a pour, before today's first pour). */
 export function shellRun(p, key = todayKey()) {
   const r = runs(p);
-  return r[key] || r[shiftKey(key, -1)] || 0;
+  let k = shiftKey(key, -1);
+  while (!r[k] && freeDay(k)) k = shiftKey(k, -1);
+  return r[key] || r[k] || 0;
 }
 export const pouredOn = (p, key = todayKey()) => (p.entries || []).some(e => e.date === key && Number(e.oz) > 0);

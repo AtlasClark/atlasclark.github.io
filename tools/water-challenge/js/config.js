@@ -1,8 +1,8 @@
 /* Water Challenge (web) - constants: rules, tunables and the on-disk contract
    (FORMAT_REV, UTF-16 LE + BOM JSON, unknown fields kept). */
 
-export const REV         = "rev 1.29.0";
-export const APP_VERSION = "web 1.29.0";   /* stamped as writerVersion */
+export const REV         = "rev 1.29.1";
+export const APP_VERSION = "web 1.29.1";   /* stamped as writerVersion */
 /* Every file is written at FORMAT_REV. A file stamped higher came from a newer
    build, and the page asks for a reload. */
 export const FORMAT_REV    = 22;
@@ -84,10 +84,13 @@ export const HYD_DAY = { name: "National Hydration Day", m: 6, d: 23, ozPerShell
 export const HOLIDAY_SPAN = 1;
 /* Shells: the Style shop's own currency, apart from goal tokens. Each day a person
    logs any water earns shells: 1 the first day, one more for each day in a row, up to
-   SHELL_MAX a day; a day without a pour starts again at 1. Counted from the entries
+   SHELL_MAX a day; a weekday without a pour starts again at 1. A SHELL_FREE_DAYS day
+   (the weekend) without a pour pays nothing but does not break the run; a pour on one
+   still counts as a day in the run. Counted from the entries
    themselves, from SHELLS_SINCE on (no backlog). Spends of SHELL_KINDS are paid in
    shells, never tokens. */
 export const SHELL_MAX         = 5;
+export const SHELL_FREE_DAYS   = [0, 6];        /* getDay(): Sunday, Saturday */
 export const SHELLS_SINCE      = "2026-10-21";
 export const SHELL_KINDS       = ["cosmetic", "paint"];
 export const DEFAULT_TITLE     = "Water Challenge";
