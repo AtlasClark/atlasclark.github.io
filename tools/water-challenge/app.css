@@ -552,6 +552,11 @@ li.pour.armed .undo-x { opacity: 1; background: #c4434f; color: #fff; }
 .rc-pets .tag { order: 3; margin-left: auto; padding: 1px 8px; border-radius: 999px; font-size: 10px; font-weight: 800;
   text-transform: uppercase; background: var(--accent-soft); color: var(--accent-ink); }
 .rc-crown { flex: none; }
+.rc-hl { list-style: none; margin: 0; padding: 0; font-size: 13px; color: var(--faint); }
+.rc-hl li { display: grid; grid-template-columns: 112px 1fr; gap: 8px; padding: 4px 0; border-bottom: 1px dashed var(--card-edge); }
+.rc-hl li:last-child { border-bottom: 0; }
+.rc-hl .k { font-weight: 800; color: var(--muted); font-size: 12px; }
+.rc-hl .v { color: var(--ink-2); min-width: 0; }
 
 /* ---- token shop ---- */
 .coin { display: inline-block; width: 16px; height: 16px; border-radius: 50%; vertical-align: -3px; margin-right: 5px;

@@ -4,14 +4,14 @@
    browser (IndexedDB) until it is saved. Reference images are never exported. */
 
 import * as C from "../js/config.js";
-import { defs, hats, HAT_KEYS, colourOf, PET_DEFS_FORMAT } from "../js/petdefs.js";
+import { defs, hats, HAT_KEYS, HOLIDAY_KEYS, colourOf, PET_DEFS_FORMAT } from "../js/petdefs.js";
 import { drawPortrait, critterCrown, drawHeadstone, drawCoin } from "../js/art.js";
 import { importAll, importHat, basePalette } from "./importer.js";
 import { Editor, TOOL_HINTS } from "./editor.js";
 import { Preview } from "./preview.js";
 import * as G from "./geom.js";
 
-const REV = "studio 1.9.0";
+const REV = "studio 1.10.0";
 const PETS_URL = "../pets/pets.json";
 const $ = id => document.getElementById(id);
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -33,9 +33,13 @@ const W = {
 
 /* Items are pet kinds and the hats and props ("crown", "jester", "grave", "coin"). A hat or
    prop has one drawing; only the hats are worn, and only the headstone takes a pet's hue. */
-const HAT_NAMES = { crown: "Crown", jester: "Jester hat", grave: "Headstone", coin: "Token coin" };
+const HAT_NAMES = { crown: "Crown", jester: "Jester hat", grave: "Headstone", coin: "Token coin",
+                    santa: "Santa hat", elf: "Elf hat", witch: "Witch hat", pumpkin: "Pumpkin hat",
+                    partyGold: "Party hat (gold)", partyStripe: "Party hat (stripes)" };
+/* holiday hat key -> { holiday, role } from config */
+const HOLIDAY_OF = Object.fromEntries(C.HOLIDAY_HATS.flatMap(h => [[h.crown, { h, role: "crown" }], [h.jester, { h, role: "jester" }]]));
 const isHat = k => HAT_KEYS.includes(k);
-const wears = k => k === "crown" || k === "jester";
+const wears = k => k === "crown" || k === "jester" || HOLIDAY_KEYS.includes(k);
 const hued = k => !isHat(k) || k === "grave";
 const ITEMS = () => [...Array(C.PET_MAX).keys(), ...HAT_KEYS];
 function baseName(k) { return isHat(k) ? HAT_NAMES[k] : C.PET_BASE_NAMES[k]; }
@@ -45,6 +49,7 @@ function resetItems() {
   for (const k of ITEMS()) W.pets[k] = { def: G.clone(W.builtin[k]), edited: false };
 }
 function rarityOf(k) {
+  if (HOLIDAY_OF[k]) return { name: HOLIDAY_OF[k].h.name + ", " + (HOLIDAY_OF[k].role === "crown" ? "goal met" : "under goal"), i: 0 };
   if (isHat(k)) return { name: { crown: "leader, goal met", jester: "leader, under goal", grave: "a drowned pet", coin: "tokens" }[k], i: 0 };
   if (k === C.HOMUNCULUS_KIND) return { name: "Full-pen reward", i: 5 };
   if (k === C.MYSTERY_KIND) return { name: "Secret", i: 6 };
@@ -435,6 +440,7 @@ function renderPetList() {
                  { name: "Reward and secret", i: 5, kinds: [C.HOMUNCULUS_KIND, C.MYSTERY_KIND] },
                  { pen: "Second pen" }, ...C.PEN2_BINS.map((b, i) => ({ name: b.name, i, kinds: b.kinds })),
                  { pen: "Hats and props" }, { name: "Crown and jester", i: 0, kinds: ["crown", "jester"] },
+                 { name: "Holiday hats", i: 0, kinds: HOLIDAY_KEYS },
                  { name: "Headstone and coin", i: 0, kinds: ["grave", "coin"] }];
   const el = $("petList");
   if (!el.dataset.built) {
@@ -465,7 +471,7 @@ function drawThumb(k) {
   try {
     if (k === "grave") drawHeadstone(ctx, 30, 52, 46, 210);
     else if (k === "coin") drawCoin(ctx, 30, 30, 44);
-    else if (isHat(k)) critterCrown(ctx, 30, 40, 54, k === "jester");
+    else if (isHat(k)) critterCrown(ctx, 30, 40, 54, k);
     else drawPortrait(ctx, 30, 42, 20, k, iconHue(k));
   } catch { }
 }
@@ -674,7 +680,8 @@ function hatTab() {
     jester: "Worn by the day&rsquo;s leader who is still under goal. The origin is each pet&rsquo;s crown spot, so draw the hat sitting on it. The same drawing makes the small icons over the glasses and on the leaderboard.",
     grave: "Stands in a drained glass where a pet drowned, and marks buried pets on the Pets tab. The origin is the ground under it, in units of the pet&rsquo;s size. Pet colours take a tint of the drowned pet&rsquo;s hue.",
     coin: "One token, face on: 1 unit across, origin at its centre. The bank&rsquo;s gold pile lays it flat in a heap; the shop and history use it as the small coin icon."
-  }[k];
+  }[k] || (HOLIDAY_OF[k] ? "Worn in place of the " + (HOLIDAY_OF[k].role === "crown" ? "crown (leader who met their goal)" : "jester hat (leader still under goal)") +
+    " from the day before " + esc(HOLIDAY_OF[k].h.name) + " to the day after. The origin is each pet&rsquo;s crown spot; the same drawing makes the small hat icons." : "");
   return '<h4>' + esc(HAT_NAMES[k]) + '</h4><p class="note">' + about + '</p>' +
     (wears(k) ? '<div class="row"><label>Try on</label><select data-f="tryon">' + [...Array(C.PET_MAX).keys()].map(i =>
       '<option value="' + i + '"' + (i === W.tryOn ? " selected" : "") + '>' + esc(C.PET_NAMES[i]) + '</option>').join("") + '</select></div>' : '') +

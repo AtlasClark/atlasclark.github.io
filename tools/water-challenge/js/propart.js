@@ -4,7 +4,9 @@
    grave: units of r, origin at the ground under the headstone; colours may follow the
           drowned pet's hue.
    coin:  one token seen face on, 1 unit across, origin at its centre. The bank's gold
-          pile squashes it into a heap; the page's small coin icons use it as is. */
+          pile squashes it into a heap; the page's small coin icons use it as is.
+   Holiday hats (santa, elf, witch, pumpkin, partyGold, partyStripe): drawn like the crown
+          and jester, which they replace around their holiday (config HOLIDAY_HATS). */
 
 const HUE = (dh, s, l, a = 1) => ({ hue: 1, dh, s, l, a });
 const FIX = c => ({ c });
@@ -71,4 +73,56 @@ export const PROP_ART = {
     P("M 0 -0.22 Q 0.15 -0.04 0.13 0.06 Q 0.11 0.17 0 0.17 Q -0.11 0.17 -0.13 0.06 Q -0.15 -0.04 0 -0.22 Z", "emboss"),
     E(-0.05, 0.06, 0.025, 0.05, "shine", { rot: 0.2 }),
     E(0, 0, 0.42, 0.42, null, { stroke: "shine", w: 0.05, a0: 3.5, a1: 4.4 }) ] }
+};
+/* Holiday hats, by key. Same frame as the crown: origin at the crown spot, the brim on it. */
+export const HOLIDAY_ART = {
+  /* Christmas, goal met */
+  santa: { pal: { red: FIX("#d63a3a"), deep: FIX("#a82424"), fur: FIX("#f7f7f2"), furEdge: FIX("#c9cdd1"), shade: FIX("#e6e8e4") }, shapes: [
+    P("M -0.26 -0.08 Q -0.2 -0.44 0.06 -0.52 Q 0.32 -0.58 0.42 -0.3 Q 0.3 -0.42 0.16 -0.36 Q 0.2 -0.2 0.26 -0.08 Z", "red", "deep", 0.025),
+    S("M -0.12 -0.14 Q -0.06 -0.36 0.06 -0.44", "deep", 0.02),
+    E(0.42, -0.28, 0.075, 0.075, "fur", { stroke: "furEdge", w: 0.018 }),
+    P("M -0.31 -0.13 Q -0.33 -0.065 -0.31 0 L 0.31 0 Q 0.33 -0.065 0.31 -0.13 Z", "fur", "furEdge", 0.02),
+    E(-0.18, -0.07, 0.04, 0.025, "shade"), E(0.02, -0.08, 0.05, 0.025, "shade"), E(0.2, -0.06, 0.04, 0.025, "shade") ] },
+
+  /* Christmas, led but under goal */
+  elf: { pal: { green: FIX("#2f9e57"), deep: FIX("#1f6e3c"), red: FIX("#d63a3a"), redEdge: FIX("#a82424"), bell: FIX("#f7d038"), rim: FIX("#c08f1c") }, shapes: [
+    P("M -0.22 -0.08 Q -0.12 -0.5 0.1 -0.62 Q 0.3 -0.72 0.38 -0.56 Q 0.26 -0.6 0.17 -0.48 Q 0.13 -0.28 0.22 -0.08 Z", "green", "deep", 0.025),
+    S("M -0.08 -0.16 Q 0.0 -0.42 0.12 -0.54", "deep", 0.02),
+    E(0.39, -0.54, 0.065, 0.065, "bell", { stroke: "rim", w: 0.02 }), S("M 0.39 -0.52 L 0.39 -0.49", "rim", 0.018),
+    P("M -0.29 -0.13 L 0.29 -0.13 L 0.29 -0.02 L 0.22 0.03 L 0.145 -0.02 L 0.07 0.03 L 0 -0.02 L -0.07 0.03 L -0.145 -0.02 L -0.22 0.03 L -0.29 -0.02 Z", "red", "redEdge", 0.02),
+    E(-0.18, -0.075, 0.025, 0.025, "bell"), E(0.0, -0.075, 0.025, 0.025, "bell"), E(0.18, -0.075, 0.025, 0.025, "bell") ] },
+
+  /* Halloween, goal met */
+  witch: { pal: { hat: FIX("#3b2b5e"), edge: FIX("#a58be0"), band: FIX("#8b4fd1"), buckle: FIX("#f2c94c"), sheen: FIX("#5a4787") }, shapes: [
+    E(0, -0.03, 0.4, 0.07, "hat", { stroke: "edge", w: 0.02 }),
+    P("M -0.19 -0.06 L -0.07 -0.42 Q -0.01 -0.58 0.16 -0.66 Q 0.06 -0.52 0.09 -0.38 L 0.19 -0.06 Z", "hat", "edge", 0.022),
+    S("M -0.1 -0.14 L -0.03 -0.38", "sheen", 0.025),
+    P("M -0.18 -0.09 L 0.18 -0.09 L 0.16 -0.18 L -0.155 -0.18 Z", "band"),
+    P("M -0.05 -0.085 L 0.05 -0.085 L 0.05 -0.185 L -0.05 -0.185 Z", null, "buckle", 0.025) ] },
+
+  /* Halloween, led but under goal */
+  pumpkin: { pal: { orange: FIX("#f08a24"), rib: FIX("#c96512"), stem: FIX("#5c7a2e"), leaf: FIX("#7aa83a"), face: FIX("#3a1d05") }, shapes: [
+    P("M 0.0 -0.38 Q -0.02 -0.47 0.05 -0.5 L 0.07 -0.46 Q 0.03 -0.44 0.04 -0.38 Z", "stem"),
+    P("M 0.05 -0.44 Q 0.16 -0.52 0.22 -0.44 Q 0.14 -0.4 0.05 -0.44 Z", "leaf"),
+    E(-0.15, -0.19, 0.17, 0.19, "orange", { stroke: "rib", w: 0.018 }), E(0.15, -0.19, 0.17, 0.19, "orange", { stroke: "rib", w: 0.018 }),
+    E(0, -0.2, 0.15, 0.2, "orange", { stroke: "rib", w: 0.018 }),
+    P("M -0.13 -0.24 L -0.06 -0.24 L -0.095 -0.31 Z", "face"), P("M 0.06 -0.24 L 0.13 -0.24 L 0.095 -0.31 Z", "face"),
+    P("M -0.14 -0.13 L -0.09 -0.1 L -0.05 -0.13 L 0 -0.1 L 0.05 -0.13 L 0.09 -0.1 L 0.14 -0.13 Q 0 -0.04 -0.14 -0.13 Z", "face") ] },
+
+  /* New Year, goal met */
+  partyGold: { pal: { gold: FIX("#f2c43d"), edge: FIX("#b8860b"), dot: FIX("#fff6d6"), pom: FIX("#aeb9c6"), pomEdge: FIX("#7f8f9c") }, shapes: [
+    S("M -0.06 -0.6 L -0.14 -0.7", "pom", 0.035), S("M 0.0 -0.6 L 0.0 -0.73", "pom", 0.035), S("M 0.06 -0.6 L 0.14 -0.7", "pom", 0.035),
+    S("M -0.04 -0.58 L -0.15 -0.6", "pom", 0.03), S("M 0.04 -0.58 L 0.15 -0.6", "pom", 0.03),
+    P("M -0.23 0 L 0 -0.58 L 0.23 0 Q 0 0.04 -0.23 0 Z", "gold", "edge", 0.025),
+    E(-0.09, -0.12, 0.025, 0.025, "dot"), E(0.08, -0.2, 0.025, 0.025, "dot"), E(-0.03, -0.3, 0.022, 0.022, "dot"),
+    E(0.06, -0.4, 0.018, 0.018, "dot"), E(0.13, -0.07, 0.022, 0.022, "dot"),
+    E(0, -0.6, 0.05, 0.05, "pom", { stroke: "pomEdge", w: 0.015 }) ] },
+
+  /* New Year, led but under goal */
+  partyStripe: { pal: { red: FIX("#e8505b"), blue: FIX("#4f8fd9"), green: FIX("#4aa86b"), yellow: FIX("#f7d038"), edge: FIX("#2f3a4a") }, shapes: [
+    S("M 0 -0.56 Q -0.12 -0.66 -0.06 -0.74", "red", 0.03), S("M 0 -0.56 Q 0.1 -0.68 0.16 -0.62", "blue", 0.03),
+    S("M 0 -0.56 Q 0.02 -0.7 0.08 -0.76", "green", 0.03),
+    P("M -0.23 0 L 0.23 0 L 0.1807 -0.12 L -0.1807 -0.12 Z", "red"), P("M -0.1807 -0.12 L 0.1807 -0.12 L 0.1314 -0.24 L -0.1314 -0.24 Z", "blue"), P("M -0.1314 -0.24 L 0.1314 -0.24 L 0.0821 -0.36 L -0.0821 -0.36 Z", "green"), P("M -0.0821 -0.36 L 0.0821 -0.36 L 0.0329 -0.48 L -0.0329 -0.48 Z", "yellow"),
+    P("M -0.23 0 L 0 -0.56 L 0.23 0 Z", null, "edge", 0.022),
+    E(0, -0.57, 0.04, 0.04, "yellow") ] }
 };

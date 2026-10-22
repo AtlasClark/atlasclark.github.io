@@ -13,7 +13,7 @@ import { petKindFor, ownsEquipped, graveEquipped, petHueFor, isGrave, gravesOf, 
          graveLine, petLabel, petName, petRarityOf, petBinIndex, petGridOrder, penFound,
          penOf, penKinds, pen2Open, penAlive, penBuried,
          hashHue, rarityLabel, undoEffect, rollOdds } from "./pets.js";
-import { crownSvg, jesterSvg, hatSvg, drawPortrait, drawCritter, drawHeadstone, drawGoldPile, drawCoin } from "./art.js";
+import { crownSvg, jesterSvg, hatSvg, drawPortrait, drawCritter, drawHeadstone, drawGoldPile, drawCoin, hatKeyFor } from "./art.js";
 import * as G from "./glass.js";
 import { diag, dir } from "./store.js";
 import { defs as petDefs, hats as petHats, petSource } from "./petdefs.js";
@@ -178,7 +178,7 @@ function renderGlasses() {
     renderedSig = "";
     return;
   }
-  const sig = G.dims.card + "x" + G.dims.cols + "\u0002" + S.mine + "\u0002" + ordered.map(p => p.name + "\u0003" + p.color).join("\u0001");
+  const sig = G.dims.card + "x" + G.dims.cols + "\u0002" + S.mine + "\u0002" + hatKeyFor(false) + "\u0002" + ordered.map(p => p.name + "\u0003" + p.color).join("\u0001");
   if (sig !== renderedSig) { buildGlasses(); renderedSig = sig; }
   updateGlasses();
 }
@@ -483,7 +483,7 @@ function renderHistory() {
   const stats = seasonStats(), days = recentDays(C.CHART_DAYS), h = [];
   if (!stats.days) { $("history").innerHTML = '<p class="empty-state">Nothing logged yet.</p>'; return; }
 
-  h.push(recapHtml());
+  h.push((parseKey(todayKey()).getDay() === 1 && weekRecapHtml()) || recapHtml());   /* Mondays: the week */
   h.push('<div class="season-strip">');
   h.push(statTile(fmtOz(stats.totalOz) + '<span class="u">fl oz</span>', 'poured all together'));
   h.push(statTile(fmtGal(stats.totalOz) + '<span class="u">gal</span>', 'which is this many gallons'));
@@ -686,6 +686,128 @@ function recapHtml() {
   h.push('<div><h4>Sat out</h4>' + (satOut.length ? satOut.map(r => '<span class="rc-chip dim"><i class="dot" style="background:' + r.color +
          '"></i>' + esc(r.name) + '</span>').join("") : '<p class="dim">Everyone played.</p>') + '</div>');
   h.push('</div>');
+  if (shop.length) h.push(recapShop(shop));
+  h.push('</section>');
+  return h.join("");
+}
+
+/* Mondays: the week just gone, Monday to Sunday, in place of the day card. Who won
+   the most days, the week's highlights, every new pet and drowning, and the shop. */
+const WEEK_RARITY = k => k === C.MYSTERY_KIND ? 7 : k === C.HOMUNCULUS_KIND ? 6 : petBinIndex(k);
+const shortDate = k => parseKey(k).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+const weekday = k => parseKey(k).toLocaleDateString("en-US", { weekday: "long" });
+const plural = (n, w) => n + " " + w + (n === 1 ? "" : "s");
+
+export function weekStats(today = todayKey()) {
+  const start = shiftKey(today, -7), days = [0, 1, 2, 3, 4, 5, 6].map(i => shiftKey(start, i));
+  const prevDays = days.map(d => shiftKey(d, -7));
+  const team = days.reduce((a, d) => a + dayTotal(d), 0), prevTeam = prevDays.reduce((a, d) => a + dayTotal(d), 0);
+  const rows = S.participants.map(p => {
+    const r = { p, name: p.name, color: p.color, total: 0, goalDays: 0, won: 0, played: 0, here: 0, avg: 0, prevAvg: 0,
+                prevPlayed: 0, best: { oz: 0, day: "" }, found: [], revived: [], drowned: [], shop: null };
+    let share = 0, prevShare = 0;
+    for (const d of days) {
+      if (isAway(p, d)) continue;
+      r.here++;
+      const t = totalOn(p, d), g = personalGoal(p, d);
+      if (t > 0) { r.played++; r.total += t; share += Math.min(t / g, 2); }
+      if (t > 0 && metGoal(t, g)) r.goalDays++;
+      if (t > r.best.oz) r.best = { oz: t, day: d };
+      if (dayLeaders(d).includes(p.name)) r.won++;
+      const roll = goalRollOn(p, d), grave = graveOn(p, d), sd = shopDay(p, d);
+      if (roll && roll.fresh === true) r.found.push(roll.k);
+      for (const s of sd.rerolls) if (s.fresh && Number(s.pet) >= 0) r.found.push(Number(s.pet));
+      r.found.push(...sd.fresh);
+      for (const s of sd.buys) (s.revived ? r.revived : r.found).push(Number(s.pet));
+      r.revived.push(...sd.revived);
+      if (grave !== null) r.drowned.push(grave);
+      if (sd.drops || sd.buys.length || sd.rerolls.length) {
+        if (!r.shop) r.shop = { drops: 0, spent: 0, fresh: [], revived: [], repeats: 0, empty: 0, chestIn: 0, chestWon: 0, buys: [], rerolls: [] };
+        for (const f of ["drops", "spent", "repeats", "empty", "chestIn", "chestWon"]) r.shop[f] += sd[f];
+        for (const f of ["fresh", "revived", "buys", "rerolls"]) r.shop[f].push(...sd[f]);
+      }
+    }
+    for (const d of prevDays) {
+      const t = totalOn(p, d);
+      if (t > 0 && !isAway(p, d)) { r.prevPlayed++; prevShare += Math.min(t / personalGoal(p, d), 2); }
+    }
+    r.avg = r.played ? share / r.played : 0;
+    r.prevAvg = r.prevPlayed ? prevShare / r.prevPlayed : 0;
+    return r;
+  });
+  rows.sort((a, b) => (b.won - a.won) || (b.goalDays - a.goalDays) || (b.total - a.total) || (a.name < b.name ? -1 : 1));
+  return { start, end: days[6], days, team, prevTeam, rows };
+}
+
+/* The names that share the top value, joined: "Ann", "Ann & Bo", "Ann, Bo & Cy". */
+function topBy(rows, val, min = 1e-9) {
+  const best = Math.max(0, ...rows.map(val));
+  if (best < min) return null;
+  const who = rows.filter(r => Math.abs(val(r) - best) < 1e-9);
+  const names = who.map(r => esc(r.name));
+  return { best, who, label: names.length > 1 ? names.slice(0, -1).join(", ") + " &amp; " + names[names.length - 1] : names[0] };
+}
+
+function weekRecapHtml() {
+  const w = weekStats();
+  if (w.team <= 0) return "";
+  ensureIcons();
+  const played = w.rows.filter(r => r.played > 0), lead = played[0];
+  const champs = played.filter(r => r.won === lead.won && r.goalDays === lead.goalDays && r.total === lead.total);
+  const goalDays = played.reduce((a, r) => a + r.goalDays, 0);
+  const head = champs.length > 1 ? esc(champs.map(r => r.name).join(" & ")) + " shared the week" : esc(lead.name) + " won the week";
+  const h = ['<section class="recap week"><div class="recap-head"><p class="eyebrow">Last week &middot; ' + esc(shortDate(w.start)) +
+             ' &ndash; ' + esc(shortDate(w.end)) + '</p><h3>' + hatSvg(26, 17, "rc-crown", false) + head +
+             '</h3><p class="recap-sub">' + played.length + ' played &middot; ' + plural(goalDays, "goal day") + ' &middot; ' +
+             fmtOz(w.team) + ' fl oz together' +
+             (w.prevTeam > 0 ? ' <span class="' + (w.team >= w.prevTeam ? "up" : "down") + '">' + (w.team >= w.prevTeam ? "&#9650; " : "&#9660; ") +
+                               Math.abs(Math.round((w.team / w.prevTeam - 1) * 100)) + '% on the week before</span>' : '') + '</p></div>'];
+
+  h.push('<ol class="recap-podium">');
+  played.slice(0, 3).forEach((r, i) => {
+    h.push('<li class="pod p' + (i + 1) + '" style="--pc:' + r.color + '"><span class="medal m' + (i + 1) + '">' + (i + 1) + '</span>' +
+           '<span class="pn">' + esc(r.name) + '</span><span class="pv">' + plural(r.won, "day") + ' won</span>' +
+           '<span class="po">' + r.goalDays + ' of ' + r.here + ' goal days &middot; ' + fmt(r.total) + ' oz</span></li>');
+  });
+  h.push('</ol><div class="recap-cols">');
+
+  /* Highlights: one line each, only when somebody earned it. */
+  const hl = [], line = (k, v) => hl.push('<li><span class="k">' + k + '</span><span class="v">' + v + '</span></li>');
+  const most = topBy(played, r => r.total);
+  if (most) line("Most water", most.label + ' &middot; ' + fmt(most.best) + ' oz');
+  const steady = topBy(played, r => r.goalDays);
+  if (steady) line("Most goal days", steady.label + ' &middot; ' + plural(steady.best, "day"));
+  const improved = topBy(played.filter(r => r.played >= 3 && r.prevPlayed >= 3), r => r.avg - r.prevAvg, 0.05);
+  if (improved) line("Most improved", improved.label + ' &middot; +' + Math.round(improved.best * 100) + ' points of goal a day');
+  const big = topBy(played, r => r.best.oz);
+  if (big) line("Biggest day", big.label + ' &middot; ' + fmt(big.best) + ' oz on ' + esc(weekday(big.who[0].best.day)));
+  const streak = topBy(w.rows.filter(r => isActive(r.p)), r => streaks(r.p).goal, 2);
+  if (streak) line("Goal streak", streak.label + ' &middot; ' + plural(streak.best, "day") + ' and counting');
+  const rare = topBy(w.rows.filter(r => r.found.length), r => Math.max(...r.found.map(WEEK_RARITY)), 0);
+  if (rare) {
+    const k = rare.who[0].found.reduce((a, b) => WEEK_RARITY(b) > WEEK_RARITY(a) ? b : a);
+    line("Rarest find", rare.label + ' &middot; the ' + esc(petLabel(k)) + ' <span class="rar">' + esc(rarityLabel(k)) + '</span>');
+  }
+  const chest = topBy(w.rows.filter(r => r.shop), r => r.shop.chestWon);
+  if (chest) line("Chest", chest.label + ' won ' + plural(chest.best, "token"));
+  h.push('<div><h4>Highlights</h4>' + (hl.length ? '<ul class="rc-hl">' + hl.join("") + '</ul>' : '<p class="dim">A quiet week.</p>') + '</div>');
+
+  /* Pets: new finds and drownings, one line per person. */
+  const ev = [], icon = k => penOf(k) > 0 ? '<i class="pi pi-' + k + '"></i>' : '';
+  for (const r of w.rows) {
+    const who = '<strong>' + esc(r.name) + '</strong> ', li = (ic, text) => '<li>' + ic + '<span class="rc-t">' + who + text + '</span></li>';
+    const found = [...new Set(r.found)];
+    if (found.length) ev.push(li(icon(found[0]), 'found ' + (found.length > 1 ? found.length + ' new: ' : '') + petList(found)));
+    if (r.revived.length) ev.push(li(icon(r.revived[0]), 'brought back ' + petList([...new Set(r.revived)])));
+    if (r.drowned.length) ev.push(li('<i class="pi pi-grave"></i>', 'drowned ' + petList(r.drowned)));
+  }
+  h.push('<div><h4>Pets</h4>' + (ev.length ? '<ul class="rc-pets">' + ev.join("") + '</ul>' : '<p class="dim">No pet news.</p>') + '</div>');
+
+  const out = w.rows.filter(r => !r.played && r.here > 0);
+  h.push('<div><h4>Sat out</h4>' + (out.length ? out.map(r => '<span class="rc-chip dim"><i class="dot" style="background:' + r.color +
+         '"></i>' + esc(r.name) + '</span>').join("") : '<p class="dim">Everyone played.</p>') + '</div>');
+  h.push('</div>');
+  const shop = w.rows.filter(r => r.shop).map(r => ({ p: r.p, d: r.shop }));
   if (shop.length) h.push(recapShop(shop));
   h.push('</section>');
   return h.join("");

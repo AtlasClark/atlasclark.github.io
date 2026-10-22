@@ -2,7 +2,8 @@
    drawCritter / drawPortrait. A swimming glass, a close-up, the drowned pose and
    the Pets-tab icon at four hues. */
 
-import { drawCritter, drawPortrait, crownSvg, jesterSvg, drawHeadstone, drawCoin, drawGoldPile } from "../js/art.js";
+import { drawCritter, drawPortrait, drawHeadstone, drawCoin, drawGoldPile } from "../js/art.js";
+import { hats, hatSvgFrom } from "../js/petdefs.js";
 import { UNDERWATER_TINT, SWIM_RANGE, WALL_GAP_R } from "../js/config.js";
 import { bounds } from "./geom.js";
 
@@ -58,18 +59,18 @@ export class Preview {
   }
   /* A hat: worn by a few pets in glasses, then the page's icons at their real sizes. */
   drawHat(t, top, gh) {
-    const { ctx, w: W, app } = this, jester = app.kind === "jester";
+    const { ctx, w: W, app } = this, hatKey = app.kind;
     const kinds = [app.tryOn ? app.tryOn.kind : 0, 11, 1, 26].filter((k, i, a) => a.indexOf(k) === i).slice(0, 3);
     const gw = Math.min(104, gh * 0.7), r = Math.min(gw * 0.26, 30);
     let x = 14;
     kinds.forEach((k, i) => {
       this.glass(x, top, gw, gh, 0.5, (L, s) => {
-        drawCritter(L, x + gw / 2, s + Math.sin(t * 2.1 + i) * r * 0.05, r, Math.sin(t * 1.3 + i) * 0.06, true, false, k, (app.hue + i * 97) % 360, jester);
+        drawCritter(L, x + gw / 2, s + Math.sin(t * 2.1 + i) * r * 0.05, r, Math.sin(t * 1.3 + i) * 0.06, true, false, k, (app.hue + i * 97) % 360, hatKey);
       }, i ? "" : "on pets");
       x += gw + 12;
     });
     x += 14;
-    const svg = (jester ? jesterSvg : crownSvg)(26, 17, "x");
+    const svg = hatSvgFrom(hats[hatKey], 26, 17, "x");
     let img = this.svgs.get(svg);
     if (!img) { img = new Image(); img.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg.replace("<svg ", '<svg xmlns="http://www.w3.org/2000/svg" ')); this.svgs.clear(); this.svgs.set(svg, img); }
     const sizes = [[78, 51], [26, 17], [20, 13], [15, 10]], cy = top + gh / 2;

@@ -13,6 +13,7 @@ const JS = path.join(ROOT, "tools/water-challenge/js/");
 const C = await import(pathToFileURL(JS + "config.js"));
 const P = await import(pathToFileURL(JS + "petdefs.js"));
 const A = await import(pathToFileURL(JS + "art.js"));
+const web_C = () => C;
 const IMPORTER = path.join(ROOT, "tools/water-challenge/studio/importer.js");
 
 const rec = draw => { const c = new FlatRec(); draw(c); return c.out; };
@@ -149,9 +150,10 @@ test("studio import: each hat and prop draws the same from its studio copy",
      { skip: fs.existsSync(IMPORTER) ? false : "Pet Studio not present" }, async () => {
   const I = await import(pathToFileURL(IMPORTER));
   const uses = {
-    crown: [0, 11, 26].map(k => c => A.drawCritter(c, 5, 7, 100, -0.2, true, false, k, 140, false)),
-    jester: [0, 11, 26].map(k => c => A.drawCritter(c, 5, 7, 100, -0.2, true, false, k, 140, true)),
+    crown: [0, 11, 26].map(k => c => A.drawCritter(c, 5, 7, 100, -0.2, true, false, k, 140, "crown")),
+    jester: [0, 11, 26].map(k => c => A.drawCritter(c, 5, 7, 100, -0.2, true, false, k, 140, "jester")),
     grave: [0, 140].map(h => c => A.drawHeadstone(c, 5, 7, 100, h)),
+    ...Object.fromEntries(P.HOLIDAY_KEYS.map(k => [k, [0, 11, 26].map(pk => c => A.drawCritter(c, 5, 7, 100, -0.2, true, false, pk, 140, k))])),
     coin: [c => A.drawCoin(c, 5, 7, 40)]
   };
   for (const key of P.HAT_KEYS) {
@@ -167,9 +169,27 @@ test("studio import: each hat and prop draws the same from its studio copy",
   }
 });
 
+test("holiday hats: the day before to the day after, in place of the crown and jester", () => {
+  const on = k => (A.holidayOn(k) || {}).name || "";
+  for (const [k, want] of [["2026-10-29", ""], ["2026-10-30", "Halloween"], ["2026-10-31", "Halloween"], ["2026-11-01", "Halloween"],
+                           ["2026-11-02", ""], ["2026-12-23", ""], ["2026-12-24", "Christmas"], ["2026-12-26", "Christmas"],
+                           ["2026-12-27", ""], ["2026-12-30", ""], ["2026-12-31", "New Year"], ["2027-01-01", "New Year"],
+                           ["2027-01-02", "New Year"], ["2027-01-03", ""], ["2026-06-15", ""]]) assert.equal(on(k), want, k);
+  assert.equal(A.hatKeyFor(false, "2026-12-25"), "santa");
+  assert.equal(A.hatKeyFor(true, "2026-12-25"), "elf");
+  assert.equal(A.hatKeyFor(false, "2026-10-31"), "witch");
+  assert.equal(A.hatKeyFor(true, "2026-10-30"), "pumpkin");
+  assert.equal(A.hatKeyFor(false, "2027-01-01"), "partyGold");
+  assert.equal(A.hatKeyFor(true, "2026-12-31"), "partyStripe");
+  assert.equal(A.hatKeyFor(false, "2026-06-15"), "crown");
+  assert.equal(A.hatKeyFor(true, "2026-06-15"), "jester");
+  assert.equal(A.hatKeyFor("witch", "2026-06-15"), "witch", "a key passed in is worn as is");
+  for (const h of web_C().HOLIDAY_HATS) for (const k of [h.crown, h.jester]) assert.ok(P.hats[k] && P.hats[k].shapes.length, k + " is drawn");
+});
+
 test("hats: the page's icons use a redrawn hat, and drop it again", () => {
-  const built = A.crownSvg(26, 17, "crown");
-  P.applyDefs({ format: 1, pets: {}, hats: { crown: { pal: { gold: { c: "#f0b429" } },
+  const built = A.crownSvg(26, 17, "crown"), jester = A.jesterSvg(26, 17, "crown"), key = A.hatKeyFor(false);   /* a holiday's hat on those days */
+  P.applyDefs({ format: 1, pets: {}, hats: { [key]: { pal: { gold: { c: "#f0b429" } },
     shapes: [{ t: "path", d: [["M", -0.3, 0], ["L", 0, -0.4], ["L", 0.3, 0], ["Z"]], fill: "gold" },
              { t: "ell", x: 0, y: -0.4, rx: 0.06, ry: 0.06, a0: 3.1416, a1: 6.2832, chord: true, fill: "gold" }] } } });
   const svg = A.crownSvg(26, 17, "crown");
@@ -177,7 +197,7 @@ test("hats: the page's icons use a redrawn hat, and drop it again", () => {
   assert.match(svg, /^<svg class="crown" width="26" height="17" viewBox="[-\d. ]+"/);
   assert.match(svg, /<path d="M-0.3 0L0 -0.4L0.3 0Z" fill="#f0b429"\/>/);
   assert.match(svg, /A0.06 0.06 0 0 1 /, "a part arc becomes an SVG arc");
-  assert.equal(A.jesterSvg(26, 17, "crown").includes("#d9434e"), true, "the jester stays built-in");
+  assert.equal(A.jesterSvg(26, 17, "crown"), jester, "the jester stays built-in");
   P.applyDefs({ format: 1, pets: {} });
   assert.equal(A.crownSvg(26, 17, "crown"), built);
 });

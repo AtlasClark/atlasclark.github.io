@@ -1,12 +1,38 @@
 /* Pet, hat, headstone and gold-pile drawing. Everything is drawn from shapes (petdefs.js:
    pen1art.js, pen2art.js, propart.js, then pets.json); only the gold pile's layout is code. */
 
+import * as C from "./config.js";
 import { defs, hats, drawShapes, drawHat, hatSvgFrom } from "./petdefs.js";
+import { todayKey, parseKey } from "./util.js";
+
+/* The holiday around a day, if any: HOLIDAY_SPAN days either side of its date. */
+let seen = { key: "", h: null };                 /* asked every frame: once per day is enough */
+export function holidayOn(key = todayKey()) {
+  if (key === seen.key) return seen.h;
+  const d = parseKey(key);
+  let found = null;
+  if (d) {
+    for (const h of C.HOLIDAY_HATS) {
+      for (const y of [d.getFullYear() - 1, d.getFullYear(), d.getFullYear() + 1]) {
+        if (Math.abs(Math.round((d - new Date(y, h.m - 1, h.d)) / 864e5)) <= C.HOLIDAY_SPAN) found = h;
+      }
+    }
+  }
+  seen = { key, h: found };
+  return found;
+}
+/* Which hat is worn: a key passed straight in (the studio), else the crown or the
+   jester, or the holiday's own in their place. */
+export function hatKeyFor(jester, key) {
+  if (typeof jester === "string") return jester;
+  const h = holidayOn(key);
+  return h && hats[jester ? h.jester : h.crown] ? (jester ? h.jester : h.crown) : (jester ? "jester" : "crown");
+}
 
 /* The page's hat icons, from the same drawings the pets wear (propart.js or pets.json). */
-function crownSvg(w, h, cls) { return hatSvgFrom(hats.crown, w, h, cls); }
+function crownSvg(w, h, cls) { return hatSvgFrom(hats[hatKeyFor(false)], w, h, cls); }
 /* Worn instead of the crown when you led the day but are still under your own goal. */
-function jesterSvg(w, h, cls) { return hatSvgFrom(hats.jester, w, h, cls); }
+function jesterSvg(w, h, cls) { return hatSvgFrom(hats[hatKeyFor(true)], w, h, cls); }
 function hatSvg(w, h, cls, underGoal) {
   /* Leading is not the same as winning: the crown needs the goal actually met. */
   return underGoal ? jesterSvg(w, h, cls) : crownSvg(w, h, cls);
@@ -30,8 +56,9 @@ function critterEye(ctx, x, y, r, dead) {
   }
 }
 
+/* jester: true / false for the day's hat, or a hat key to wear that one. */
 function critterCrown(ctx, cx, cy, r, jester) {
-  drawHat(ctx, hats[jester ? "jester" : "crown"], cx, cy, r);
+  drawHat(ctx, hats[hatKeyFor(jester)], cx, cy, r);
 }
 
 function drawCritter(ctx, x, y, r, ang, crowned, dead, kind, hue, jester) {

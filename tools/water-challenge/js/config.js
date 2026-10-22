@@ -1,8 +1,8 @@
 /* Water Challenge (web) - constants: rules, tunables and the on-disk contract
    (FORMAT_REV, UTF-16 LE + BOM JSON, unknown fields kept). */
 
-export const REV         = "rev 1.23.0";
-export const APP_VERSION = "web 1.23.0";   /* stamped as writerVersion */
+export const REV         = "rev 1.24.0";
+export const APP_VERSION = "web 1.24.0";   /* stamped as writerVersion */
 /* Every file is written at FORMAT_REV. A file stamped higher came from a newer
    build, and the page asks for a reload. */
 export const FORMAT_REV    = 22;
@@ -60,6 +60,15 @@ export const VERSION_CHECK_MS = 300000;
 export const GOAL_OZ           = 128;
 /* The heading and the line above it, until a folder sets its own (_settings.json
    "title" / "tagline", written only when set). */
+/* Holiday hats: from HOLIDAY_SPAN days before to HOLIDAY_SPAN days after each date,
+   these replace the crown (goal met) and the jester hat (led, under goal) on pets and
+   in every hat icon. Drawings in propart.js (HOLIDAY_ART). */
+export const HOLIDAY_HATS = [
+  { name: "Halloween", m: 10, d: 31, crown: "witch",     jester: "pumpkin" },
+  { name: "Christmas", m: 12, d: 25, crown: "santa",     jester: "elf" },
+  { name: "New Year",  m: 1,  d: 1,  crown: "partyGold", jester: "partyStripe" }
+];
+export const HOLIDAY_SPAN = 1;
 export const DEFAULT_TITLE     = "Water Challenge";
 export const DEFAULT_TAGLINE   = "Drink responsibly. Brag irresponsibly.";
 export const TITLE_MAX         = 40;

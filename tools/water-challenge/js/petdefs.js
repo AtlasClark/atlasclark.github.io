@@ -11,7 +11,7 @@
             { t: "eye", x, y, s? }   a dot, or an X when the pet is dead
    ell/path also carry fill?, stroke?, w (stroke width), cap? ("round"),
    show? ("alive" | "dead"; absent = always).
-   Hats and props: "hats": { crown?, jester?, grave?, coin?: { pal, shapes } }. Hats are in
+   Hats and props: "hats": { crown?, jester?, grave?, coin?, <holiday hat>?: { pal, shapes } }. Hats are in
    units of r with the origin at the pet's crown spot (the hat's bottom centre), the
    headstone in units of r from the ground under it, the coin 1 unit across about its
    centre (see propart.js). They replace the built-in ones on pets and in the page's icons.
@@ -20,13 +20,14 @@
 import * as C from "./config.js";
 import { PEN1_ART, EXTRA_ART } from "./pen1art.js";
 import { PEN2_ART } from "./pen2art.js";
-import { PROP_ART } from "./propart.js";
+import { PROP_ART, HOLIDAY_ART } from "./propart.js";
 
 export const PET_DEFS_FORMAT = 1;
 /* A pet may also carry range (0..1): its share of the normal swim range. */
 export const defs = {};            /* kind -> pet: the built-in drawing or its replacement */
 export const hats = {};            /* HAT_KEYS -> { pal, shapes }: the built-in drawing or its replacement */
-export const HAT_KEYS = ["crown", "jester", "grave", "coin"];
+export const HOLIDAY_KEYS = Object.keys(HOLIDAY_ART);
+export const HAT_KEYS = ["crown", "jester", "grave", "coin", ...HOLIDAY_KEYS];
 export const EYE_INK = "#2a2118";
 
 const SHAPES = { ell: 1, path: 1, eye: 1 };
@@ -63,7 +64,7 @@ function seedPens() {
     const swim = p.swim.map(s => cleanShape(s, pal)).filter(Boolean);
     if (swim.length) defs[k] = { pal, swim, portrait: null, crown: p.crown, range: 1 };
   }
-  for (const [key, h] of Object.entries(PROP_ART)) {
+  for (const [key, h] of Object.entries({ ...PROP_ART, ...HOLIDAY_ART })) {
     const pal = {};
     for (const [n, c] of Object.entries(h.pal)) { const v = cleanColour(c); if (v) pal[n] = v; }
     hats[key] = { pal, shapes: h.shapes.map(s => cleanShape(s, pal)).filter(Boolean) };
