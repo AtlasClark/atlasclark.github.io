@@ -4,14 +4,14 @@
    browser (IndexedDB) until it is saved. Reference images are never exported. */
 
 import * as C from "../js/config.js";
-import { defs, hats, HAT_KEYS, HOLIDAY_KEYS, colourOf, PET_DEFS_FORMAT } from "../js/petdefs.js";
+import { defs, hats, HAT_KEYS, HOLIDAY_KEYS, colourOf, PET_DEFS_FORMAT, fxSpot } from "../js/petdefs.js";
 import { drawPortrait, critterCrown, drawHeadstone, drawCoin } from "../js/art.js";
 import { importAll, importHat, basePalette } from "./importer.js";
 import { Editor, TOOL_HINTS } from "./editor.js";
 import { Preview } from "./preview.js";
 import * as G from "./geom.js";
 
-const REV = "studio 1.10.0";
+const REV = "studio 1.11.0";
 const PETS_URL = "../pets/pets.json";
 const $ = id => document.getElementById(id);
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -22,7 +22,7 @@ const W = {
   builtin: {},            /* kind -> imported built-in pet (never edited) */
   pets: {},               /* kind -> { def, edited } */
   kind: 0, pose: "swim", sel: new Set(), tab: "shape",
-  hue: 205, dead: false, water: true, crown: false, snap: false,
+  hue: 205, dead: false, water: true, crown: false, fx: false, snap: false,
   tool: "select", brush: 0.07, lastFill: "body", lastStroke: "dark",
   refs: {},               /* kind -> { swim: ref, portrait: ref }; ref = { src, x, y, w, op } */
   hist: {}, pending: null, clip: null,
@@ -76,6 +76,7 @@ const app = {
   get dead() { return W.dead; },
   get water() { return W.water; },
   get crown() { return W.crown && !isHat(W.kind); },
+  get fx() { return W.fx && !isHat(W.kind); },
   get range() { const d = this.def; return d && d.range !== undefined ? d.range : 1; },
   get snap() { return W.snap; },
   get brush() { return W.brush; },
@@ -270,7 +271,8 @@ function normalize(p) {
   const pal = p.pal && Object.keys(p.pal).length ? p.pal : basePalette();
   return { name: typeof p.name === "string" ? p.name : "", crown: Array.isArray(p.crown) ? p.crown : [0, -1], pal,
            swim: Array.isArray(p.swim) ? p.swim : [], portrait: Array.isArray(p.portrait) && p.portrait.length ? p.portrait : null,
-           range: typeof p.range === "number" ? Math.max(0, Math.min(1, p.range)) : 1 };
+           range: typeof p.range === "number" ? Math.max(0, Math.min(1, p.range)) : 1,
+           fx: Array.isArray(p.fx) && p.fx.length === 2 && p.fx.every(Number.isFinite) ? p.fx : null };
 }
 
 function loadFileObj(obj) {
@@ -345,6 +347,7 @@ function petsJson() {
     if (d.name && d.name !== baseName(k)) parts.push('      "name": ' + JSON.stringify(d.name));
     parts.push('      "crown": ' + tidy(d.crown));
     if (d.range !== undefined && d.range < 1) parts.push('      "range": ' + G.R5(d.range));
+    if (d.fx) parts.push('      "fx": ' + tidy(d.fx));
     parts.push('      "pal": {\n' + Object.entries(d.pal).map(([key, c]) => "        " + JSON.stringify(key) + ": " + tidy(c)).join(",\n") + "\n      }");
     parts.push('      "swim": ' + list(d.swim));
     if (d.portrait) parts.push('      "portrait": ' + list(d.portrait));
@@ -698,6 +701,9 @@ function petTab() {
     '<p class="note">Leave blank to keep &ldquo;' + esc(baseName(k)) + '&rdquo;. A new name shows on the site.</p>' +
     '<div class="grid2"><div class="row"><label>Crown</label>' + num("cx", d.crown[0]) + '</div><div class="row"><label>&nbsp;</label>' + num("cy", d.crown[1]) + '</div></div>' +
     '<p class="note">Turn on <b>Crown</b> above to see it; drag the gold diamond to move it.</p>' +
+    '<div class="grid2"><div class="row"><label>Effect spot</label>' + num("fxx", fxSpot(d)[0]) + '</div><div class="row"><label>&nbsp;</label>' + num("fxy", fxSpot(d)[1]) + '</div></div>' +
+    '<p class="note">Where shop effects (sparkles, hearts, aura...) centre. ' + (d.fx ? 'Set by hand. <button type="button" class="btn small" data-act="fx-auto">Back to auto</button>'
+      : 'Auto: the middle of the part above the water.') + ' Turn on <b>Effect</b> above to see it; drag the pink ring to move it.</p>' +
     '<div class="row"><label>Swim range</label><input type="number" data-f="range" data-focus="range" min="0" max="100" step="5" value="' +
       Math.round((d.range !== undefined ? d.range : 1) * 100) + '"><span class="val">%</span></div>' +
     '<p class="note">How far it wanders, as a share of the normal range. Lower it so a big creature moves less; ' +
@@ -783,6 +789,7 @@ function act(a, el) {
       change(() => { W.pets[W.kind].def = G.clone(W.builtin[W.kind]); W.sel.clear(); });
       W.pets[W.kind].edited = false; changed();
       return;
+    case "fx-auto": return change(() => { app.def.fx = null; });
     case "ref-load": return $("refFile").click();
     case "ref-del": delete (W.refs[W.kind] || {})[W.pose]; W.refDrag = false; autosave(); renderPanels(); editor.redraw(); return;
     case "ref-drag": W.refDrag = el.checked; if (W.refDrag) setTool("select"); return;
@@ -826,7 +833,7 @@ function wire() {
   $("petList").addEventListener("click", e => { const b = e.target.closest("[data-kind]"); if (b) setKind(itemKey(b.dataset.kind)); });
   $("brush").addEventListener("input", e => { W.brush = Number(e.target.value) / 100; $("brushVal").textContent = e.target.value; });
   $("brushVal").textContent = Math.round(W.brush * 100);
-  for (const [id, key] of [["tWater", "water"], ["tDead", "dead"], ["tCrown", "crown"], ["tSnap", "snap"]]) {
+  for (const [id, key] of [["tWater", "water"], ["tDead", "dead"], ["tCrown", "crown"], ["tFx", "fx"], ["tSnap", "snap"]]) {
     $(id).checked = W[key];
     $(id).addEventListener("change", e => { W[key] = e.target.checked; editor.redraw(); renderLayers(); });
   }
@@ -881,6 +888,11 @@ function wire() {
     if (t.dataset.f === "tryon") { W.tryOn = Number(t.value); editor.redraw(); return; }
     if (t.dataset.f === "name") { const v = t.value.trim(); change(() => { if (v && v !== baseName(W.kind)) app.def.name = v.slice(0, 24); else app.def.name = ""; }); return; }
     if (t.dataset.f === "range") { const n = Number(t.value); if (isFinite(n)) change(() => { app.def.range = Math.max(0, Math.min(1, n / 100)); }); return; }
+    if (t.dataset.f === "fxx" || t.dataset.f === "fxy") {
+      const n = Number(t.value);
+      if (isFinite(n)) change(() => { const s = fxSpot(app.def).slice(); s[t.dataset.f === "fxx" ? 0 : 1] = n; app.def.fx = s; });
+      return;
+    }
     if (t.dataset.f === "cx" || t.dataset.f === "cy") { const n = Number(t.value); if (isFinite(n)) change(() => { app.def.crown[t.dataset.f === "cx" ? 0 : 1] = n; }); return; }
     if (t.dataset.f) { setShapeField(t.dataset.f, t.value, t); return; }
     if (t.dataset.pf) {

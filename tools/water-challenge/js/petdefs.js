@@ -23,7 +23,8 @@ import { PEN2_ART } from "./pen2art.js";
 import { PROP_ART, HOLIDAY_ART } from "./propart.js";
 
 export const PET_DEFS_FORMAT = 1;
-/* A pet may also carry range (0..1): its share of the normal swim range. */
+/* A pet may also carry range (0..1): its share of the normal swim range, and fx [x, y]:
+   the centre of a cosmetic effect around it (fxSpot gives a default when unset). */
 export const defs = {};            /* kind -> pet: the built-in drawing or its replacement */
 export const hats = {};            /* HAT_KEYS -> { pal, shapes }: the built-in drawing or its replacement */
 export const HOLIDAY_KEYS = Object.keys(HOLIDAY_ART);
@@ -91,7 +92,8 @@ export function applyDefs(obj) {
     const portrait = Array.isArray(p.portrait) ? p.portrait.map(s => cleanShape(s, pal)).filter(Boolean) : null;
     const crown = Array.isArray(p.crown) && p.crown.length === 2 && p.crown.every(fin) ? p.crown : [0, -1];
     const range = fin(p.range) ? Math.max(0, Math.min(1, p.range)) : 1;
-    defs[k] = { pal, swim, portrait: portrait && portrait.length ? portrait : null, crown, range };
+    const fx = Array.isArray(p.fx) && p.fx.length === 2 && p.fx.every(fin) ? p.fx : null;
+    defs[k] = { pal, swim, portrait: portrait && portrait.length ? portrait : null, crown, range, fx };
     if (typeof p.name === "string" && p.name.trim()) C.PET_NAMES[k] = p.name.trim().slice(0, 24);
     took.push(k);
   }
@@ -124,12 +126,16 @@ export const petSource = { from: "site", count: 0 };
 export function useFolderDefs(obj) { petSource.count = applyDefs(obj).length; petSource.from = "folder"; }
 export function useSiteDefs() { petSource.count = applyDefs(siteObj).length; petSource.from = "site"; }
 
-export function colourOf(pal, key, hue) {
+/* finish: optional fn({ h, s, l, a, dh }) -> { h, s, l, a }, a cosmetic recolour of
+   the pet's own-colour parts (cosmetics.js); fixed colours never change. */
+export function colourOf(pal, key, hue, finish) {
   const c = pal[key];
   if (!c) return "#ff00ff";
   if (!c.hue) return c.c;
-  const h = (((hue + c.dh) % 360) + 360) % 360;
-  return c.a < 1 ? "hsla(" + h + "," + c.s + "%," + c.l + "%," + c.a + ")" : "hsl(" + h + "," + c.s + "%," + c.l + "%)";
+  let h = (((hue + c.dh) % 360) + 360) % 360, s = c.s, l = c.l, a = c.a;
+  if (finish) ({ h, s, l, a } = finish({ h, s, l, a, dh: c.dh }));
+  h = Math.round(h); s = Math.round(s); l = Math.round(l);
+  return a < 1 ? "hsla(" + h + "," + s + "%," + l + "%," + a + ")" : "hsl(" + h + "," + s + "%," + l + "%)";
 }
 
 export function tracePath(ctx, s, r) {
@@ -168,15 +174,15 @@ function drawEye(ctx, s, r, dead) {
 }
 
 /* Draws shapes at the current origin. */
-export function drawShapes(ctx, shapes, r, hue, pal, dead) {
+export function drawShapes(ctx, shapes, r, hue, pal, dead, finish) {
   for (const s of shapes) {
     if (s.show === "alive" && dead) continue;
     if (s.show === "dead" && !dead) continue;
     if (s.t === "eye") { drawEye(ctx, s, r, dead); continue; }
     tracePath(ctx, s, r);
-    if (s.fill) { ctx.fillStyle = colourOf(pal, s.fill, hue); ctx.fill(); }
+    if (s.fill) { ctx.fillStyle = colourOf(pal, s.fill, hue, finish); ctx.fill(); }
     if (s.stroke) {
-      ctx.strokeStyle = colourOf(pal, s.stroke, hue);
+      ctx.strokeStyle = colourOf(pal, s.stroke, hue, finish);
       ctx.lineWidth = Math.max(1, (s.w || 0.05) * r);
       ctx.lineCap = s.cap === "round" ? "round" : "butt";
       ctx.lineJoin = s.cap === "round" ? "round" : "miter";
@@ -195,6 +201,23 @@ export function drawHat(ctx, hat, cx, cy, r, hue = 0) {
 }
 
 const n4 = v => String(Math.round(v * 1e4) / 1e4);
+
+/* Where effects centre on a pet, in r: its own fx, else the middle of the part of
+   its drawing above the waterline, or of the whole drawing when little of it is above. */
+const fxCache = new WeakMap();                     /* swim shapes -> default spot */
+export function fxSpot(def) {
+  if (!def) return [0, -0.42];
+  if (def.fx) return def.fx;
+  if (fxCache.has(def.swim)) return fxCache.get(def.swim);
+  const b = hatBounds(def.swim.filter(s => s.show !== "dead"));
+  let spot = [0, -0.42];
+  if (b.x0 <= b.x1) {
+    const top = b.y0, bot = Math.min(b.y1, 0), y = bot - top >= 0.25 ? Math.min((top + bot) / 2, -0.2) : (b.y0 + b.y1) / 2;
+    spot = [Math.round((b.x0 + b.x1) / 2 * 100) / 100, Math.round(y * 100) / 100];
+  }
+  fxCache.set(def.swim, spot);
+  return spot;
+}
 
 function hatBounds(shapes) {
   let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;

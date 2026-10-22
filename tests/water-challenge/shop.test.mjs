@@ -384,3 +384,90 @@ test("second pen: opens for good once all 25 are alive; rolls, Plinko and the sh
   assert.equal(P.petBinIndex(C.PEN2_FIRST + 5), P.petBinIndex(5), "the Old Boot is the second pen's ???");
 });
 
+
+test("cosmetics: buy once, wear and take off, recolour; the look only shows what is owned", { skip: skipReason }, async () => {
+  const { rich, mem } = await fresh();
+  const cos = await import(pathToFileURL(path.join(JS, "cosmetics.js")));
+  const pets = web.pets, id = "decor:straw", price = cos.COSMETICS[id].price;
+  rich.checkins = {};
+  for (let i = 0; i < 20; i++) rich.checkins["2026-01-" + String(i + 1).padStart(2, "0")] = 1;   /* 1+2+3+4+5x16 = 90 shells */
+  assert.equal(shop.shellBalance(rich), 90);
+  const before = shop.shellBalance(rich), tokens = shop.balance(rich);
+  assert.equal(shop.cosmeticBlock(rich, "decor:nope"), "Not for sale.");
+  assert.ok(await shop.buyCosmetic(rich, id));
+  assert.equal(shop.shellBalance(rich), before - price, "paid in shells");
+  assert.equal(shop.balance(rich), tokens, "goal tokens untouched");
+  assert.ok(shop.ownsCosmetic(rich, id));
+  assert.equal(shop.cosmeticBlock(rich, id), "Owned.");
+  assert.equal(await shop.buyCosmetic(rich, id), null, "never twice");
+  assert.deepEqual(shop.lookOf(rich), { decor: "straw" }, "on straight away");
+  assert.ok(await shop.wearCosmetic(rich, id, false));
+  assert.deepEqual(shop.lookOf(rich), {});
+  assert.ok(await shop.wearCosmetic(rich, id, true));
+  rich.look.finish = "gold";                                 /* not owned: never shown */
+  assert.deepEqual(shop.lookOf(rich), { decor: "straw" });
+  const disk = JSON.parse(mem.text(web.store.participantFileName(rich.name)));
+  assert.deepEqual(disk.look, { decor: "straw" }, "the look is saved in the person's file");
+  assert.ok(disk.spends.some(s => s.kind === "cosmetic" && s.item === id));
+  assert.equal(disk.tokensSpent, shop.spentTotal(rich), "tokensSpent leaves shells out");
+  assert.equal(Object.keys(disk.checkins).length, 20, "check-ins are saved");
+
+  const k = Number(Object.keys(rich.pets).find(x => Number(x) < web.C.PET_COUNT));
+  assert.ok(Number.isInteger(k));
+  assert.equal(await shop.paintPet(rich, k, 400), 40, "hue wraps round");
+  assert.equal(pets.hueOf(rich, k), 40, "the recolour wins over the caught hue");
+  assert.match(shop.paintBlock(rich, 99), /alive/);
+});
+
+test("cosmetics: every item has a slot, a price and draws without error", async () => {
+  const cos = await import(pathToFileURL(path.join(JS, "cosmetics.js")));
+  const { FlatRec } = await import("./lib/canvas-rec.mjs");
+  for (const it of Object.values(cos.COSMETICS)) {
+    assert.ok(cos.SLOTS.some(s => s.key === it.slot), it.id);
+    assert.ok(it.price > 0 && Number.isInteger(it.price), it.id);
+    const c = new FlatRec();
+    c.createRadialGradient = () => ({ addColorStop() {} });
+    c.roundRect = c.roundRect || (() => {});
+    c.setLineDash = c.setLineDash || (() => {});
+    c.ellipse = c.ellipse || (() => {});
+    if (it.slot === "decor") cos.drawDecor(c, it.key, { x: 4, y: 40, W: 124, H: 170 }, () => 120, 1.5);
+    if (it.slot === "effect") for (const l of ["back", "front"]) cos.drawEffect(c, it.key, 60, 120, 30, 1.5, 200, l);
+    if (it.slot === "finish") assert.equal(typeof cos.finishFn(it.key), "function", it.id);
+  }
+});
+
+test("shells: 1 the first day, one more each day in a row up to 5, back to 1 after a gap; once a day", { skip: skipReason }, async () => {
+  const { rich, mem } = await fresh();
+  const p = rich, day = web.util.todayKey(), back = n => web.util.shiftKey(day, -n);
+  p.checkins = {};
+  assert.equal(shop.shellBalance(p), 0);
+  for (const n of [9, 8, 7]) p.checkins[back(n)] = 1;                 /* 1 + 2 + 3 */
+  for (const n of [5, 4, 3, 2, 1]) p.checkins[back(n)] = 1;           /* gap, then 1 + 2 + 3 + 4 + 5 */
+  assert.equal(shop.shellsEarned(p), 6 + 15);
+  assert.equal(shop.shellRun(p), 5, "yesterday's run still counts before today's visit");
+  const r = await shop.checkIn(p);
+  assert.deepEqual(r, { got: 5, run: 6 }, "capped at 5 a day");
+  assert.equal(await shop.checkIn(p), null, "once a day");
+  assert.equal(shop.shellsEarned(p), 26);
+  const disk = JSON.parse(mem.text(web.store.participantFileName(p.name)));
+  assert.ok(disk.checkins[day], "saved");
+  /* another window saved an older copy without today's check-in: it is kept */
+  const stale = JSON.parse(JSON.stringify(p)); delete stale.checkins[day];
+  await web.store.saveParticipant(stale, null);
+  assert.ok(JSON.parse(mem.text(web.store.participantFileName(p.name))).checkins[day], "check-in days only ever add");
+});
+
+test("effect spot: a pet's own fx wins; otherwise the middle of what sits above the water", async () => {
+  const P = await import(pathToFileURL(path.join(JS, "petdefs.js")));
+  const cos = await import(pathToFileURL(path.join(JS, "cosmetics.js")));
+  assert.ok(!cos.SLOTS.some(s => s.key === "trail"), "no trails");
+  for (let k = 0; k < web.C.PET_MAX; k++) {
+    const s = P.fxSpot(P.defs[k]);
+    assert.ok(s[1] < 0.6 && s[1] > -2.2 && Math.abs(s[0]) < 1.5, k + ": " + s);
+  }
+  P.applyDefs({ format: 1, pets: { "0": { fx: [0.1, -0.7], pal: { b: { c: "#123456" } }, swim: [{ t: "ell", x: 0, y: 0.2, rx: 0.5, ry: 0.4, fill: "b" }] } } });
+  assert.deepEqual(P.fxSpot(P.defs[0]), [0.1, -0.7], "set in the studio");
+  P.applyDefs({ format: 1, pets: { "0": { pal: { b: { c: "#123456" } }, swim: [{ t: "ell", x: 0, y: 0.3, rx: 0.5, ry: 0.3, fill: "b" }] } } });
+  assert.deepEqual(P.fxSpot(P.defs[0]), [0, 0.3], "mostly under water: the middle of the whole pet");
+  P.applyDefs({ format: 1, pets: {} });
+});

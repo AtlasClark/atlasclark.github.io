@@ -12,13 +12,14 @@ import { S, personalGoal, capFor, totalOn, metGoal, pastCap, atCap, dayScoreFor,
 import { petKindFor, ownsEquipped, graveEquipped, petHueFor, isGrave, gravesOf, petsOwned,
          graveLine, petLabel, petName, petRarityOf, petBinIndex, petGridOrder, penFound,
          penOf, penKinds, pen2Open, penAlive, penBuried,
-         hashHue, rarityLabel, undoEffect, rollOdds } from "./pets.js";
+         hashHue, hueOf, rarityLabel, undoEffect, rollOdds } from "./pets.js";
 import { crownSvg, jesterSvg, hatSvg, drawPortrait, drawCritter, drawHeadstone, drawGoldPile, drawCoin, hatKeyFor } from "./art.js";
 import * as G from "./glass.js";
 import { diag, dir } from "./store.js";
 import { defs as petDefs, hats as petHats, petSource } from "./petdefs.js";
 import { shownKind, hiddenPets, shownBalance, hiddenIds, rollHoldLeft, rollCardDone } from "./reveal.js";
-import { balance, spentTotal, spendsOn, earnedTotal, chestWinnings, shopDay } from "./shop.js";
+import { balance, spentTotal, spendsOn, earnedTotal, chestWinnings, shopDay, lookOf } from "./shop.js";
+import { COSMETICS, drawShell } from "./cosmetics.js";
 import { $, esc, fmt, fmtOz, fmtGal, todayKey, dateKey, prettyTime, clockStamp, has, parseKey, shiftKey } from "./util.js";
 
 /* Set by app.js: the Shop tab renders from shopui.js, which imports this module. */
@@ -198,7 +199,7 @@ function petVisual(p, st, danger, key) {
   if (!C.EGG_ENABLED) ds = 0;
   else if (danger && p.graveDay === key && Number(p.deadKind) >= 0) {
     st.critterKind = Number(p.deadKind);
-    st.critterHue = has(p.graves, p.deadKind) ? Number(p.graves[String(p.deadKind)]) : 0;
+    st.critterHue = hueOf(p, Number(p.deadKind));
     ds = prev === 1 ? 2 : 3;                                     /* seen live: watch it go under */
     if (ds === 2) st.duckT = 0;
   } else if (worn >= 0 && has(p.pets, worn)) ds = 1;
@@ -206,9 +207,10 @@ function petVisual(p, st, danger, key) {
   else ds = 0;
   if (ds === 1 || ds === 4) {
     st.critterKind = worn;
-    st.critterHue = has(p.pets, worn) ? Number(p.pets[String(worn)]) : Number(p.graves[String(worn)]);
+    st.critterHue = hueOf(p, worn);
   }
   st.duckState = ds;
+  st.look = lookOf(p);
   if (st.wantDrop) {                                 /* a newly worn pet falls into the glass */
     st.wantDrop = false;
     if (ds === 1 && !G.dropping(p.name)) G.dropIn(p.name, 0);
@@ -410,6 +412,7 @@ export function ensureIcons() {
   css.push(".pi-grave{background-image:url(" + iconUrl(ctx => drawHeadstone(ctx, 30, 50, 26, 210)) + ")}");
   css.push(".pi-hom{background-image:url(" + iconUrl(ctx => drawCritter(ctx, 30, 50, 17, 0, false, false, C.HOMUNCULUS_KIND, 210)) + ")}");
   css.push(".coin{background:center/contain no-repeat url(" + iconUrl(ctx => drawCoin(ctx, 30, 30, 58)) + ");box-shadow:none}");
+  css.push(".shellico{background:center/contain no-repeat url(" + iconUrl(ctx => drawShell(ctx, 30, 30, 58)) + ")}");
   const el = document.createElement("style");
   el.id = "petIcons";
   el.textContent = css.join("\n");
@@ -602,6 +605,10 @@ function spendLine(p, s, when) {
                                   ' <span class="rar">' + esc(rarityLabel(k)) + '</span>');
   if (s.kind === "reroll") return '<span class="tag">reroll</span>' + when + name + 'rerolled the ' + esc(petLabel(Number(s.from))) +
                                   ' into ' + (k >= 0 ? (s.fresh ? "the " : "another ") + esc(petLabel(k)) : "nothing");
+  if (s.kind === "cosmetic") return '<span class="tag">style</span>' + when + name + 'bought ' + esc((COSMETICS[s.item] || { name: "a look" }).name) +
+                                    ' <span class="rar">' + s.cost + ' shells</span>';
+  if (s.kind === "paint") return '<span class="tag">style</span>' + when + name + 'recoloured the ' + esc(petLabel(k)) +
+                                 ' <i class="dot" style="background:hsl(' + Number(s.hue) + ',62%,58%)"></i>';
   return '<span class="tag">shop</span>' + when + name + 'spent ' + s.cost;
 }
 
@@ -832,6 +839,7 @@ function recapShop(shop) {
     if (d.empty) bits.push(d.empty + ' returned');
     if (d.buys.length) bits.push(d.buys.length + ' bought');
     if (d.rerolls.length) bits.push('rerolled');
+    if (d.style && d.style.length) bits.push(d.style.length + ' style');
     h.push('<li><i class="dot" style="background:' + p.color + '"></i><strong>' + esc(p.name) + '</strong>' +
            '<span class="rc-spent"><span class="coin sm"></span>' + d.spent + '</span>' +
            '<span class="dim">' + bits.join(' &middot; ') + '</span>' +

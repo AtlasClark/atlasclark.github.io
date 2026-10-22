@@ -4,6 +4,7 @@
 import * as C from "./config.js";
 import { defs, hats, drawShapes, drawHat, hatSvgFrom } from "./petdefs.js";
 import { todayKey, parseKey } from "./util.js";
+import { finishFn, finishWrap } from "./cosmetics.js";
 
 /* The holiday around a day, if any: HOLIDAY_SPAN days either side of its date. */
 let seen = { key: "", h: null };                 /* asked every frame: once per day is enough */
@@ -61,13 +62,16 @@ function critterCrown(ctx, cx, cy, r, jester) {
   drawHat(ctx, hats[hatKeyFor(jester)], cx, cy, r);
 }
 
-function drawCritter(ctx, x, y, r, ang, crowned, dead, kind, hue, jester) {
+/* finish: an optional cosmetic finish key (cosmetics.js) for the pet's own colours. */
+function drawCritter(ctx, x, y, r, ang, crowned, dead, kind, hue, jester, finish) {
   /* Every pet is drawn from shapes (petdefs.js); an unknown kind draws as the duck. */
   var def = defs[kind] || defs[0];
   ctx.save();
   ctx.translate(x, y);
   ctx.rotate(ang);
-  drawShapes(ctx, def.swim, r, hue, def.pal, dead);
+  if (finish) { ctx.save(); finishWrap(finish, ctx, r, hue); }
+  drawShapes(ctx, def.swim, r, hue, def.pal, dead, finishFn(finish));
+  if (finish) ctx.restore();
   if (crowned) critterCrown(ctx, r * def.crown[0], r * def.crown[1], r, jester);
   ctx.restore();
 }

@@ -1,15 +1,15 @@
 /* Water Challenge (web) - constants: rules, tunables and the on-disk contract
    (FORMAT_REV, UTF-16 LE + BOM JSON, unknown fields kept). */
 
-export const REV         = "rev 1.24.0";
-export const APP_VERSION = "web 1.24.0";   /* stamped as writerVersion */
+export const REV         = "rev 1.26.0";
+export const APP_VERSION = "web 1.26.0";   /* stamped as writerVersion */
 /* Every file is written at FORMAT_REV. A file stamped higher came from a newer
    build, and the page asks for a reload. */
 export const FORMAT_REV    = 22;
 /* Every field the page understands. Anything else in a file is kept as-is. */
 export const KNOWN_FIELDS = ["name", "color", "goal", "dayGoals", "away", "created", "equippedPet",
   "petRollDay", "pets", "graves", "graveDay", "lastRoll", "prevRoll", "rollKind", "rollWasNew",
-  "deadKind", "tokensSpent", "rerollDay", "rollLog", "graveLog", "spends",
+  "deadKind", "tokensSpent", "rerollDay", "rollLog", "graveLog", "spends", "checkins",
   "writerRev", "writerVersion", "writerUser", "writtenAt", "entries"];
 
 /* ---- the token shop ----
@@ -52,7 +52,7 @@ export const BACKUP_KEEP_DAYS = 14;
    Every file the page is made of. When a new version is out, these are re-fetched
    past the browser cache before reloading, so old and new modules never mix. */
 export const SITE_FILES = ["./", "app.css",
-  "js/app.js", "js/art.js", "js/bottle.js", "js/config.js", "js/glass.js", "js/guard.js", "js/live.js", "js/model.js", "js/pen1art.js", "js/pen2art.js", "js/propart.js", "js/petdefs.js",
+  "js/app.js", "js/art.js", "js/bottle.js", "js/config.js", "js/glass.js", "js/guard.js", "js/live.js", "js/model.js", "js/cosmetics.js", "js/styleui.js", "js/pen1art.js", "js/pen2art.js", "js/propart.js", "js/petdefs.js",
   "js/pets.js", "js/plinko.js", "js/radial.js", "js/reveal.js", "js/shop.js", "js/shopui.js", "js/store.js", "js/ui.js", "js/util.js", "pets/pets.json"];
 export const VERSION_CHECK_MS = 300000;
 
@@ -69,6 +69,12 @@ export const HOLIDAY_HATS = [
   { name: "New Year",  m: 1,  d: 1,  crown: "partyGold", jester: "partyStripe" }
 ];
 export const HOLIDAY_SPAN = 1;
+/* Shells: the Style shop's own currency, apart from goal tokens. Opening the page as
+   yourself (with your glass set) checks you in once a day: 1 shell the first day, one
+   more for each day in a row, up to SHELL_MAX a day; a missed day starts again at 1.
+   Spends of these kinds are paid in shells, never tokens. */
+export const SHELL_MAX         = 5;
+export const SHELL_KINDS       = ["cosmetic", "paint"];
 export const DEFAULT_TITLE     = "Water Challenge";
 export const DEFAULT_TAGLINE   = "Drink responsibly. Brag irresponsibly.";
 export const TITLE_MAX         = 40;

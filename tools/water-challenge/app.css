@@ -562,6 +562,13 @@ li.pour.armed .undo-x { opacity: 1; background: #c4434f; color: #fff; }
 .coin { display: inline-block; width: 16px; height: 16px; border-radius: 50%; vertical-align: -3px; margin-right: 5px;
   background: radial-gradient(circle at 35% 35%, #ffe07a, #e0a92a 60%, #b07d12); box-shadow: inset 0 0 0 1.5px #c9951f; }
 .coin.sm { width: 11px; height: 11px; vertical-align: -1px; margin-right: 3px; }
+.shellico { display: inline-block; width: 17px; height: 17px; vertical-align: -3px; margin-right: 5px; }
+.shellico.sm { width: 12px; height: 12px; vertical-align: -1px; margin-right: 3px; }
+.style-bal { margin: 0 0 14px; font-size: 14px; color: var(--ink-2); }
+.style-bal b { font-size: 18px; }
+.style-bal .run { display: inline-flex; gap: 3px; margin-left: 8px; vertical-align: 1px; }
+.style-bal .run i { width: 8px; height: 8px; border-radius: 50%; background: var(--chip-line); }
+.style-bal .run i.on { background: #f6a98a; }
 .shop-top .panel-heading { margin-bottom: 10px; }
 .shop-who { display: flex; flex-wrap: wrap; gap: 6px; }
 .who-chip { display: inline-flex; align-items: center; gap: 2px; padding: 6px 12px; border-radius: 999px; border: 1px solid var(--chip-line);
@@ -599,6 +606,35 @@ li.pour.armed .undo-x { opacity: 1; background: #c4434f; color: #fff; }
 #rerollBox .btn:disabled, .buy-cell:disabled { cursor: default; }
 #rerollBox .btn:disabled { opacity: .5; filter: grayscale(.6); }
 .buy-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(76px, 1fr)); gap: 6px; }
+
+/* ---- style shop ---- */
+.shop-style { margin-top: 22px; }
+.style-wrap { display: grid; grid-template-columns: 240px minmax(0, 1fr); gap: 22px; align-items: start; }
+@media (max-width: 700px) { .style-wrap { grid-template-columns: 1fr; } }
+.style-room { position: relative; border-radius: 16px; background: var(--solid-2); border: 1px solid var(--line); }
+.style-room canvas { display: block; width: 100%; height: 270px; }
+.style-tag { position: absolute; left: 12px; top: 10px; font-size: 10px; font-weight: 800; letter-spacing: .09em; text-transform: uppercase; color: var(--faint); }
+.style-tabs { flex-wrap: wrap; margin: 0 0 6px; }
+.style-tabs .pen-tab { flex: 0 1 auto; padding: 5px 12px; }
+.style-side > .hint { margin: 4px 0 10px; }
+.style-items { display: grid; grid-template-columns: repeat(auto-fill, minmax(124px, 1fr)); gap: 6px; }
+.style-item { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 8px 10px; border-radius: 12px; cursor: pointer;
+  border: 1px solid var(--chip-line); background: var(--solid); color: var(--ink-2); font: inherit; text-align: left; transition: border-color .12s, background .12s; }
+.style-item:hover { border-color: var(--accent); }
+.style-item.on { border-color: var(--accent); box-shadow: inset 0 0 0 2px var(--accent); }
+.style-item .sn { font-weight: 800; font-size: 13px; }
+.style-item .sp { display: inline-flex; align-items: center; gap: 2px; font-size: 11.5px; font-weight: 700; color: var(--gold-ink); }
+.style-item.owned .sp { color: var(--muted); }
+.style-item.worn .sp { color: var(--good); }
+.style-act { margin-top: 14px; }
+.style-act .btn { margin-top: 6px; }
+.style-act .hint { margin: 6px 0 0; }
+.style-name { margin: 0 0 4px; font-size: 13px; }
+.style-hue { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
+.style-hue input[type=range] { flex: 1; height: 10px; border-radius: 999px; appearance: none; -webkit-appearance: none; cursor: pointer;
+  background: linear-gradient(90deg, hsl(0,62%,58%), hsl(60,62%,58%), hsl(120,62%,58%), hsl(180,62%,58%), hsl(240,62%,58%), hsl(300,62%,58%), hsl(360,62%,58%)); }
+.style-swatch { width: 26px; height: 26px; border-radius: 50%; border: 2px solid var(--line-2); flex: none; }
+#stylePet { width: 100%; margin-bottom: 8px; }
 .buy-cell { display: flex; flex-direction: column; align-items: center; gap: 1px; padding: 6px 4px 7px; border-radius: 12px;
   border: 0; background: var(--pc-bg); box-shadow: inset 0 0 0 2px var(--r0); color: var(--ink-2); transition: transform .12s, background .12s; }
 .buy-cell.r1 { box-shadow: inset 0 0 0 2px var(--r1); } .buy-cell.r2 { box-shadow: inset 0 0 0 2px var(--r2); }

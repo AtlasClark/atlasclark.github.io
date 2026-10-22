@@ -7,7 +7,11 @@
 import * as C from "./config.js";
 import { rnd } from "./util.js";
 import { drawCritter, drawHeadstone } from "./art.js";
-import { defs as petDefs } from "./petdefs.js";
+import { defs as petDefs, fxSpot } from "./petdefs.js";
+import { drawDecor, drawEffect } from "./cosmetics.js";
+
+const clock = () => performance.now() / 1000;
+const lookOf = st => st.look || {};
 
 export const anim = {};
 const reduceMotion = typeof window !== "undefined" && window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)");
@@ -340,7 +344,7 @@ function drawSinking(ctx, st, W, H, top, offX, offY, r) {
   const surf = top + waveAt(st, dx);
   const dy = surf + (restY - surf) * (t * t);
   const ang = Math.PI * (t < 0.55 ? t / 0.55 : 1);
-  drawCritter(ctx, dx + offX, dy + offY, r, ang, st.duckCrown, true, st.critterKind || 0, st.critterHue || 0, st.duckJester);
+  drawCritter(ctx, dx + offX, dy + offY, r, ang, st.duckCrown, true, st.critterKind || 0, st.critterHue || 0, st.duckJester, lookOf(st).finish);
   for (let i = 0; i < 3; i++) {
     const bt = t - i * 0.12;
     if (bt <= 0) continue;
@@ -409,20 +413,23 @@ function drawPour(ctx, st, top, offX, offY) {
 function drawPetLayer(st) {
   const ctx = st.dctx, W = dims.W, H = dims.H, offX = 4, offY = dims.head + 3;
   ctx.clearRect(0, 0, st.dW, st.dH);
-  const top = surfaceY(st);
+  const top = surfaceY(st), decor = lookOf(st).decor;
+  if (decor) {                                                      /* the cup's decoration, behind the pet */
+    const surf = x => offY + (st.level > 0.01 ? top + waveAt(st, Math.max(0, Math.min(W, x - offX))) : H - 2);
+    drawDecor(ctx, decor, { x: offX, y: offY, W, H }, surf, clock());
+  }
   drawPour(ctx, st, top, offX, offY);
-  if (!st.duckState && !st.guest) return;
   const r = petR();
   if (st.duckState === 4) drawHeadstone(ctx, W / 2 + offX, H - 4 + offY, r, st.critterHue);
   else if (st.duckState === 1 && !st.visit) drawFloating(ctx, st, st, W, H, top, offX, offY, r);
   else if (st.duckState === 2) drawSinking(ctx, st, W, H, top, offX, offY, r);
   else if (st.duckState === 3) {
     drawCritter(ctx, W / 2 + offX, duckRestY(H, r) + offY, r, Math.PI, st.duckCrown, true,
-                st.critterKind || 0, st.critterHue || 0, st.duckJester);
+                st.critterKind || 0, st.critterHue || 0, st.duckJester, lookOf(st).finish);
   }
   const g = st.guest && anim[st.guest], v = g && g.visit;
   if (v && v.stage === "there") drawFloating(ctx, st, v.sw, W, H, top, offX, offY, r);
-  tintUnderwater(ctx, st, W, H, top, offX, offY);
+  if (st.duckState || st.guest || decor) tintUnderwater(ctx, st, W, H, top, offX, offY);
 }
 
 /* water: whose glass it is in (waves, surface). pet: who is drawn (its motion, kind,
@@ -458,11 +465,16 @@ function drawFloating(ctx, water, pet, W, H, top, offX, offY, r) {
       ang += 0.22 * Math.sin(2 * Math.PI * m.hop);
     }
   }
+  const look = lookOf(pet), t = clock(), px = dx + offX, py = dy + offY;
+  const spot = look.effect ? fxSpot(petDefs[pet.critterKind || 0]) : null;
+  const fx = spot && px + spot[0] * r * (Math.abs(flip) < 0.04 ? 0.04 : flip), fy = spot && py + spot[1] * r;   /* follows the pet's facing */
+  if (look.effect) drawEffect(ctx, look.effect, fx, fy, r, t, pet.critterHue || 0, "back");
   ctx.save();
-  ctx.translate(dx + offX, dy + offY);
+  ctx.translate(px, py);
   ctx.scale(Math.abs(flip) < 0.04 ? (flip < 0 ? -0.04 : 0.04) : flip, 1);   /* mid-turn: edge on */
-  drawCritter(ctx, 0, 0, r, ang, pet.duckCrown, false, pet.critterKind || 0, pet.critterHue || 0, pet.duckJester);
+  drawCritter(ctx, 0, 0, r, ang, pet.duckCrown, false, pet.critterKind || 0, pet.critterHue || 0, pet.duckJester, look.finish);
   ctx.restore();
+  if (look.effect) drawEffect(ctx, look.effect, fx, fy, r, t, pet.critterHue || 0, "front");
 }
 
 /* Whatever sits below the surface takes on the water's colour, so a pet reads as
@@ -632,7 +644,7 @@ export function startVisit(name, hostName) {
   const sw = { m: { t: 0, face: 1, flip: 1, drift: 0, xs: 0, dive: -1, hop: -1, drop: -1, dropWait: 0,
                     nextDive: rnd(1.5, 5), nextHop: 0.5, splashed: 0 },
                off: Math.PI / 0.31, phase: h.phase + Math.PI / 0.31, play: C.VISIT_PLAY, duckState: 1,
-               critterKind: st.critterKind, critterHue: st.critterHue, duckCrown: st.duckCrown, duckJester: st.duckJester };
+               critterKind: st.critterKind, critterHue: st.critterHue, duckCrown: st.duckCrown, duckJester: st.duckJester, look: st.look };
   st.visit = { stage: "out", host: hostName, t: 0, from: { x: petX(st), y: surfaceY(st) }, sw };
   h.guest = name;
   st.m.dive = -1; st.m.hop = -1;
@@ -734,7 +746,7 @@ function drawFlights() {
     ctx.save();
     ctx.translate(x, y);
     ctx.scale(right ? -1 : 1, 1);
-    drawCritter(ctx, 0, 0, r, ang, st.duckCrown, false, st.critterKind || 0, st.critterHue || 0, st.duckJester);
+    drawCritter(ctx, 0, 0, r, ang, st.duckCrown, false, st.critterKind || 0, st.critterHue || 0, st.duckJester, lookOf(st).finish);
     ctx.restore();
   }
   flightDirty = flying.length > 0;

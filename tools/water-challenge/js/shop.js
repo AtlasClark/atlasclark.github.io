@@ -1,4 +1,5 @@
-/* The token shop: reroll today's pet, Plinko, and buying a species outright.
+/* The token shop: reroll today's pet, Plinko, buying a species outright, and
+   cosmetics (looks for the glass and the worn pet, cosmetics.js).
    Tokens are earned one per goal day (model.tokensEarned) and spent through a log
    of spends in each person's file.
    Every action here saves; callers run them inside store.serial(). */
@@ -6,10 +7,12 @@
 import * as C from "./config.js";
 import { S, tokensEarned, capBonus } from "./model.js";
 import { saveParticipant, petKindFor } from "./store.js";
-import { has, todayKey, localStamp } from "./util.js";
+import { has, todayKey, localStamp, shiftKey } from "./util.js";
 import { applyRoll, dayRng, grantHomunculus, isGrave, petBinIndex, penOf, binsFor, rollPen, pen2Open } from "./pets.js";
+import { COSMETICS, SLOTS, PAINT_COST } from "./cosmetics.js";
 
-export const spentTotal = p => (p.spends || []).reduce((a, s) => a + (Number(s.cost) || 0), 0);
+const isShell = s => C.SHELL_KINDS.includes(s.kind);
+export const spentTotal = p => (p.spends || []).reduce((a, s) => a + (isShell(s) ? 0 : Number(s.cost) || 0), 0);
 export const chestWinnings = p => (p.spends || []).reduce((a, s) => a + (s.chest ? Number(s.chest.won) || 0 : 0), 0);
 export const earnedTotal = p => tokensEarned(p) + capBonus(p) + chestWinnings(p);
 
@@ -184,9 +187,9 @@ export function pendingDrops(p, inFlight, landed, now, holdMs) {
 /* One person's shop day in short, for the recap: what Plinko gave and cost (new pets,
    pets back from the grave, repeats, chest), what was bought, the rerolls. */
 export function shopDay(p, key) {
-  const d = { drops: 0, spent: 0, fresh: [], revived: [], repeats: 0, empty: 0, chestIn: 0, chestWon: 0, buys: [], rerolls: [] };
+  const d = { drops: 0, spent: 0, fresh: [], revived: [], repeats: 0, empty: 0, chestIn: 0, chestWon: 0, buys: [], rerolls: [], style: [] };
   for (const s of spendsOn(p, key)) {
-    d.spent += Number(s.cost) || 0;
+    if (!isShell(s)) d.spent += Number(s.cost) || 0;
     if (s.kind === "plinko") {
       d.drops++;
       if (s.chest) { d.chestIn += Number(s.chest.add) || 0; d.chestWon += Number(s.chest.won) || 0; }
@@ -196,8 +199,94 @@ export function shopDay(p, key) {
       else d.repeats++;
     } else if (s.kind === "buy") d.buys.push(s);
     else if (s.kind === "reroll") d.rerolls.push(s);
+    else if (s.kind === "cosmetic" || s.kind === "paint") d.style.push(s);
   }
   return d;
 }
 
 export function spendsOn(p, key) { return (p.spends || []).filter(s => String(s.at).slice(0, 10) === key); }
+
+/* ---- cosmetics --------------------------------------------------------------- */
+/* Owned items are "cosmetic" spends, so they merge like every other spend and can
+   never be bought twice by two windows at once without both being counted. What is
+   worn is p.look ({ slot: key }), kept only while the item is owned. */
+export const ownsCosmetic = (p, id) => (p.spends || []).some(s => s.kind === "cosmetic" && s.item === id);
+
+export function cosmeticBlock(p, id) {
+  const it = COSMETICS[id];
+  if (!it) return "Not for sale.";
+  if (ownsCosmetic(p, id)) return "Owned.";
+  if (shellBalance(p) < it.price) return "Needs " + it.price + " shells.";
+  return "";
+}
+
+/* Bought items go straight on. */
+export async function buyCosmetic(p, id) {
+  if (cosmeticBlock(p, id)) return null;
+  const it = COSMETICS[id];
+  spend(p, "cosmetic", it.price, { item: id });
+  p.look = Object.assign({}, p.look, { [it.slot]: it.key });
+  if (!(await saveParticipant(p, null))) return null;
+  return it;
+}
+
+/* Put an owned item on, or take its slot off (on = false). */
+export async function wearCosmetic(p, id, on) {
+  const it = COSMETICS[id];
+  if (!it || (on && !ownsCosmetic(p, id))) return false;
+  const look = Object.assign({}, p.look);
+  if (on) look[it.slot] = it.key; else if (look[it.slot] === it.key) delete look[it.slot];
+  p.look = look;
+  return saveParticipant(p, null);
+}
+
+/* What p's glass shows: worn and owned only. */
+export function lookOf(p) {
+  const out = {}, look = (p && p.look) || {};
+  for (const { key } of SLOTS) if (look[key] && ownsCosmetic(p, key + ":" + look[key])) out[key] = look[key];
+  return out;
+}
+
+/* Recolour: a pet you have alive takes a new hue, for PAINT_COST. The latest "paint"
+   spend for a kind wins over the hue it was caught with (pets.js petHueFor). */
+export function paintBlock(p, k) {
+  if (!has(p.pets, k)) return "Only a pet you have alive.";
+  if (shellBalance(p) < PAINT_COST) return "Needs " + PAINT_COST + " shell" + (PAINT_COST === 1 ? "" : "s") + ".";
+  return "";
+}
+export async function paintPet(p, k, hue) {
+  if (paintBlock(p, k)) return null;
+  const h = ((Math.round(Number(hue)) % 360) + 360) % 360;
+  spend(p, "paint", PAINT_COST, { pet: k, hue: h });
+  if (!(await saveParticipant(p, null))) return null;
+  return h;
+}
+
+/* ---- shells: earned by checking in ---------------------------------------------- */
+/* Each check-in day pays the length of the run of days in a row it ends, up to
+   SHELL_MAX: 1, 2, 3, 4, 5, 5, ... A missed day starts the run again at 1. */
+function runs(p) {
+  const days = Object.keys(p.checkins || {}).filter(k => /^\d{4}-\d{2}-\d{2}$/.test(k)).sort(), out = {};
+  let run = 0, prev = "";
+  for (const d of days) { run = prev && shiftKey(prev, 1) === d ? run + 1 : 1; out[d] = run; prev = d; }
+  return out;
+}
+export const shellAward = run => Math.min(C.SHELL_MAX, Math.max(1, run));
+export function shellsEarned(p) { return Object.values(runs(p)).reduce((a, r) => a + shellAward(r), 0); }
+export const shellsSpent = p => (p.spends || []).reduce((a, s) => a + (isShell(s) ? Number(s.cost) || 0 : 0), 0);
+export const shellBalance = p => shellsEarned(p) - shellsSpent(p);
+/* The run of days in a row up to today (0 when not checked in today or yesterday). */
+export function shellRun(p, key = todayKey()) {
+  const r = runs(p);
+  return r[key] || r[shiftKey(key, -1)] || 0;
+}
+
+/* Today's check-in for the person this page belongs to. Returns { got, run } the first
+   time each day, null otherwise. */
+export async function checkIn(p, key = todayKey()) {
+  if (!p || (p.checkins && p.checkins[key])) return null;
+  p.checkins = Object.assign({}, p.checkins, { [key]: 1 });
+  if (!(await saveParticipant(p, null))) { delete p.checkins[key]; return null; }
+  const run = runs(p)[key];
+  return { got: shellAward(run), run };
+}

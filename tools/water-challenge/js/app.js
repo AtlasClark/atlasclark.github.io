@@ -14,6 +14,7 @@ import { loadPetDefs, useFolderDefs, useSiteDefs } from "./petdefs.js";
 import { bottleOn, bottleCfg, signedIn, loadBottle, setRelay, newRelayKey, pingRelay, signIn, signOut, fetchSips, applySips } from "./bottle.js";
 import { openRadial, wireRadial } from "./radial.js";
 import { initShop, renderShop, shopTabChanged } from "./shopui.js";
+import { checkIn } from "./shop.js";
 import { ui, render, setTab, setMsg, showBanner, tickMasks, relayout, forceRebuild, resetIcons,
          toggleSwatches, openBank, auditStreak, showDiag, closeOverlays, fillSettings, renderRoster,
          renderActivityNow, showUnlock, uiHooks } from "./ui.js";
@@ -99,9 +100,21 @@ async function refresh() {
     catch (e) { store.diagNote("backup failed: " + (e.message || e)); }
   }
   await reconcile();
+  await checkInMine();
   lastSig = await store.folderSignature();
   ui.lastSync = clockStamp();
   render();
+}
+
+/* Opening the page as yourself checks you in once a day for shells (shop.js). */
+async function checkInMine() {
+  const p = ui.connected && S.mine && findParticipant(S.mine);
+  if (!p) return;
+  try {
+    const r = await checkIn(p);
+    if (r) setMsg("Welcome back, " + p.name + ": +" + r.got + " shell" + (r.got === 1 ? "" : "s") +
+                  (r.run > 1 ? " (" + r.run + " days in a row)" : "") + ".", true);
+  } catch (e) { store.diagNote("check-in: " + (e.message || e)); }
 }
 
 /* After a local change: settle pet events, then repaint. */

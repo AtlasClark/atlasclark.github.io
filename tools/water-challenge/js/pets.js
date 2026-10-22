@@ -28,12 +28,19 @@ export function hashHue(name) {
   return h;
 }
 
-export function petHueFor(p) {
-  const k = petKindFor(p);
-  if (k < 0) return 0;
+/* A pet's hue: a recolour bought in the shop (the latest "paint" spend for it) wins
+   over the hue it was caught with, alive or buried. */
+export function hueOf(p, k) {
+  let h = null, at = "";
+  for (const s of p.spends || []) if (s.kind === "paint" && Number(s.pet) === k && String(s.at) >= at) { h = Number(s.hue); at = String(s.at); }
+  if (h !== null && isFinite(h)) return h;
   if (has(p.pets, k)) return Number(p.pets[String(k)]);
   if (has(p.graves, k)) return Number(p.graves[String(k)]);
   return hashHue(p.name + k);
+}
+export function petHueFor(p) {
+  const k = petKindFor(p);
+  return k < 0 ? 0 : hueOf(p, k);
 }
 
 /* A goal roll's odds, in %, to one decimal and summing to exactly 100: the dragon's

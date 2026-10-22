@@ -160,6 +160,9 @@ function extraFields(p) {
   return Object.keys(p).filter(k => !k.startsWith("_") && !C.KNOWN_FIELDS.includes(k));
 }
 
+/* Goal tokens spent: every spend but the ones paid in shells. */
+const tokenSpend = spends => spends.reduce((a, s) => a + (C.SHELL_KINDS.includes(s.kind) ? 0 : Number(s.cost) || 0), 0);
+
 export function toJson(p) {
   const out = [], spends = p.spends || [];
   out.push('{\n  "name": ' + q(p.name) + ',');
@@ -178,11 +181,12 @@ export function toJson(p) {
   out.push('\n  "rollKind": ' + n1(p.rollKind) + ',');
   out.push('\n  "rollWasNew": ' + (p.rollWasNew ? "true" : "false") + ',');
   out.push('\n  "deadKind": ' + n1(p.deadKind) + ',');
-  out.push('\n  "tokensSpent": ' + spends.reduce((a, s) => a + (Number(s.cost) || 0), 0) + ',');
+  out.push('\n  "tokensSpent": ' + tokenSpend(spends) + ',');
   out.push('\n  "rerollDay": ' + q(p.rerollDay || "") + ',');
   out.push('\n  "rollLog": ' + JSON.stringify(p.rollLog || {}) + ',');
   out.push('\n  "graveLog": ' + JSON.stringify(p.graveLog || {}) + ',');
   out.push('\n  "spends": [' + spends.map(s => '\n    ' + JSON.stringify(s)).join(",") + (spends.length ? '\n  ' : '') + '],');
+  out.push('\n  "checkins": ' + JSON.stringify(p.checkins || {}) + ',');
   for (const k of extraFields(p)) out.push('\n  ' + JSON.stringify(k) + ': ' + JSON.stringify(p[k]) + ',');
   out.push('\n  "writerRev": ' + C.FORMAT_REV + ',');
   out.push('\n  "writerVersion": ' + q(C.APP_VERSION) + ',');
@@ -253,7 +257,8 @@ function mergeWithDisk(p, disk, removedIds, removedPets, revivedPets, clearRoll)
     if (s && s.id && !spendSeen[s.id]) { spendSeen[s.id] = true; out.spends.push(s); }
   }
   out.spends.sort((a, b) => String(a.at) < String(b.at) ? -1 : String(a.at) > String(b.at) ? 1 : 0);
-  out.tokensSpent = out.spends.reduce((a, s) => a + (Number(s.cost) || 0), 0);
+  out.tokensSpent = tokenSpend(out.spends);
+  out.checkins = Object.assign({}, (disk && disk.checkins) || {}, p.checkins || {});   /* days only ever add */
   out.rollLog = Object.assign({}, (disk && disk.rollLog) || {}, p.rollLog || {});
   out.graveLog = Object.assign({}, (disk && disk.graveLog) || {}, p.graveLog || {});
   out.rerollDay = [p.rerollDay || "", (disk && disk.rerollDay) || ""].sort().pop();
@@ -298,6 +303,7 @@ export async function saveParticipant(p, removedIds, removedPets, revivedPets, c
       p.dayGoals = merged.dayGoals;
       p.away = merged.away;
       p.tokensSpent = merged.tokensSpent;
+      p.checkins = merged.checkins;
       p.spends = merged.spends;
       p.rollLog = merged.rollLog;
       p.graveLog = merged.graveLog;
@@ -402,6 +408,7 @@ export async function loadAll() {
       if (!o.rollLog || typeof o.rollLog !== "object") o.rollLog = {};
       if (!o.graveLog || typeof o.graveLog !== "object") o.graveLog = {};
       if (!o.rerollDay) o.rerollDay = "";
+      if (!o.checkins || typeof o.checkins !== "object") o.checkins = {};
       if (!o.color) o.color = C.PARTICIPANT_COLORS[list.length % C.PARTICIPANT_COLORS.length];
       const seen = {};
       for (const e of o.entries) {

@@ -3,7 +3,8 @@
    the Pets-tab icon at four hues. */
 
 import { drawCritter, drawPortrait, drawHeadstone, drawCoin, drawGoldPile } from "../js/art.js";
-import { hats, hatSvgFrom } from "../js/petdefs.js";
+import { hats, hatSvgFrom, fxSpot } from "../js/petdefs.js";
+import { drawEffect } from "../js/cosmetics.js";
 import { UNDERWATER_TINT, SWIM_RANGE, WALL_GAP_R } from "../js/config.js";
 import { bounds } from "./geom.js";
 
@@ -156,8 +157,11 @@ export class Preview {
     /* close-up */
     const cw = Math.min(170, gh * 1.15), r2 = Math.min(gh * 0.26, 34);
     this.glass(x, top, cw, gh, 0.5, (L, s) => {
-      drawCritter(L, x + cw / 2, s + Math.sin(t * 2.1) * r2 * 0.04, r2, Math.sin(t * 1.3) * 0.05, crown, false, k, hue, false);
-    }, "close-up" + (crown ? ", crowned" : ""));
+      const cy = s + Math.sin(t * 2.1) * r2 * 0.04, spot = app.fx && app.def ? fxSpot(app.def) : null;
+      if (spot) drawEffect(L, "aura", x + cw / 2 + spot[0] * r2, cy + spot[1] * r2, r2, t, hue, "back");
+      drawCritter(L, x + cw / 2, cy, r2, Math.sin(t * 1.3) * 0.05, crown, false, k, hue, false);
+      if (spot) drawEffect(L, "sparkles", x + cw / 2 + spot[0] * r2, cy + spot[1] * r2, r2, t, hue, "front");
+    }, "close-up" + (crown ? ", crowned" : "") + (app.fx ? ", effects" : ""));
     x += cw + 18;
 
     /* drowned: upside down on the bottom, as the glass rests it */

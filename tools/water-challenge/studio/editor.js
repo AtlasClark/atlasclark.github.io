@@ -1,7 +1,7 @@
 /* Pet Studio canvas: draws the pet with the page's own renderer over guides
    (waterline, headroom, grid, reference image) and handles the tools. */
 
-import { drawShapes, tracePath, colourOf } from "../js/petdefs.js";
+import { drawShapes, tracePath, colourOf, fxSpot } from "../js/petdefs.js";
 import { critterCrown } from "../js/art.js";
 import { TALLEST_PET_R, UNDERWATER_TINT, WALL_GAP_R, narrowCup } from "../js/config.js";
 import * as G from "./geom.js";
@@ -121,6 +121,10 @@ export class Editor {
       const [x, y] = this.toScreen(this.app.def.crown[0], this.app.def.crown[1]);
       out.push({ type: "crown", x, y });
     }
+    if (this.app.fx && this.app.def && this.app.pose === "swim") {
+      const s = fxSpot(this.app.def), [x, y] = this.toScreen(s[0], s[1]);
+      out.push({ type: "fx", x, y });
+    }
     if (this.app.def && this.app.pose === "swim" && !this.app.isHat && this.app.tool === "select") {
       const lx = narrowCup().reachFor(this.app.range), [, y] = this.toScreen(0, RANGE_HANDLE_Y);
       for (const s of [-1, 1]) out.push({ type: "range", x: this.toScreen(s * lx, 0)[0], y });
@@ -213,6 +217,7 @@ export class Editor {
     const app = this.app;
     app.begin();
     if (h.type === "crown") { this.drag = { type: "crown" }; return; }
+    if (h.type === "fx") { this.drag = { type: "fx" }; return; }
     if (h.type === "range") { this.drag = { type: "range" }; return; }
     const sel = this.selected(), b = G.bounds(sel);
     if (h.type === "scale") {
@@ -287,6 +292,10 @@ export class Editor {
       const p = this.snapPt(w, e);
       app.def.crown = [G.R5(p[0]), G.R5(p[1])];
       app.live();
+    } else if (d.type === "fx") {
+      const p = this.snapPt(w, e);
+      app.def.fx = [G.R5(p[0]), G.R5(p[1])];
+      app.live();
     } else if (d.type === "ref") {
       app.ref.x = G.R5(d.x + w[0] - d.w[0]); app.ref.y = G.R5(d.y + w[1] - d.w[1]);
       app.live();
@@ -307,7 +316,7 @@ export class Editor {
     const d = this.drag, app = this.app;
     this.drag = null;
     if (!d) return;
-    if (["move", "scale", "rot", "rx", "ry", "node", "crown", "ref", "range"].includes(d.type)) { app.commit(); return; }
+    if (["move", "scale", "rot", "rx", "ry", "node", "crown", "fx", "ref", "range"].includes(d.type)) { app.commit(); return; }
     if (d.type === "marquee") {
       const x0 = Math.min(d.w[0], d.cur[0]), x1 = Math.max(d.w[0], d.cur[0]), y0 = Math.min(d.w[1], d.cur[1]), y1 = Math.max(d.w[1], d.cur[1]);
       if ((x1 - x0) * this.view.z > 3 || (y1 - y0) * this.view.z > 3) {
@@ -554,7 +563,7 @@ export class Editor {
     }
     for (const h of this.handles()) {
       ctx.lineWidth = 1.5;
-      ctx.fillStyle = h.type === "crown" ? "#f0b429" : css("--handle");
+      ctx.fillStyle = h.type === "crown" ? "#f0b429" : h.type === "fx" ? "#ff6fa3" : css("--handle");
       ctx.strokeStyle = css("--sel");
       ctx.beginPath();
       if (h.type === "rot") {
@@ -563,6 +572,10 @@ export class Editor {
       } else if (h.type === "node" && h.node.ctl) ctx.arc(h.x, h.y, HANDLE - 1.5, 0, G.TAU);
       else if (h.type === "node") ctx.rect(h.x - HANDLE + 1, h.y - HANDLE + 1, 2 * HANDLE - 2, 2 * HANDLE - 2);
       else if (h.type === "crown") { ctx.moveTo(h.x, h.y - 7); ctx.lineTo(h.x + 7, h.y); ctx.lineTo(h.x, h.y + 7); ctx.lineTo(h.x - 7, h.y); ctx.closePath(); }
+      else if (h.type === "fx") {                       /* the spot, and roughly how far effects reach round it */
+        ctx.save(); ctx.setLineDash([4, 4]); ctx.strokeStyle = "#ff6fa3"; ctx.beginPath(); ctx.arc(h.x, h.y, this.view.z * 0.9, 0, G.TAU); ctx.stroke(); ctx.restore();
+        ctx.beginPath(); ctx.arc(h.x, h.y, 6, 0, G.TAU);
+      }
       else ctx.rect(h.x - HANDLE, h.y - HANDLE, 2 * HANDLE, 2 * HANDLE);
       ctx.fill(); ctx.stroke();
     }
