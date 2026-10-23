@@ -13,6 +13,8 @@ import { startLive, onLive, emit } from "./live.js";
 import { loadPetDefs, useFolderDefs, useSiteDefs } from "./petdefs.js";
 import { bottleOn, bottleCfg, signedIn, loadBottle, setRelay, newRelayKey, pingRelay, signIn, signOut, fetchSips, applySips } from "./bottle.js";
 import { openRadial, wireRadial } from "./radial.js";
+import { loadRemote, startRemote, remoteNow, leaveRemote, startBridge, readBridgeCfg, saveBridgeCfg, pingRelay as pingWaterRelay,
+         inviteLink, bridgeStatus } from "./relay.js";
 import { initShop, renderShop, shopTabChanged } from "./shopui.js";
 import { shellsEarned, earnedTotal } from "./shop.js";
 import { isHydrationDay } from "./hydration.js";
@@ -96,10 +98,10 @@ async function syncFolderPets() {
 async function refresh() {
   await store.loadSettings();
   S.participants = await store.loadAll();
-  try { await store.noteHtaWriters(); } catch (e) { store.diagNote("HTA log: " + (e.message || e)); }
+  if (!store.relay) { try { await store.noteHtaWriters(); } catch (e) { store.diagNote("HTA log: " + (e.message || e)); } }
   dataChanged();
   await syncFolderPets();
-  if (backedUp !== todayKey()) {   /* before anything is written today */
+  if (!store.relay && backedUp !== todayKey()) {   /* before anything is written today */
     try { await store.backupIfDue(todayKey()); backedUp = todayKey(); }
     catch (e) { store.diagNote("backup failed: " + (e.message || e)); }
   }
@@ -173,6 +175,13 @@ function showGate(mode, err) {
     $("gateReconnect").textContent = "Reconnect to " + name;
     $("gateReconnect").hidden = false;
     $("gatePick").textContent = "Choose a different folder";
+  } else if (mode === "relay") {
+    $("gateEyebrow").textContent = "Playing remotely";
+    $("gateHint").hidden = true;
+    $("gateMsg").innerHTML = "Can't reach the challenge right now. Check your connection, then try again.";
+    $("gateReconnect").textContent = "Try again";
+    $("gateReconnect").hidden = false;
+    $("gatePick").hidden = true;
   } else if (mode === "lost") {
     $("gateMsg").innerHTML = "Lost the <b>" + name + "</b> folder. The share may be offline.";
     $("gateReconnect").textContent = "Reconnect to " + name;
@@ -199,6 +208,23 @@ async function connect(h) {
   store.diagNote("connected to " + h.name + " (" + S.participants.length + " files)");
   schedulePoll();
   startLive();
+  if (!store.relay) startBridge(pollSoon);
+}
+
+/* A remote player (opened from an invite link): the relay stands in for the share. */
+async function connectRemote(rc) {
+  S.me = rc.name;
+  S.mine = rc.name;
+  document.body.classList.add("remote");
+  try { await connect(await startRemote(rc, pollSoon)); }
+  catch (e) { store.diagNote("relay: " + (e.message || e)); showGate("relay", e); }
+}
+
+/* A remote player changes only their own glass: anything else would stay on this page. */
+function ownOnly(name) {
+  if (!store.relay || String(name).toLowerCase() === String(S.mine).toLowerCase()) return true;
+  setMsg("From here you can change only your own glass.", false);
+  return false;
 }
 
 async function pickFolder() {
@@ -229,6 +255,7 @@ async function pickFolder() {
 }
 
 async function reconnect() {
+  if (document.body.classList.contains("remote")) { location.reload(); return; }
   const h = store.dir;
   if (!h) return pickFolder();
   try {
@@ -319,6 +346,7 @@ function rememberAmount(oz) {
 }
 
 function openPour(name, x, y) {
+  if (!ownOnly(name)) return;
   const p = findParticipant(name);
   if (!p) return;
   const key = todayKey();
@@ -340,7 +368,7 @@ async function setAwayNow(p, away) {
 }
 
 async function addWater(name, oz) {
-  if (!guard()) return;
+  if (!guard() || !ownOnly(name)) return;
   if (!(Number(oz) > 0)) { setMsg("Enter a quantity greater than zero.", false); return; }
   await store.serial(async () => {
     const p = findParticipant(name);
@@ -380,7 +408,7 @@ function armUndo(eid) {
 }
 
 async function undoEntry(name, eid) {
-  if (!guard()) return;
+  if (!guard() || !ownOnly(name)) return;
   ui.armed = "";
   clearTimeout(armTimer);
   await store.serial(async () => {
@@ -403,7 +431,7 @@ async function undoEntry(name, eid) {
 }
 
 async function setColor(name, hex) {
-  if (!guard()) return;
+  if (!guard() || !ownOnly(name)) return;
   await store.serial(async () => {
     const p = findParticipant(name);
     if (!p || String(p.color).toLowerCase() === hex.toLowerCase()) return;
@@ -445,7 +473,7 @@ async function addParticipant() {
 }
 
 async function removeParticipant(name) {
-  if (!guard()) return;
+  if (!guard() || store.relay) return;
   const ok = await askConfirm("Remove " + name + "?",
     "Their file moves to " + C.REMOVED_SUBDIR + " and can be restored by hand.", "Remove");
   if (!ok) return;
@@ -515,7 +543,7 @@ function rememberCards() {
   try { localStorage.setItem(SP_KEY, JSON.stringify(st)); } catch { }
 }
 function openSettings() {
-  fillSettings(); fillBottle(); restoreCards();
+  fillSettings(); fillBottle(); fillRemote(); restoreCards();
   $("settingsPanel").hidden = false; $("cog").setAttribute("aria-expanded", "true");
   ($("settingsPanel").querySelector(".sp-card[open] input") || $("spClose")).focus();
 }
@@ -544,9 +572,18 @@ function wire() {
   $("addP").onclick = addParticipant;
   $("quickPour").onclick = () => { if (S.mine) addWater(S.mine, ui.amount); };
   wireBottle();
-  $("sbMe").onclick = () => askIdentity(false);
+  $("sbMe").onclick = () => { if (!store.relay) askIdentity(false); };
   $("sbDiag").onclick = showDiag;
-  $("sbFolder").onclick = () => { if (ui.connected) showGate("reconnect"); else showGate(store.dir ? "reconnect" : "pick"); $("gateClose").hidden = !ui.connected; };
+  $("sbFolder").onclick = async () => {
+    if (document.body.classList.contains("remote")) {
+      if (await askConfirm("Leave the challenge on this browser?", "This browser forgets your invite. Open the link again to come back.", "Leave")) {
+        await leaveRemote(); location.reload();
+      }
+      return;
+    }
+    if (ui.connected) showGate("reconnect"); else showGate(store.dir ? "reconnect" : "pick");
+    $("gateClose").hidden = !ui.connected;
+  };
   $("gateClose").onclick = () => { $("gate").hidden = true; };
 
   wireRadial();
@@ -590,7 +627,7 @@ function wire() {
     const tab = e.target.closest("[data-act=pen]"), tabCard = e.target.closest(".pet-card");
     if (tab && tabCard) { ui.petPen[tabCard.dataset.name] = Number(tab.dataset.pen); render(); return; }
     const t = e.target.closest("[data-act=equip]"), card = e.target.closest(".pet-card");
-    if (!t || !card || !guard()) return;
+    if (!t || !card || !guard() || !ownOnly(card.dataset.name)) return;
     store.serial(async () => { await equipPet(card.dataset.name, Number(t.dataset.kind)); await settle(); });
   };
   $("pets").onclick = equipFrom;
@@ -616,6 +653,7 @@ function wire() {
   document.addEventListener("visibilitychange", () => {
     if (document.hidden) return;
     checkVersion(false);
+    remoteNow();
     if (ui.connected) { clearTimeout(pollTimer); poll(); }
   });
   $("updateBtn").onclick = () => { $("updateBtn").disabled = true; freshReload(); };
@@ -695,6 +733,47 @@ function wireBottle() {
   $("bSignOut").onclick = async () => { await signOut(); setMsg("Signed out of Hidrate in this browser.", true); bottleView(); };
   $("bSyncNow").onclick = syncBottle;
   $("bottleSync").onclick = syncBottle;
+  wireRemote();
+}
+
+/* ---- remote player (relay.js) ------------------------------------------------ */
+async function fillRemote() {
+  const cfg = await readBridgeCfg();
+  $("rmUrl").value = cfg ? cfg.url : ""; $("rmKey").value = cfg ? cfg.key : ""; $("rmKey").type = "password";
+  $("rmWho").innerHTML = S.participants.map(p => '<option value="' + esc(p.name) + '">' + esc(p.name) + '</option>').join("");
+  remoteView();
+}
+function remoteView() {
+  const b = bridgeStatus(), ago = t => { const m = Math.round((Date.now() - t) / 60000); return m < 1 ? "just now" : m + " min ago"; };
+  $("rmStatus").textContent = b.state === "this" ? "This page is passing the remote player's moves to the share." :
+    b.state === "other" ? (b.holder || "Another page") + " is passing the remote player's moves to the share." :
+    "Invite someone outside the company. An open page here passes their moves to the share.";
+  if (b.state !== "off" && b.playerSeen) $("rmStatus").textContent += " They were last on " + ago(b.playerSeen) + ".";
+  if (b.err) $("rmStatus").textContent += " Last error: " + b.err;
+}
+function wireRemote() {
+  $("rmNewKey").onclick = () => { $("rmKey").type = "text"; $("rmKey").value = newRelayKey() + newRelayKey().slice(0, 16); $("rmKey").select();
+    setMsg("New bridge key: paste it into the relay's BRIDGE_KEY secret, then Save here. It cancels any old invite.", true); };
+  $("rmSave").onclick = async () => {
+    try { await saveBridgeCfg($("rmUrl").value, $("rmKey").value); $("rmKey").type = "password"; setMsg("Relay saved on the share.", true); remoteView(); }
+    catch (e) { setMsg(e.message, false); }
+  };
+  $("rmTest").onclick = async () => {
+    try {
+      const r = await pingWaterRelay($("rmUrl").value, $("rmKey").value);
+      setMsg(!r.configured ? "The relay answers, but it still needs its database and BRIDGE_KEY." :
+             !r.keyOk ? "The relay answers, but the bridge key doesn't match its BRIDGE_KEY." : "The relay answers and the key matches.", !!(r.configured && r.keyOk));
+    } catch (e) { setMsg("Relay test: " + e.message, false); }
+  };
+  $("rmInvite").onclick = async () => {
+    const cfg = await readBridgeCfg(), name = $("rmWho").value;
+    if (!cfg) { setMsg("Save the relay first.", false); return; }
+    if (!name) return;
+    const link = await inviteLink(cfg, name);
+    $("rmLink").value = link; $("rmLink").hidden = false; $("rmLink").select();
+    try { await navigator.clipboard.writeText(link); setMsg("Invite for " + name + " copied. Send it privately: whoever opens it plays as " + name + ".", true); }
+    catch { setMsg("Copy the invite below and send it privately.", true); }
+  };
 }
 
 /* ---- updates ------------------------------------------------------------ */
@@ -741,6 +820,8 @@ async function boot() {
 
   if (await checkVersion(true)) return;
   setInterval(() => { if (!document.hidden) checkVersion(false); }, C.VERSION_CHECK_MS);
+  const rc = await loadRemote();
+  if (rc) { await connectRemote(rc); return; }
   if (typeof window.showDirectoryPicker !== "function") { showGate("noapi"); return; }
   try { S.me = (await store.kvGet("me")) || ""; const m = await store.kvGet("mine"); S.mine = typeof m === "string" ? m : null; } catch { }
   let stored = null;

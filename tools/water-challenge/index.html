@@ -80,6 +80,22 @@
           <p class="hint" id="petArtNote">Redraw the pets, the crown and the jester hat.</p>
           <a class="btn muted btn-link" href="studio/" target="_blank" rel="noopener">Open Pet Studio &#8599;</a>
         </details>
+        <details class="sp-card" data-card="remote">
+          <summary>Remote player</summary>
+          <p class="hint" id="rmStatus"></p>
+          <label class="field-label" for="rmUrl">Relay address</label>
+          <input id="rmUrl" class="txt sp-wide" type="url" placeholder="https://water-relay.you.workers.dev" spellcheck="false" autocomplete="off">
+          <label class="field-label" for="rmKey">Bridge key</label>
+          <div class="bottle-row"><input id="rmKey" class="txt sp-wide" type="password" spellcheck="false" autocomplete="off">
+            <button type="button" id="rmNewKey" class="btn muted" title="Make a new random key to paste into the relay's BRIDGE_KEY secret">New key</button></div>
+          <div class="bottle-row"><button type="button" id="rmSave" class="btn muted">Save</button>
+            <button type="button" id="rmTest" class="btn muted">Test</button>
+            <a class="btn muted btn-link" href="relay/water-relay-worker.js" target="_blank" rel="noopener" title="The relay code, with the set-up steps at the top">Relay set-up &#8599;</a></div>
+          <label class="field-label" for="rmWho">Invite</label>
+          <div class="bottle-row"><select id="rmWho" class="txt"></select>
+            <button type="button" id="rmInvite" class="btn primary">Copy invite link</button></div>
+          <input id="rmLink" class="txt sp-wide" type="text" readonly hidden>
+        </details>
         <details class="sp-card" data-card="bottle" id="bottleBox" hidden>
           <summary>Bottle sync</summary>
           <p class="hint" id="bottleNote"></p>
@@ -236,7 +252,7 @@
 <div id="gate" class="gate" hidden>
   <div class="gate-box">
     <button type="button" id="gateClose" class="report-x" title="Close" hidden>&times;</button>
-    <p class="eyebrow">Shared data folder</p>
+    <p class="eyebrow" id="gateEyebrow">Shared data folder</p>
     <h2>Connect to the challenge</h2>
     <p id="gateMsg"></p>
     <div class="gate-actions">
@@ -244,7 +260,7 @@
       <button type="button" id="gatePick" class="btn primary">Choose data folder</button>
     </div>
     <p id="gateWarn" class="gate-warn" hidden></p>
-    <p class="hint">Chrome or Edge only. Your data stays on the share. If asked, choose <b>Allow on every visit</b>.</p>
+    <p class="hint" id="gateHint">Chrome or Edge only. Your data stays on the share. If asked, choose <b>Allow on every visit</b>.</p>
     <details id="gateDetails" hidden><summary>What happened</summary><pre id="gateTrail" class="trail"></pre></details>
   </div>
 </div>

@@ -1,8 +1,8 @@
 /* Water Challenge (web) - constants: rules, tunables and the on-disk contract
    (FORMAT_REV, UTF-16 LE + BOM JSON, unknown fields kept). */
 
-export const REV         = "rev 1.31.0";
-export const APP_VERSION = "web 1.31.0";   /* stamped as writerVersion */
+export const REV         = "rev 1.32.0";
+export const APP_VERSION = "web 1.32.0";   /* stamped as writerVersion */
 /* Every file is written at FORMAT_REV. A file stamped higher came from a newer
    build, and the page asks for a reload. */
 export const FORMAT_REV    = 22;
@@ -65,7 +65,7 @@ export const BACKUP_KEEP_DAYS = 14;
    past the browser cache before reloading, so old and new modules never mix. */
 export const SITE_FILES = ["./", "app.css",
   "js/app.js", "js/art.js", "js/bottle.js", "js/config.js", "js/glass.js", "js/guard.js", "js/live.js", "js/model.js", "js/hydration.js", "js/hydfx.js", "js/cosmetics.js", "js/styleart.js", "js/styleui.js", "js/pen1art.js", "js/pen2art.js", "js/propart.js", "js/petdefs.js",
-  "js/pets.js", "js/plinko.js", "js/radial.js", "js/reveal.js", "js/shop.js", "js/shopui.js", "js/store.js", "js/ui.js", "js/util.js", "pets/pets.json"];
+  "js/pets.js", "js/plinko.js", "js/radial.js", "js/relay.js", "js/reveal.js", "js/shop.js", "js/shopui.js", "js/store.js", "js/ui.js", "js/util.js", "pets/pets.json"];
 export const VERSION_CHECK_MS = 300000;
 
 /* ---- goals (fallbacks; live values come from _settings.json) ---- */
@@ -190,6 +190,18 @@ export const BOTTLE_USER       = "rclark";      /* the one username that sees an
 export const BOTTLE_BUCKET_MIN = 5;             /* sips grouped into 5-minute entries */
 export const BOTTLE_SIP_LIMIT  = 500;
 export const BOTTLE_TIMEOUT_MS = 20000;
+
+/* ---- remote player relay (js/relay.js, relay/water-relay-worker.js) ---- */
+export const RELAY_SUBDIR     = "_relay";        /* on the share: the relay's address and bridge key, the lease */
+export const RELAY_FILE       = "relay.json";
+export const LEASE_FILE       = "lease.json";
+export const REMOTE_POLL_MS   = 3000;            /* a remote page asks the relay this often while visible */
+export const REMOTE_HIDDEN_MS = 30000;
+export const BRIDGE_FAST_MS   = 2500;            /* the bridge, while the remote player is about */
+export const BRIDGE_IDLE_MS   = 30000;
+export const BRIDGE_LEASE_MS  = 75000;           /* a bridge silent this long is replaced */
+export const PLAYER_ACTIVE_MS = 120000;
+export const BRIDGE_CHUNK     = 900000;          /* characters of file text sent per round */
 
 /* ---- locks (sidecar .lock files shared by every page on the folder) ---- */
 export const LOCK_RETRIES  = 12;

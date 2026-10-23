@@ -22,6 +22,7 @@ import { balance, spentTotal, spendsOn, earnedTotal, chestWinnings, shopDay, loo
 import { COSMETICS, drawShell } from "./cosmetics.js";
 import { isHydrationDay, teamSplash } from "./hydration.js";
 import { setHydrationDay } from "./hydfx.js";
+import { remoteStatus } from "./relay.js";
 import { $, esc, fmt, fmtOz, fmtGal, todayKey, dateKey, prettyTime, clockStamp, has, parseKey, shiftKey, aAn } from "./util.js";
 
 /* Set by app.js: the Shop tab renders from shopui.js, which imports this module. */
@@ -618,9 +619,12 @@ function renderHistory() {
 /* ---- status bar --------------------------------------------------------- */
 function renderStatus() {
   const pill = $("syncPill");
-  if (ui.connected) { pill.className = "sync-pill"; pill.textContent = "synced " + (ui.lastSync || clockStamp()); }
+  const rs = remoteStatus();
+  if (ui.connected && rs && rs.err) { pill.className = "sync-pill bad"; pill.textContent = "can't reach the challenge"; }
+  else if (ui.connected && rs && rs.waiting && Date.now() - rs.bridgeSeen > C.PLAYER_ACTIVE_MS) { pill.className = "sync-pill"; pill.textContent = "saved here, office catching up"; }
+  else if (ui.connected) { pill.className = "sync-pill"; pill.textContent = (rs && rs.waiting ? "sending" : "synced ") + (rs && rs.waiting ? "" : ui.lastSync || clockStamp()); }
   else { pill.className = "sync-pill bad"; pill.textContent = "offline"; }
-  setEl("sbFolder", dir ? esc(dir.name) : "not connected", null);
+  setEl("sbFolder", rs ? "playing remotely" : dir ? esc(dir.name) : "not connected", null);
   setEl("petArtNote", petSource.from === "folder"
     ? "This folder uses its own art (" + esc(C.FOLDER_PETS_FILE) + "). Delete that file to go back to the site&rsquo;s art."
     : "Redraw the pets, the crown and the jester hat.", null);

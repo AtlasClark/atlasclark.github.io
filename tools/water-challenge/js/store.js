@@ -15,9 +15,11 @@ import { S, dataChanged, currentGoalFor, currentGoal, currentAnnualGoal, current
 import { todayKey, localStamp, parseKey, has, shiftKey } from "./util.js";
 
 export let dir = null;          /* FileSystemDirectoryHandle of the data folder */
+export let relay = null;        /* remote mode (js/relay.js): { owns(name), save(text, args), live(ev) } */
 export const diag = { trail: [], lastError: "", permission: "", writes: 0, lockSteals: 0, lastBackup: "" };
 
 export function setDir(h) { dir = h; }
+export function setRelay(r) { relay = r; }
 
 function note(line) {
   diag.trail.push(new Date().toTimeString().slice(0, 8) + "  " + line);
@@ -293,8 +295,10 @@ export async function saveParticipant(p, removedIds, removedPets, revivedPets, c
     return await withLock(name, async () => {
       let disk = null;
       try { if (await fileOrNull(name)) disk = JSON.parse(await readText(name)); } catch { disk = null; }
-      const merged = mergeWithDisk(p, disk, removedIds, removedPets, revivedPets, clearRoll);
-      await writeText(name, toJson(merged));
+      const merged = mergeWithDisk(p, disk, removedIds, removedPets, revivedPets, clearRoll), text = toJson(merged);
+      await writeText(name, text);
+      if (relay && relay.owns(p.name)) relay.save(text, { removedIds: removedIds || null, removedPets: removedPets || null,
+                                                         revivedPets: revivedPets || null, clearRoll: !!clearRoll });
       p.entries = merged.entries;
       p.pets = merged.pets;
       p.graves = merged.graves;
@@ -312,6 +316,16 @@ export async function saveParticipant(p, removedIds, removedPets, revivedPets, c
     note(diag.lastError);
     return false;
   }
+}
+
+/* A save made elsewhere (a remote player's, js/relay.js) merged onto a file's text,
+   as saveParticipant would merge it onto the file. */
+export function mergeText(diskText, recText, args = {}) {
+  let disk = null;
+  try { disk = diskText ? JSON.parse(diskText) : null; } catch { disk = null; }
+  const p = JSON.parse(recText);
+  if (!Array.isArray(p.entries)) p.entries = [];
+  return toJson(mergeWithDisk(p, disk, args.removedIds, args.removedPets, args.revivedPets, args.clearRoll));
 }
 
 /* ---- settings ----------------------------------------------------------- */
@@ -520,6 +534,7 @@ export async function writeLive(ev) {
     await w.write(JSON.stringify(ev));
     await w.close();
     pruneLive(d);
+    if (relay) relay.live(ev);
     return true;
   } catch (e) { note("live write failed: " + (e.message || e)); return false; }
 }
@@ -549,6 +564,31 @@ export async function readLive(sinceMs, seen) {
     }
   } catch (e) { note("live read failed: " + (e.message || e)); }
   return out.sort((a, b) => a.at - b.at);
+}
+
+/* ---- the relay's view of the folder (js/relay.js) --------------------------- */
+/* Every top-level .json with a change mark: { name, sig, file }. */
+export async function rootJsonFiles() {
+  const out = [];
+  if (!dir) return out;
+  for await (const [name, h] of dir.entries()) {
+    if (h.kind !== "file" || !name.toLowerCase().endsWith(".json")) continue;
+    try { const f = await h.getFile(); out.push({ name, sig: f.size + "|" + f.lastModified, file: f }); } catch { }
+  }
+  return out;
+}
+export const fileText = async f => decodeBytes(await f.arrayBuffer());
+
+/* Small UTF-8 files in a sub-folder (the relay's settings and lease). */
+export async function readSubText(subName, name) {
+  try { const sub = await dir.getDirectoryHandle(subName); return await (await (await sub.getFileHandle(name)).getFile()).text(); }
+  catch { return null; }
+}
+export async function writeSubText(subName, name, text) {
+  const sub = await dir.getDirectoryHandle(subName, { create: true });
+  const w = await (await sub.getFileHandle(name, { create: true })).createWritable();
+  await w.write(text);
+  await w.close();
 }
 
 /* ---- connection --------------------------------------------------------- */
