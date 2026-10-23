@@ -531,6 +531,35 @@ function renderPets() {
 
 /* ---- history tab -------------------------------------------------------- */
 let historyKey = "";
+
+/* Season standings sort by any column: click a header, click again to turn it round.
+   The choice is kept in this browser. */
+const SEASON_COLS = [
+  { key: "name", label: "Who" }, { key: "wins", label: "Days won" }, { key: "goalDays", label: "Goal days" },
+  { key: "capDays", label: "Cap days" }, { key: "bestWinStreak", label: "Longest win run" },
+  { key: "bestGoalStreak", label: "Longest goal run" }, { key: "best", label: "Best day" },
+  { key: "total", label: "Total" }, { key: "avg", label: "Avg per day" }];
+let seasonSort = { key: "wins", dir: -1 };
+try { const s = JSON.parse(localStorage.getItem("awc-season-sort")); if (s && SEASON_COLS.some(c => c.key === s.key)) seasonSort = { key: s.key, dir: s.dir === 1 ? 1 : -1 }; } catch { }
+const seasonVal = (st, key) => key === "avg" ? (st.logged ? st.total / st.logged : 0) : st[key];
+function seasonOrder(stats) {
+  const { key, dir } = seasonSort, P = stats.people;
+  return stats.order.slice().sort((x, y) => {
+    const A = P[x], B = P[y];
+    const main = key === "name" ? (x.toLowerCase() < y.toLowerCase() ? -1 : x.toLowerCase() > y.toLowerCase() ? 1 : 0) * dir
+                                : (seasonVal(A, key) - seasonVal(B, key)) * dir;
+    return main || (B.wins - A.wins) || (B.goalDays - A.goalDays) || (x < y ? -1 : 1);
+  });
+}
+function onHistoryClick(e) {
+  const b = e.target.closest("[data-sort]");
+  if (!b) return;
+  const key = b.dataset.sort;
+  seasonSort = seasonSort.key === key ? { key, dir: -seasonSort.dir } : { key, dir: key === "name" ? 1 : -1 };
+  try { localStorage.setItem("awc-season-sort", JSON.stringify(seasonSort)); } catch { }
+  historyKey = "";
+  renderHistory();
+}
 function statTile(v, l) { return '<div class="tile"><div class="tv">' + v + '</div><div class="tl">' + l + '</div></div>'; }
 function recordCard(title, st, field, unit) {
   if (!st) return '<div class="rec empty"><div class="rec-t">' + title + '</div><div class="rec-v">&mdash;</div></div>';
@@ -587,12 +616,17 @@ function renderHistory() {
   }
   h.push('</table></div>');
 
-  h.push('<div class="panel-title">Season standings</div><div class="chart-scroll"><table class="stats-table">');
-  h.push('<tr><th></th><th class="l">Who</th><th>Days won</th><th>Goal days</th><th>Cap days</th>' +
-         '<th>Longest win run</th><th>Longest goal run</th><th>Best day</th><th>Total</th><th>Avg per day</th></tr>');
-  ranked.forEach((name, i) => {
+  h.push('<div class="panel-title">Season standings</div><div class="chart-scroll"><table class="stats-table season-table">');
+  h.push('<tr><th></th>' + SEASON_COLS.map(c => {
+    const on = c.key === seasonSort.key;
+    return '<th' + (c.key === "name" ? ' class="l"' : '') + (on ? ' aria-sort="' + (seasonSort.dir < 0 ? "descending" : "ascending") + '"' : '') + '>' +
+           '<button type="button" class="th-sort' + (on ? ' on' : '') + '" data-sort="' + c.key + '">' + c.label +
+           '<i aria-hidden="true">' + (on ? (seasonSort.dir < 0 ? "&#9660;" : "&#9650;") : "&#9662;") + '</i></button></th>';
+  }).join("") + '</tr>');
+  const order = seasonOrder(stats), ranks = seasonSort.key !== "name" && seasonSort.dir < 0;
+  order.forEach((name, i) => {
     const st = stats.people[name];
-    const medal = (st.wins > 0 && i < 3) ? '<span class="medal m' + (i + 1) + '">' + (i + 1) + '</span>' : '';
+    const medal = (ranks && seasonVal(st, seasonSort.key) > 0 && i < 3) ? '<span class="medal m' + (i + 1) + '">' + (i + 1) + '</span>' : '';
     h.push('<tr><td class="rankcell">' + medal + '</td><td class="l"><i class="dot" style="background:' + st.color + '"></i>' +
            esc(st.name) + '</td><td class="big">' + st.wins + '</td><td>' + st.goalDays + '</td><td>' + st.capDays +
            (st.overDays ? ' <span class="warn-mini" title="' + st.overDays + ' day(s) past the cap">&#9760;' + st.overDays + '</span>' : '') +
@@ -613,6 +647,7 @@ function renderHistory() {
   h.push(recordCard("Most poured overall", topOf(stats, "total"), "total", "fl oz"));
   h.push('</div>');
   $("history").innerHTML = h.join("");
+  $("history").onclick = onHistoryClick;
 }
 
 /* ---- status bar --------------------------------------------------------- */

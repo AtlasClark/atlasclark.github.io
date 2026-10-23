@@ -410,6 +410,12 @@ li.pour.armed .undo-x { opacity: 1; background: #c4434f; color: #fff; }
 .stats-table td { padding: 9px 10px; text-align: center; border-top: 1px solid var(--line); color: var(--ink-2); white-space: nowrap; font-variant-numeric: tabular-nums; }
 .stats-table td.big { font-weight: 800; color: var(--title); font-size: 15px; }
 .stats-table td.rankcell { width: 30px; padding-right: 0; }
+.th-sort { display: inline-flex; align-items: center; gap: 4px; padding: 2px 4px; margin: -2px -4px; border: 0; border-radius: 6px;
+  background: none; color: inherit; font: inherit; letter-spacing: inherit; text-transform: inherit; cursor: pointer; white-space: nowrap; }
+.th-sort:hover { color: var(--ink-2); background: var(--solid-2); }
+.th-sort i { font-style: normal; font-size: 9px; opacity: .45; }
+.th-sort.on { color: var(--accent-ink); }
+.th-sort.on i { opacity: 1; }
 .medal { display: inline-grid; place-items: center; flex: none; width: 21px; height: 21px; border-radius: 50%; font-size: 11px; font-weight: 900;
   line-height: 1; font-variant-numeric: tabular-nums; color: #5a4708; background: #e9eef3; }
 .medal.m1 { background: #f4d67a; } .medal.m2 { background: #d8dfe6; } .medal.m3 { background: #e0bd93; }
