@@ -4,7 +4,8 @@
    browser (IndexedDB) until it is saved. Reference images are never exported. */
 
 import * as C from "../js/config.js";
-import { defs, hats, HAT_KEYS, HOLIDAY_KEYS, CUP_KEYS, FX_KEYS, colourOf, PET_DEFS_FORMAT, fxSpot, medalSpot, drawShapes } from "../js/petdefs.js";
+import { defs, hats, HAT_KEYS, HOLIDAY_KEYS, CUP_KEYS, FX_KEYS, colourOf, PET_DEFS_FORMAT, fxSpot, medalSpot, drawShapes, ZONES, zoneOf,
+         bodySpan, depthShare } from "../js/petdefs.js";
 import { COSMETICS } from "../js/cosmetics.js";
 import { CUP_PLACE, CUP_H } from "../js/styleart.js";
 import { drawPortrait, critterCrown, drawHeadstone, drawCoin, drawMedal } from "../js/art.js";
@@ -13,7 +14,7 @@ import { Editor, TOOL_HINTS } from "./editor.js";
 import { Preview } from "./preview.js";
 import * as G from "./geom.js";
 
-const REV = "studio 1.15.1";
+const REV = "studio 1.16.0";
 const PETS_URL = "../pets/pets.json";
 const $ = id => document.getElementById(id);
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -306,6 +307,7 @@ function normalize(p) {
   return { name: typeof p.name === "string" ? p.name : "", crown: Array.isArray(p.crown) ? p.crown : [0, -1], pal,
            swim: Array.isArray(p.swim) ? p.swim : [], portrait: Array.isArray(p.portrait) && p.portrait.length ? p.portrait : null,
            range: typeof p.range === "number" ? Math.max(0, Math.min(1, p.range)) : 1,
+           zone: p.zone === "middle" || p.zone === "bottom" ? p.zone : undefined,
            fx: Array.isArray(p.fx) && p.fx.length === 2 && p.fx.every(Number.isFinite) ? p.fx : null,
            medal: Array.isArray(p.medal) && p.medal.length === 2 && p.medal.every(Number.isFinite) ? p.medal : null,
            crownScale: Number.isFinite(p.crownScale) ? p.crownScale : 1, crownRot: Number.isFinite(p.crownRot) ? p.crownRot : 0,
@@ -386,6 +388,7 @@ function petsJson() {
     if (d.name && d.name !== baseName(k)) parts.push('      "name": ' + JSON.stringify(d.name));
     parts.push('      "crown": ' + tidy(d.crown));
     if (d.range !== undefined && d.range < 1) parts.push('      "range": ' + G.R5(d.range));
+    if (d.zone === "middle" || d.zone === "bottom") parts.push('      "zone": "' + d.zone + '"');
     if (d.fx) parts.push('      "fx": ' + tidy(d.fx));
     if (d.medal) parts.push('      "medal": ' + tidy(d.medal));
     for (const f of ["crownScale", "crownRot", "medalScale", "medalRot"]) {
@@ -653,6 +656,11 @@ function palOptions(cur, none) {
 }
 const deg = v => Math.round((v || 0) * 180 / Math.PI * 10) / 10;
 const num = (f, v, step, extra) => '<input type="number" data-f="' + f + '" data-focus="' + f + '" step="' + (step || 0.01) + '" value="' + (Math.round(v * 1e4) / 1e4) + '"' + (extra || "") + '>';
+/* Where the drawing sits, in words, measured now. */
+function sitsAt(d) {
+  const f = depthShare(bodySpan(d, true));
+  return f === null ? "Sits at the surface." : f >= 1 ? "Sits on the floor." : "Sits " + Math.round(f * 100) + "% of the way down.";
+}
 const pctIn = (f, v) => '<input type="number" data-f="' + f + '" data-focus="' + f + '" min="20" max="400" step="5" value="' + Math.round((Number.isFinite(v) ? v : 1) * 100) + '">';
 const degIn = (f, v) => '<input type="number" data-f="' + f + '" data-focus="' + f + '" min="-180" max="180" step="5" value="' + Math.round(Number.isFinite(v) ? v : 0) + '">';
 
@@ -859,21 +867,27 @@ function petTab() {
     '<div class="row"><label>Name</label><input type="text" data-f="name" data-focus="name" maxlength="24" placeholder="' + esc(baseName(k)) + '" value="' + esc(d.name || "") + '"></div>' +
     '<p class="note">Leave blank to keep &ldquo;' + esc(baseName(k)) + '&rdquo;. A new name shows on the site.</p>' +
     '<div class="grid2"><div class="row"><label>Crown</label>' + num("cx", d.crown[0]) + '</div><div class="row"><label>&nbsp;</label>' + num("cy", d.crown[1]) + '</div></div>' +
-    '<div class="grid2"><div class="row"><label>Crown size</label>' + pctIn("crs", d.crownScale) + '<span class="val">%</span></div>' +
-      '<div class="row"><label>Tilt</label>' + degIn("crr", d.crownRot) + '<span class="val">&deg;</span></div></div>' +
+    '<div class="row"><label>Crown size</label>' + pctIn("crs", d.crownScale) + '<span class="val">%</span></div>' +
+    '<div class="row"><label>Crown tilt</label>' + degIn("crr", d.crownRot) + '<span class="val">&deg;</span></div>' +
     '<p class="note">Turn on <b>Crown</b> above to see it; drag the gold diamond to move it.</p>' +
     '<div class="grid2"><div class="row"><label>Effect spot</label>' + num("fxx", fxSpot(d)[0]) + '</div><div class="row"><label>&nbsp;</label>' + num("fxy", fxSpot(d)[1]) + '</div></div>' +
     '<p class="note">Where shop effects (sparkles, hearts, aura...) centre. ' + (d.fx ? 'Set by hand. <button type="button" class="btn small" data-act="fx-auto">Back to auto</button>'
       : 'Auto: the middle of the part above the water.') + ' Turn on <b>Effect</b> above to see it; drag the pink ring to move it.</p>' +
     '<div class="grid2"><div class="row"><label>Medal spot</label>' + num("mdx", medalSpot(d)[0]) + '</div><div class="row"><label>&nbsp;</label>' + num("mdy", medalSpot(d)[1]) + '</div></div>' +
-    '<div class="grid2"><div class="row"><label>Medal size</label>' + pctIn("mds", d.medalScale) + '<span class="val">%</span></div>' +
-      '<div class="row"><label>Tilt</label>' + degIn("mdr", d.medalRot) + '<span class="val">&deg;</span></div></div>' +
+    '<div class="row"><label>Medal size</label>' + pctIn("mds", d.medalScale) + '<span class="val">%</span></div>' +
+    '<div class="row"><label>Medal tilt</label>' + degIn("mdr", d.medalRot) + '<span class="val">&deg;</span></div>' +
     '<p class="note">Where the day-win medal hangs. ' + (d.medal ? 'Set by hand. <button type="button" class="btn small" data-act="medal-auto">Back to auto</button>'
       : 'Auto: just in front of the effect spot.') + ' Turn on <b>Medal</b> above to see it; drag the gold dot to move it.</p>' +
     '<div class="row"><label>Swim range</label><input type="number" data-f="range" data-focus="range" min="0" max="100" step="5" value="' +
       Math.round((d.range !== undefined ? d.range : 1) * 100) + '"><span class="val">%</span></div>' +
     '<p class="note">How far it wanders, as a share of the normal range. Lower it so a big creature moves less; ' +
     'drag the dashed lines on the canvas to set it. A pet that reaches past them swims less anyway.</p>' +
+    '<div class="row"><label>Moves like</label><select data-f="zone" data-focus="zone">' + ZONES.map(z => '<option value="' + z + '"' +
+      (zoneOf(d) === z ? ' selected' : '') + '>' + { surface: "Surface", middle: "Middle", bottom: "Bottom" }[z] + '</option>').join("") + '</select></div>' +
+    '<p class="note">Surface floats, hops and dives. Middle bobs and leaps out now and then. Bottom walks the floor.</p>' +
+    '<p class="note"><b>' + sitsAt(d) + '</b> Where it sits comes from the drawing: across the waterline it floats there; ' +
+    'lower, it keeps its share of the way down to the floor line at any fill, and stands on the floor when the water runs low. ' +
+    'The preview shows low, half and full water.</p>' +
     '<div class="sep"></div><h4>Portrait</h4><p class="note">' + (d.portrait ? 'This pet has its own full-body portrait.' : 'None: the Pets tab and unlock cards use the swim drawing.') + '</p>' +
     '<div class="btns">' + (d.portrait ? '<button type="button" class="btn small danger" data-act="port-del">Remove portrait</button>'
                                        : '<button type="button" class="btn small" data-act="port-copy">Copy swim to portrait</button><button type="button" class="btn small" data-act="port-blank">Blank portrait</button>') + '</div>' +
@@ -1058,6 +1072,7 @@ function wire() {
     if (t.dataset.f === "w") { commit(); return; }
     if (t.dataset.f === "tryon") { W.tryOn = Number(t.value); editor.redraw(); return; }
     if (t.dataset.f === "name") { const v = t.value.trim(); change(() => { if (v && v !== baseName(W.kind)) app.def.name = v.slice(0, 24); else app.def.name = ""; }); return; }
+    if (t.dataset.f === "zone") { change(() => { app.def.zone = t.value === "middle" || t.value === "bottom" ? t.value : undefined; }); return; }
     if (t.dataset.f === "range") { const n = Number(t.value); if (isFinite(n)) change(() => { app.def.range = Math.max(0, Math.min(1, n / 100)); }); return; }
     if (t.dataset.f === "fxx" || t.dataset.f === "fxy") {
       const n = Number(t.value);

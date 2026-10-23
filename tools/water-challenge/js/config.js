@@ -1,8 +1,8 @@
 /* Water Challenge (web) - constants: rules, tunables and the on-disk contract
    (FORMAT_REV, UTF-16 LE + BOM JSON, unknown fields kept). */
 
-export const REV         = "rev 1.31.1";
-export const APP_VERSION = "web 1.31.1";   /* stamped as writerVersion */
+export const REV         = "rev 1.32.0";
+export const APP_VERSION = "web 1.32.0";   /* stamped as writerVersion */
 /* Every file is written at FORMAT_REV. A file stamped higher came from a newer
    build, and the page asks for a reload. */
 export const FORMAT_REV    = 22;
@@ -248,11 +248,14 @@ export const WALL_GAP_R     = 0.06;
 /* A drawn pet can also set its own swim range ("range" in pets.json, 0 to 1 of
    SWIM_RANGE) so a big creature wanders less; the reach limit still applies. */
 
-/* The narrowest glass in pet radii: half its width, and how far a drawing can reach
-   and still swim a given share of the range. The Pet Studio draws these. */
+/* The narrowest glass in pet radii: half its width, how far a drawing can reach and
+   still swim a given share of the range, and how deep it is full (surface to floor),
+   which is the Pet Studio's floor line. The Studio draws these. */
 export function narrowCup() {
   const W = Math.round(CARD_MIN * GLASS_W_RATIO) - 8, r = Math.min(W * PET_R_SHARE, PET_R_MAX), wr = W / r;
-  return { half: wr / 2, swim: SWIM_RANGE * wr, reachFor: range => wr / 2 - range * SWIM_RANGE * wr - WALL_GAP_R };
+  const H = Math.round(CARD_MIN * GLASS_H_RATIO) - 7;
+  return { half: wr / 2, swim: SWIM_RANGE * wr, reachFor: range => wr / 2 - range * SWIM_RANGE * wr - WALL_GAP_R,
+           floor: (H - 4 - SURFACE_BAND) / r };
 }
 export const DIVE_EVERY     = [25, 60];   /* random gap between dives */
 export const HOP_EVERY      = [9, 24];    /* random gap between small hops */
@@ -280,6 +283,17 @@ export const HOP_SECS       = 0.7;
    the level is heading. Below SURFACE_DEPTH_R mid-dive, the pet turns back up. */
 export const DIVE_MIN_DEPTH_R = 2.4;
 export const SURFACE_DEPTH_R  = 1.2;
+/* Middle and bottom pets (zone, petdefs.js): a bottom pet walks the floor with a bob in
+   step and now and then a low hop; a middle pet bobs slowly and now and then shoots up
+   through the surface like a dolphin, then glides back down to its depth. */
+export const WALK_STEP_HZ   = 1.6;        /* steps a second at full drift speed */
+export const WALK_BOB_R     = 0.06;       /* bob of each step, in pet radii */
+export const FLOOR_HOP_R    = 0.35;       /* a bottom pet's hop */
+export const MID_BOB_R      = 0.12;       /* a middle pet's slow bob */
+export const LEAP_EVERY     = [18, 45];   /* random gap between a middle pet's leaps */
+export const LEAP_UP_SECS   = 0.9;        /* up from its depth to the surface */
+export const LEAP_DOWN_SECS = 1.6;        /* down from the surface to its depth */
+export const LEAP_MIN_DEPTH_R = 1.0;      /* water above it a leap needs, in pet radii */
 export const TURN_EASE      = 0.16;       /* how fast a pet turns to face its drift */
 export const TURN_SKIP_CHANCE = 0.10;     /* at a side, the chance it keeps facing the way it was */
 export const UNDERWATER_TINT = 0.42;      /* water colour over anything below the surface */

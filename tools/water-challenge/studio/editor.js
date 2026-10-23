@@ -61,7 +61,9 @@ export class Editor {
   fit() {
     const shapes = this.app.shapes || this.app.ghost || [];
     const b = G.bounds(shapes) || { x0: -1, y0: -1.4, x1: 1, y1: 0.6 };
-    const x0 = Math.min(b.x0, -0.8), x1 = Math.max(b.x1, 0.8), y1 = Math.max(b.y1, 0.5);
+    /* a drawing below the waterline needs the floor line in view to place it */
+    const below = this.app.pose === "swim" && !this.app.isHat && b.y0 >= -0.02;
+    const x0 = Math.min(b.x0, -0.8), x1 = Math.max(b.x1, 0.8), y1 = Math.max(b.y1, 0.5, below ? narrowCup().floor + 0.3 : 0);
     let y0 = this.app.pose === "swim" ? Math.min(b.y0, -TALLEST_PET_R - 0.1) : Math.min(b.y0, -1.2);   /* headroom in view */
     if (this.app.cupFrame) {                                                /* a cup item: the whole glass in view */
       const f = this.app.cupFrame, hb = G.bounds(shapes) || f;
@@ -538,6 +540,14 @@ export class Editor {
       ctx.setLineDash([6, 5]); ctx.strokeStyle = css("--headroom"); ctx.lineWidth = 1;
       ctx.beginPath(); ctx.moveTo(0, hy); ctx.lineTo(W, hy); ctx.stroke(); ctx.setLineDash([]);
       ctx.fillStyle = css("--headroom"); ctx.fillText("headroom: keep the pet below this line", 8, hy - 5);
+      /* the floor of a full glass: a drawing placed below the waterline keeps its share of
+         the way down to here at any fill (anchorY in petdefs.js) */
+      const fy = Math.round(oy + narrowCup().floor * z) + 0.5;
+      ctx.save(); ctx.lineWidth = 2; ctx.strokeStyle = css("--headroom"); ctx.globalAlpha = 0.8;
+      ctx.beginPath(); ctx.moveTo(0, fy); ctx.lineTo(W, fy); ctx.stroke(); ctx.restore();
+      ctx.fillStyle = css("--headroom");
+      if (fy < H) ctx.fillText("glass floor (full glass)", 8, fy - 5);
+      else ctx.fillText("glass floor ↓ (Fit, or zoom out, to see it)", 8, H - 30);
     }
     if (swimPose) this.cupWalls(shapes || []);
     if (!app.isProp) this.forwardArrow(hat ? oy + 0.5 * z : swimPose ? oy + 0.22 * z : oy + 0.9 * z, hat);

@@ -28,7 +28,8 @@ export const PET_DEFS_FORMAT = 1;
    the centre of a cosmetic effect around it (fxSpot gives a default when unset), and
    medal [x, y]: where the day-win medal hangs (medalSpot gives a default). crownScale /
    medalScale (1 = as drawn) and crownRot / medalRot (degrees, clockwise) size and tilt
-   the crown and medal on that pet. */
+   the crown and medal on that pet. zone ("middle" | "bottom", missing = surface) is how
+   it moves; where it sits comes from the drawing itself (anchorY). */
 export const defs = {};            /* kind -> pet: the built-in drawing or its replacement */
 export const hats = {};            /* HAT_KEYS -> { pal, shapes }: the built-in drawing or its replacement */
 export const HOLIDAY_KEYS = Object.keys(HOLIDAY_ART);
@@ -103,7 +104,8 @@ export function applyDefs(obj) {
     const fit = (v, d, lo, hi) => fin(v) ? Math.max(lo, Math.min(hi, v)) : d;
     defs[k] = { pal, swim, portrait: portrait && portrait.length ? portrait : null, crown, range, fx, medal,
                 crownScale: fit(p.crownScale, 1, 0.2, 4), crownRot: fit(p.crownRot, 0, -180, 180),
-                medalScale: fit(p.medalScale, 1, 0.2, 4), medalRot: fit(p.medalRot, 0, -180, 180) };
+                medalScale: fit(p.medalScale, 1, 0.2, 4), medalRot: fit(p.medalRot, 0, -180, 180),
+                zone: ZONES.includes(p.zone) && p.zone !== "surface" ? p.zone : undefined };
     if (typeof p.name === "string" && p.name.trim()) C.PET_NAMES[k] = p.name.trim().slice(0, 24);
     took.push(k);
   }
@@ -221,6 +223,60 @@ export function fxSpot(def) {
 }
 /* The medal: its own spot, else a little lower and further forward (pets face left)
    than the automatic effect spot, kept above the waterline. */
+/* ---- how a pet moves, and where it sits in the glass ------------------------ */
+/* zone sets the movement: surface pets float, hop and dive; middle pets bob and leap
+   out; bottom pets walk the floor (glass.js). */
+export const ZONES = ["surface", "middle", "bottom"];
+export const zoneOf = def => def && (def.zone === "middle" || def.zone === "bottom") ? def.zone : "surface";
+
+/* The swim drawing's top and bottom in r (dead-only shapes left out). fresh: measure
+   now (the Studio, while the drawing changes); otherwise once per drawing. */
+const spanCache = new WeakMap();
+export function bodySpan(def, fresh) {
+  if (!def || !def.swim) return { top: -0.6, bottom: 0.4 };
+  if (!fresh && spanCache.has(def.swim)) return spanCache.get(def.swim);
+  let top = Infinity, bottom = -Infinity;
+  const add = (y, h) => { top = Math.min(top, y - h); bottom = Math.max(bottom, y + h); };
+  for (const sh of def.swim) {
+    if (sh.show === "dead") continue;
+    const p = sh.stroke ? (sh.w || 0.05) / 2 : 0;
+    if (sh.t === "eye") add(sh.y, 0.09 * (sh.s || 1));
+    else if (sh.t === "ell") { const a = sh.rot || 0; add(sh.y, Math.hypot(sh.rx * Math.sin(a), sh.ry * Math.cos(a)) + p); }   /* its true height, turned */
+    else for (const c of sh.d) for (let i = 2; i < c.length; i += 2) add(c[i], p);
+  }
+  const span = top <= bottom ? { top, bottom } : { top: -0.6, bottom: 0.4 };
+  if (!fresh) spanCache.set(def.swim, span);
+  return span;
+}
+
+/* How far down the water a drawing sits, as the Studio shows it in a full glass
+   (waterline 0, floor line at narrowCup().floor): null when it crosses the waterline
+   (it floats there), else 0 (top touching the surface) to 1 (bottom on the floor). */
+export function depthShare(span) {
+  if (span.top < 0) return null;
+  const travel = C.narrowCup().floor - (span.bottom - span.top);
+  return travel > 0 ? Math.min(1, span.top / travel) : 1;
+}
+
+/* Where the drawing's origin goes, in px down the glass; surface and floor in px, r the
+   pet's size. A drawing that crosses the waterline keeps its waterline on the surface;
+   one drawn below it keeps its share of the way from the surface to the floor at any
+   fill. Both stand on the floor once the water is too shallow, never through it. */
+export function anchorY(def, r, surface, floor, fresh) {
+  const s = bodySpan(def, fresh), rest = floor - s.bottom * r, f = depthShare(s);
+  if (f === null) return Math.min(surface, rest);
+  const travel = (floor - surface) - (s.bottom - s.top) * r;
+  return travel <= 0 ? rest : Math.min(rest, surface + f * travel - s.top * r);
+}
+
+/* Where a drowned pet's origin goes, upside down on the floor (px). A drawing across the
+   waterline rests as every pet always has; one drawn below it is turned over its origin,
+   so its body is stood on the floor instead of left floating above it. */
+export function restY(def, r, floor, fresh) {
+  const s = bodySpan(def, fresh);
+  return s.top >= 0 ? floor + s.top * r : floor - r * 1.62;
+}
+
 export function medalSpot(def) {
   if (!def) return [-0.12, -0.3];
   if (def.medal) return def.medal;

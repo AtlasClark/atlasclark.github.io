@@ -7,7 +7,7 @@
 import * as C from "./config.js";
 import { rnd } from "./util.js";
 import { drawCritter, drawHeadstone } from "./art.js";
-import { defs as petDefs, fxSpot } from "./petdefs.js";
+import { defs as petDefs, fxSpot, anchorY, zoneOf, bodySpan, restY as restAt } from "./petdefs.js";
 import { drawDecor, drawEffect } from "./cosmetics.js";
 
 const clock = () => performance.now() / 1000;
@@ -153,6 +153,14 @@ export function unbindAll() { for (const k in anim) { anim[k].ctx = null; anim[k
 const motionOn = () => C.PET_MOTION && !(reduceMotion && reduceMotion.matches);
 const depthAt = level => Math.min(Math.max(level, 0), 1) * (dims.H - C.SURFACE_BAND);
 const surfaceY = st => dims.H - Math.min(Math.max(st.level, 0), 1) * (dims.H - C.SURFACE_BAND);
+const floorY = () => dims.H - 4;
+const zone = pet => zoneOf(petDefs[pet.critterKind || 0]);
+/* Where pet's origin sits in water's glass: on the surface (with the wave at x, if
+   given), halfway down the water, or standing on the floor (anchorY, petdefs.js). */
+function homeY(pet, water, x) {
+  const surf = surfaceY(water) + (x === undefined ? 0 : waveAt(water, x));
+  return anchorY(petDefs[pet.critterKind || 0], petR(), surf, floorY());
+}
 /* Drift across the glass, plus whatever ground a dive covered. The drift is narrowed
    for a pet whose drawing reaches far (so it turns before the wall, facing either
    way), and the drawing as it faces now is kept inside the walls. */
@@ -210,7 +218,7 @@ export function dropIn(name, holdSecs) {
   endVisit(name);
   const m = animState(name).m;
   m.drop = 0; m.dropWait = Math.min(holdSecs || 0, 12);
-  m.dive = -1; m.hop = -1;
+  m.dive = -1; m.hop = -1; m.leap = -1;
 }
 export function releaseDrop(name) { const m = animState(name).m; if (m.drop >= 0) m.dropWait = 0; }
 export const dropping = name => !!anim[name] && anim[name].m.drop >= 0;
@@ -245,6 +253,45 @@ function divePath(m, s) {
   } else {
     const b = s - Tu;
     y = -(m.vb * b - 0.5 * m.g * b * b); vy = -(m.vb - m.g * b);
+  }
+  const u = Math.min(1, s / T);
+  return { x: F * u * u * (3 - 2 * u), y, vx: F * 6 * u * (1 - u) / T, vy };
+}
+
+/* ---- a middle pet's leap ------------------------------------------------- */
+/* Up from its depth until the middle of its body reaches the surface, faster and
+   faster; out on a gravity arc at that speed (capped like a dive's breach, so it fits
+   the headroom); then down again, quick at first and settling at its depth. y is the
+   offset from its anchor (negative is up). */
+const bodyMid = st => { const s = bodySpan(petDefs[st.critterKind || 0]); return (s.top + s.bottom) / 2 * petR(); };
+const topBelow = (st, water) => homeY(st, water) + bodySpan(petDefs[st.critterKind || 0]).top * petR() - surfaceY(water);
+function startLeap(st, water = st) {
+  const m = st.m, r = petR(), g = r * C.GRAVITY_R;
+  m.leap = 0; m.splashed = 0;
+  m.lh = Math.max(0, homeY(st, water) + bodyMid(st) - surfaceY(water));
+  m.g = g;
+  m.vb = Math.max(Math.sqrt(2 * g * r * C.BREACH_MIN_R), Math.min(2 * m.lh / C.LEAP_UP_SECS, Math.sqrt(2 * g * r * C.BREACH_R)));
+  m.tb = 2 * m.vb / g;
+  m.xs0 = m.xs; m.fwd = -m.face;
+  const x = petX(st), front = critterExtent(st.critterKind || 0).left * r + r * C.WALL_GAP_R;
+  const room = fwd => (fwd < 0 ? x : dims.W - x) - front;
+  if (room(m.fwd) < r * C.DIVE_FORWARD_R && room(-m.fwd) > room(m.fwd)) { m.face = -m.face; m.fwd = -m.face; }
+}
+const leapSecs = m => C.LEAP_UP_SECS + m.tb + C.LEAP_DOWN_SECS;
+const canLeap = (st, water) => water.level > 0.02 && topBelow(st, water) >= petR() * C.LEAP_MIN_DEPTH_R;
+
+function leapPath(m, s) {
+  const Tu = C.LEAP_UP_SECS, Td = C.LEAP_DOWN_SECS, T = leapSecs(m), F = petR() * C.DIVE_FORWARD_R;
+  let y, vy;
+  if (s < Tu) {
+    const u = s / Tu;
+    y = -m.lh * u * u; vy = -2 * m.lh * u / Tu;
+  } else if (s < Tu + m.tb) {
+    const b = s - Tu;
+    y = -m.lh - (m.vb * b - 0.5 * m.g * b * b); vy = -(m.vb - m.g * b);
+  } else {
+    const u = Math.min(1, (s - Tu - m.tb) / Td), k = Math.PI / 2;
+    y = -m.lh * (1 - Math.sin(k * u)); vy = m.lh * k * Math.cos(k * u) / Td;
   }
   const u = Math.min(1, s / T);
   return { x: F * u * u * (3 - 2 * u), y, vx: F * 6 * u * (1 - u) / T, vy };
@@ -336,13 +383,13 @@ function drawGlass(st) {
   }
 }
 
-const duckRestY = (H, r) => H - 4 - r * 1.62;
+const duckRestY = (st, r) => restAt(petDefs[st.critterKind || 0], r, floorY());
 
 function drawSinking(ctx, st, W, H, top, offX, offY, r) {
-  const t = st.duckT, restY = duckRestY(H, r);
+  const t = st.duckT, restY = duckRestY(st, r);
   const dx = W / 2 + Math.sin(st.phase * 0.31) * (W * 0.21) * (1 - t);
-  const surf = top + waveAt(st, dx);
-  const dy = surf + (restY - surf) * (t * t);
+  const from = homeY(st, st, dx);
+  const dy = from + (restY - from) * (t * t);
   const ang = Math.PI * (t < 0.55 ? t / 0.55 : 1);
   drawCritter(ctx, dx + offX, dy + offY, r, ang, st.duckCrown, true, st.critterKind || 0, st.critterHue || 0, st.duckJester, lookOf(st).finish);
   for (let i = 0; i < 3; i++) {
@@ -424,7 +471,7 @@ function drawPetLayer(st) {
   else if (st.duckState === 1 && !st.visit) drawFloating(ctx, st, st, W, H, top, offX, offY, r);
   else if (st.duckState === 2) drawSinking(ctx, st, W, H, top, offX, offY, r);
   else if (st.duckState === 3) {
-    drawCritter(ctx, W / 2 + offX, duckRestY(H, r) + offY, r, Math.PI, st.duckCrown, true,
+    drawCritter(ctx, W / 2 + offX, duckRestY(st, r) + offY, r, Math.PI, st.duckCrown, true,
                 st.critterKind || 0, st.critterHue || 0, st.duckJester, lookOf(st).finish);
   }
   const g = st.guest && anim[st.guest], v = g && g.visit;
@@ -437,29 +484,36 @@ function drawPetLayer(st) {
 function drawFloating(ctx, water, pet, W, H, top, offX, offY, r) {
   const m = pet.m, moving = motionOn(), flip = moving ? m.flip : 1;
   let dx = petX(pet);
-  const slope = (waveAt(water, dx + 5) - waveAt(water, dx - 5)) / 10;
-  let dy = top + waveAt(water, dx), ang = Math.atan(slope) * (flip < 0 ? -1 : 1);
+  const slope = (waveAt(water, dx + 5) - waveAt(water, dx - 5)) / 10, z = zone(pet);
+  let dy = homeY(pet, water, dx), ang = z === "surface" ? Math.atan(slope) * (flip < 0 ? -1 : 1) : 0;
   if (moving && m.drop >= 0) {
     if (m.dropWait > 0) return;                                     /* still on the unlock card */
     const u = m.drop, from = -offY - r * 1.4;
     dy = from + (dy - from) * u * u;                                /* falls, accelerating */
     ang += (1 - u) * 2.4;
+  } else if (moving && z === "bottom") {                           /* walks the floor */
+    const pace = Math.abs(Math.cos(pet.phase * 0.31)), w = m.t * C.WALK_STEP_HZ * Math.PI;
+    dy -= Math.abs(Math.sin(w)) * r * C.WALK_BOB_R * (0.3 + 0.7 * pace);
+    ang += Math.sin(w * 2) * 0.05 * pace;
+    if (m.hop >= 0) {
+      dy -= r * C.FLOOR_HOP_R * Math.sin(Math.PI * m.hop);
+      ang += 0.15 * Math.sin(2 * Math.PI * m.hop);
+    }
+  } else if (moving && z === "middle") {                           /* hangs in the water */
+    dy += Math.sin(m.t * 1.3) * r * C.MID_BOB_R;
+    if (m.leap >= 0) {
+      const l = leapPath(m, m.leap);
+      dy += l.y;
+      ang = -Math.atan2(l.vy, Math.max(l.vx, r * 0.4)) * 0.85;       /* nose follows the path */
+      if (m.leap > C.LEAP_UP_SECS + m.tb + 0.2) airBubbles(ctx, m, dx, dy, top, offX, offY, r);
+    }
   } else if (moving) {
     dy += Math.sin(m.t * 2.1) * r * 0.035;                          /* a slow breath */
     if (m.dive >= 0) {
       const d = divePath(m, m.dive);
       dy += d.y;
       ang = -Math.atan2(d.vy, Math.max(d.vx, r * 0.4)) * 0.85;       /* nose follows the path */
-      if (m.dive > 0.3 && m.dive < C.DIVE_UNDER_SECS - 0.3) {       /* air it lets go of */
-        for (let i = 0; i < 3; i++) {
-          const by = dy - r * 0.6 - ((m.t * 26 + i * 9) % (r * 1.6));
-          if (by < top + 2) continue;
-          ctx.beginPath();
-          ctx.arc(dx + offX + (i - 1) * r * 0.22, by + offY, r * (0.07 - i * 0.012), 0, 6.2832);
-          ctx.fillStyle = "rgba(255,255,255,0.55)";
-          ctx.fill();
-        }
-      }
+      if (m.dive > 0.3 && m.dive < C.DIVE_UNDER_SECS - 0.3) airBubbles(ctx, m, dx, dy, top, offX, offY, r);
     } else if (m.hop >= 0) {
       dy -= r * C.HOP_R * Math.sin(Math.PI * m.hop);
       ang += 0.22 * Math.sin(2 * Math.PI * m.hop);
@@ -475,6 +529,18 @@ function drawFloating(ctx, water, pet, W, H, top, offX, offY, r) {
   drawCritter(ctx, 0, 0, r, ang, pet.duckCrown, false, pet.critterKind || 0, pet.critterHue || 0, pet.duckJester, look.finish, pet.duckMedal);
   ctx.restore();
   if (look.effect) drawEffect(ctx, look.effect, fx, fy, r, t, pet.critterHue || 0, "front");
+}
+
+/* Air a pet lets go of under the water, rising to the surface. */
+function airBubbles(ctx, m, dx, dy, top, offX, offY, r) {
+  for (let i = 0; i < 3; i++) {
+    const by = dy - r * 0.6 - ((m.t * 26 + i * 9) % (r * 1.6));
+    if (by < top + 2) continue;
+    ctx.beginPath();
+    ctx.arc(dx + offX + (i - 1) * r * 0.22, by + offY, r * (0.07 - i * 0.012), 0, 6.2832);
+    ctx.fillStyle = "rgba(255,255,255,0.55)";
+    ctx.fill();
+  }
 }
 
 /* Whatever sits below the surface takes on the water's colour, so a pet reads as
@@ -502,7 +568,7 @@ function busy() {
     if (!st.ctx) continue;
     if (Math.abs(st.target - st.level) > 0.0006 || st.rings.length || st.duckState === 2) return true;
     if (st.pour || st.drops.length || m.drop >= 0) return true;
-    if (m.dive >= 0 || m.hop >= 0 || Math.abs(m.flip - m.face) > 0.02 || Math.abs(m.xs) > 0.3) return true;
+    if (m.dive >= 0 || m.hop >= 0 || m.leap >= 0 || Math.abs(m.flip - m.face) > 0.02 || Math.abs(m.xs) > 0.3) return true;
     if (st.visit || st.guest) return true;
   }
   return false;
@@ -561,7 +627,7 @@ export function stepMotion(st, f, water = st) {
   const m = st.m, dt = f / 30, r = petR(), play = st.play || 1;
   m.t += dt;
   if (water === st && !st.pour && st.drops.length) st.drops = st.drops.filter(d => { d.x += d.vx * dt; d.y += d.vy * dt; d.vy += 420 * dt; return d.y < 0; });
-  if (st.duckState !== 1 || !motionOn()) { m.dive = -1; m.hop = -1; m.drop = -1; return; }
+  if (st.duckState !== 1 || !motionOn()) { m.dive = -1; m.hop = -1; m.drop = -1; m.leap = -1; return; }
 
   if (m.drop >= 0) {
     if (m.dropWait > 0) { m.dropWait -= dt; return; }
@@ -570,7 +636,7 @@ export function stepMotion(st, f, water = st) {
     return;
   }
 
-  if (m.dive < 0) {
+  if (m.dive < 0 && !(m.leap >= 0)) {
     /* Turn to face the drift at each side, except now and then. */
     const vel = Math.cos(st.phase * 0.31);
     const dir = vel > 0.05 ? -1 : vel < -0.05 ? 1 : 0;
@@ -583,6 +649,8 @@ export function stepMotion(st, f, water = st) {
     m.xs *= Math.pow(0.985, f);                         /* ease back from where a dive left it */
   }
   m.flip += (m.face - m.flip) * (1 - Math.pow(1 - C.TURN_EASE, f));
+  const z = zone(st);
+  if (z !== "surface") { stepDeep(st, m, z, dt, water, play); return; }
 
   if (m.dive >= 0) {
     const Tu = C.DIVE_UNDER_SECS;
@@ -611,6 +679,30 @@ export function stepMotion(st, f, water = st) {
 
 /* ---- visits ------------------------------------------------------------- */
 /* Glasses left to right, row by row, as on screen; set by ui.js on every render. */
+/* A bottom pet's hops and a middle pet's leaps; no dives, no surface rings for a hop
+   under the water. */
+function stepDeep(st, m, z, dt, water, play) {
+  const every = (a, b) => m.t + rnd(a, b) * play;
+  if (m.leap >= 0) {
+    const Tu = C.LEAP_UP_SECS;
+    /* the water dropped while it was on the way up (an undo): stop where it is */
+    if (m.leap < Tu && water.target < water.level - 0.02 && !canLeap(st, water)) { m.leap = -1; m.nextLeap = every(...C.LEAP_EVERY); return; }
+    m.leap += dt;
+    m.xs = m.xs0 + m.fwd * leapPath(m, Math.min(m.leap, leapSecs(m))).x;
+    if (m.splashed === 0 && m.leap >= Tu) { m.splashed = 1; ringAt(water, petX(st), true); }
+    if (m.splashed === 1 && m.leap >= Tu + m.tb) { m.splashed = 2; ringAt(water, petX(st), true); water.amp = Math.max(water.amp, 8); }
+    if (m.leap >= leapSecs(m)) { m.leap = -1; m.nextLeap = every(...C.LEAP_EVERY); }
+  } else if (m.hop >= 0) {
+    m.hop += dt / C.HOP_SECS;
+    if (m.hop >= 1) { m.hop = -1; m.nextHop = every(...C.HOP_EVERY); }
+  } else if (z === "middle") {
+    if (m.nextLeap === undefined) m.nextLeap = every(...C.LEAP_EVERY);
+    else if (m.t > m.nextLeap) { if (canLeap(st, water)) startLeap(st, water); else m.nextLeap = every(...C.LEAP_EVERY); }
+  } else if (m.t > m.nextHop) {
+    m.hop = 0;
+  }
+}
+
 let order = [];
 export function setOrder(names) { order = names.slice(); }
 
@@ -623,7 +715,7 @@ export function neighborsOf(name) {
   return out;
 }
 
-const settled = st => st.duckState === 1 && st.m.drop < 0 && st.m.dive < 0 && st.m.hop < 0;
+const settled = st => st.duckState === 1 && st.m.drop < 0 && st.m.dive < 0 && st.m.hop < 0 && !(st.m.leap >= 0);
 const wet = st => st.level >= C.VISIT_MIN_LEVEL && st.target >= C.VISIT_MIN_LEVEL;
 const canHost = h => !!h && !!h.dcv && !h.visit && !h.guest && wet(h) && (h.duckState === 0 || h.duckState === 1);
 
@@ -641,13 +733,13 @@ function maybeVisit(name, st) {
 export function startVisit(name, hostName) {
   const st = anim[name], h = anim[hostName];
   if (!st || !h || st.visit || h.guest) return false;
-  const sw = { m: { t: 0, face: 1, flip: 1, drift: 0, xs: 0, dive: -1, hop: -1, drop: -1, dropWait: 0,
-                    nextDive: rnd(1.5, 5), nextHop: 0.5, splashed: 0 },
+  const sw = { m: { t: 0, face: 1, flip: 1, drift: 0, xs: 0, dive: -1, hop: -1, drop: -1, dropWait: 0, leap: -1,
+                    nextDive: rnd(1.5, 5), nextHop: 0.5, nextLeap: rnd(4, 10), splashed: 0 },
                off: Math.PI / 0.31, phase: h.phase + Math.PI / 0.31, play: C.VISIT_PLAY, duckState: 1,
                critterKind: st.critterKind, critterHue: st.critterHue, duckCrown: st.duckCrown, duckJester: st.duckJester, duckMedal: st.duckMedal, look: st.look };
-  st.visit = { stage: "out", host: hostName, t: 0, from: { x: petX(st), y: surfaceY(st) }, sw };
+  st.visit = { stage: "out", host: hostName, t: 0, from: { x: petX(st), y: homeY(st, st) }, sw };
   h.guest = name;
-  st.m.dive = -1; st.m.hop = -1;
+  st.m.dive = -1; st.m.hop = -1; st.m.leap = -1;
   ringAt(st, petX(st), true);
   st.amp = Math.max(st.amp, 9);
   return true;
@@ -659,7 +751,7 @@ function goHome(name) {
   if (!v || v.stage !== "there") return;
   const h = anim[v.host];
   v.stage = "back"; v.t = 0;
-  v.from = { x: petX(v.sw), y: surfaceY(h) };
+  v.from = { x: petX(v.sw), y: homeY(v.sw, h) };
   h.guest = null; h.play = 1;
   ringAt(h, v.from.x, true);
   h.amp = Math.max(h.amp, 9);
@@ -672,7 +764,7 @@ function endVisit(name) {
   const h = anim[v.host];
   if (h && h.guest === name) { h.guest = null; h.play = 1; }
   st.visit = null;
-  st.m.dive = -1; st.m.hop = -1; st.m.xs = 0;
+  st.m.dive = -1; st.m.hop = -1; st.m.leap = -1; st.m.xs = 0;
   st.m.nextVisit = st.m.t + rnd(C.VISIT_EVERY[0], C.VISIT_EVERY[1]);
 }
 
@@ -706,7 +798,7 @@ export function stepVisits(f) {
     /* moved apart by a new ranking, or the water went: leave now; else when the
        stay is up and it is not mid-dive */
     const urgent = !neighborsOf(name).includes(v.host) || h.level < C.VISIT_MIN_LEVEL * 0.6 || h.duckState === 2 || h.duckState === 3;
-    if (urgent || (st.m.t >= v.until && v.sw.m.dive < 0 && v.sw.m.hop < 0)) goHome(name);
+    if (urgent || (st.m.t >= v.until && v.sw.m.dive < 0 && v.sw.m.hop < 0 && !(v.sw.m.leap >= 0))) goHome(name);
   }
 }
 
@@ -732,7 +824,7 @@ function drawFlights() {
     const out = v.stage === "out", fromEl = (out ? st : h).dcv, toEl = (out ? h : st).dcv;
     if (!fromEl || !toEl) continue;
     const a = fromEl.getBoundingClientRect(), b = toEl.getBoundingClientRect();
-    const land = out ? { x: petX(v.sw), y: surfaceY(h) + waveAt(h, petX(v.sw)) } : { x: petX(st), y: surfaceY(st) + waveAt(st, petX(st)) };
+    const land = out ? { x: petX(v.sw), y: homeY(v.sw, h, petX(v.sw)) } : { x: petX(st), y: homeY(st, st, petX(st)) };
     const p0 = [a.left - g.left + offX + v.from.x, a.top - g.top + offY + v.from.y];
     const p2 = [b.left - g.left + offX + land.x, b.top - g.top + offY + land.y];
     const rims = Math.min(a.top, b.top) - g.top + dims.head;       /* the higher glass top */
@@ -754,6 +846,9 @@ function drawFlights() {
 
 /* For tests: a visit's stage and host, if any. */
 export const visitOf = name => { const v = anim[name] && anim[name].visit; return v ? { stage: v.stage, host: v.host, t: v.t } : null; };
+
+/* For tests: a middle pet's leap, and where a pet lives in a glass. */
+export const leapProbe = { start: startLeap, path: leapPath, secs: leapSecs, can: canLeap, home: homeY, surface: surfaceY, floor: floorY, mid: bodyMid };
 
 /* For tests: where a dive puts the pet s seconds in, and how long it lasts. */
 export const diveProbe = { start: startDive, path: divePath, secs: diveSecs };

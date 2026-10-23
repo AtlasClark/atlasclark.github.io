@@ -380,3 +380,79 @@ test("pets legend: the roll odds add up to exactly 100%, dragon included", async
   const total = C.PET_BINS.reduce((a, b) => a + b.weight, 0);
   C.PET_BINS.forEach((b, i) => assert.ok(Math.abs(o.bins[i] - (1 - C.MYSTERY_CHANCE) * b.weight / total * 100) <= 0.05, b.name));
 });
+
+/* ---- where a pet lives: surface, middle, bottom ---- */
+const P = await import(pathToFileURL(path.join(JS, "petdefs.js")));
+function withZone(kind, zone, fn) { const d = P.defs[kind], was = d.zone; d.zone = zone; try { return fn(); } finally { d.zone = was; } }
+
+/* a pet drawn below its waterline, top at y in r */
+const deep = (y, zone) => ({ pal: { b: { c: "#123456" } }, swim: [{ t: "ell", x: 0, y: y + 0.4, rx: 0.6, ry: 0.4, fill: "b" }],
+                             portrait: null, crown: [0, -1], range: 1, zone });
+function withDef(kind, def, fn) { const was = P.defs[kind]; P.defs[kind] = def; try { return fn(); } finally { P.defs[kind] = was; } }
+
+test("position: across the waterline it floats; below it keeps its share of the water; low water stands it on the floor", () => {
+  G.applyLayout(G.pickLayout(8, 748));
+  const r = G.petR(), L = G.leapProbe, floor = L.floor(), F = C.narrowCup().floor;
+  for (const kind of [0, 7, 26]) {                                   /* built-in pets cross the waterline */
+    const span = P.bodySpan(P.defs[kind]), rest = floor - span.bottom * r;
+    for (const level of [0, 0.05, 0.5, 1]) {
+      const st = G.animState("p" + kind + "@" + level);
+      st.critterKind = kind; st.level = st.target = level; st.duckState = 1;
+      const surf = L.surface(st), want = Math.min(surf, rest);
+      for (const z of [undefined, "middle", "bottom"]) withZone(kind, z, () => assert.equal(L.home(st, st), want, kind + "@" + level + " " + z + ": the zone only moves it"));
+      if (surf <= rest) assert.equal(L.home(st, st), surf, kind + "@" + level + " on the surface");
+      else assert.ok(Math.abs(L.home(st, st) + span.bottom * r - floor) < 1e-9, kind + "@" + level + " standing on the floor");
+    }
+  }
+  for (const top of [0, 1.5, 3, 20]) {                               /* drawn lower and lower */
+    const def = deep(top), span = P.bodySpan(def), share = P.depthShare(span), h = span.bottom - span.top;
+    assert.equal(share, Math.min(1, top / (F - h)), "share of the way down as drawn");
+    withDef(7, def, () => {
+      for (const level of [0.2, 0.5, 0.8, 1]) {
+        const st = G.animState("d" + top + "@" + level);
+        st.critterKind = 7; st.level = st.target = level; st.duckState = 1;
+        const surf = L.surface(st), y = L.home(st, st), travel = floor - surf - h * r;
+        assert.ok(y + span.bottom * r <= floor + 1e-9, top + "@" + level + " never through the floor");
+        if (travel > 0) assert.ok(Math.abs((y + span.top * r - surf) / travel - share) < 1e-9, top + "@" + level + " keeps its share");
+        else assert.ok(Math.abs(y + span.bottom * r - floor) < 1e-9, top + "@" + level + " on the floor");
+      }
+    });
+  }
+});
+
+test("zones: a middle pet leaps out within the headroom and comes back; no leap in shallow water; a bottom pet never dives", () => {
+  G.applyLayout(G.pickLayout(8, 748));
+  const L = G.leapProbe, r = G.petR();
+  withDef(12, deep(2.5, "middle"), () => {
+    const st = G.animState("leaper");
+    st.critterKind = 12; st.duckState = 1; st.level = st.target = 0.9;
+    assert.ok(L.can(st, st));
+    L.start(st, st);
+    const T = L.secs(st.m), home = L.home(st, st) + L.mid(st), surf = L.surface(st);   /* the middle of its body */
+    let peak = Infinity;
+    for (let s = 0; s <= T; s += 0.005) peak = Math.min(peak, home + L.path(st.m, s).y);
+    assert.ok(Math.abs(L.path(st.m, 0).y) < 1e-9 && Math.abs(L.path(st.m, T).y) < 1e-6, "starts and ends at its depth");
+    assert.ok(peak < surf, "breaks the surface");
+    assert.ok(surf - peak <= r * C.BREACH_R + 1e-6, "no higher than a dive's breach, so the headroom fits");
+    st.level = st.target = 0.12;
+    assert.ok(!L.can(st, st), "no leap in shallow water");
+  });
+  withZone(7, "bottom", () => {
+    const st = pet(1, 1);
+    st.critterKind = 7;
+    let dived = false;
+    for (let i = 0; i < 60 * 30; i++) { G.stepMotion(st, 1); if (st.m.dive >= 0) dived = true; }
+    assert.ok(!dived, "a dive was due at once, but a bottom pet walks");
+  });
+});
+
+test("zones: pets.json keeps middle and bottom; anything else reads as surface", () => {
+  try {
+    P.applyDefs({ format: 1, pets: { 7: { crown: [0, -1], pal: { b: { c: "#123456" } }, swim: [{ t: "ell", x: 0, y: 0, rx: 0.5, ry: 0.3, fill: "b" }], zone: "bottom" },
+                                   12: { crown: [0, -1], pal: { b: { c: "#123456" } }, swim: [{ t: "ell", x: 0, y: 0, rx: 0.5, ry: 0.3, fill: "b" }], zone: "<b>sky</b>" } } });
+    assert.equal(P.zoneOf(P.defs[7]), "bottom");
+    assert.equal(P.zoneOf(P.defs[12]), "surface");
+    assert.equal(P.defs[12].zone, undefined);
+  } finally { P.applyDefs({ format: 1, pets: {} }); }
+  assert.equal(P.zoneOf(P.defs[7]), "surface", "built-in pets live at the surface");
+});

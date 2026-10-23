@@ -6,7 +6,7 @@ import * as C from "./config.js";
 import { S } from "./model.js";
 import * as store from "./store.js";
 import { SLOTS, COSMETICS, itemsIn, PAINT_COST, drawDecor, drawEffect } from "./cosmetics.js";
-import { defs, fxSpot } from "./petdefs.js";
+import { defs, fxSpot, anchorY, zoneOf } from "./petdefs.js";
 import { ownsCosmetic, cosmeticBlock, buyCosmetic, wearCosmetic, lookOf, paintBlock, paintPet, shellBalance, shellRun, shellAward, shellsEarned, pouredOn } from "./shop.js";
 import { hueOf, petLabel } from "./pets.js";
 import { drawCritter } from "./art.js";
@@ -177,10 +177,10 @@ function drawRoom() {
   ctx.restore();
 
   if (look.decor) drawDecor(ctx, look.decor, { x: gx, y: gy, W, H }, x => top + wave(x - gx), t);
-  /* the pet swims slowly across and back, hopping now and then */
-  const sway = Math.sin(t * 0.9), face = Math.cos(t * 0.9) >= 0 ? -1 : 1;
-  const px = gx + W / 2 + sway * W * 0.24, hopU = (t % 3.2) / 0.7, hop = hopU < 1 ? Math.sin(Math.PI * hopU) * r * 0.6 : 0;
-  const py = top + wave(px - gx) - hop + Math.sin(t * 2.1) * r * 0.035;
+  /* the pet swims slowly across and back at its own depth, hopping now and then */
+  const sway = Math.sin(t * 0.9), face = Math.cos(t * 0.9) >= 0 ? -1 : 1, z = zoneOf(defs[kind]);
+  const px = gx + W / 2 + sway * W * 0.24, hopU = (t % 3.2) / 0.7, hop = hopU < 1 && z !== "middle" ? Math.sin(Math.PI * hopU) * r * (z === "bottom" ? 0.35 : 0.6) : 0;
+  const py = anchorY(defs[kind], r, top + wave(px - gx), gy + H - 4) - hop + Math.sin(t * (z === "middle" ? 1.3 : 2.1)) * r * (z === "middle" ? 0.12 : 0.035);
   const spot = fxSpot(defs[kind]), fx = px + spot[0] * r * face, fy = py + spot[1] * r;
   if (look.effect) drawEffect(ctx, look.effect, fx, fy, r, t, hue, "back");
   ctx.save(); ctx.translate(px, py); ctx.scale(face, 1);

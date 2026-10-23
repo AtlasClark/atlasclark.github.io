@@ -136,6 +136,7 @@ button, input, select { font: inherit; color: inherit; }
 .row input[type=color] { width: 40px; height: 26px; padding: 0; border: 1px solid var(--line-2); border-radius: 6px; background: none; }
 .grid2 { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 0 10px; }
 .grid2 .row > label { width: 28px; }
+
 .btns { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 10px; }
 .sep { height: 1px; background: var(--line); margin: 10px 0; }
 .val { min-width: 34px; text-align: right; font-variant-numeric: tabular-nums; color: var(--ink-2); font-size: 12px; }
