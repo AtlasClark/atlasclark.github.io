@@ -10,7 +10,12 @@
    page takes over from a hidden one). It sends the share's .json files and live
    events up, and writes the remote player's saves down through saveParticipant, so
    locks and merging work as between two office PCs. The relay address and bridge
-   key are in _relay/relay.json on the share. */
+   key are in _relay/relay.json on the share.
+
+   Sign-in names stay in the office: before a file goes up, every "who logged it"
+   name becomes that person's glass name (each office page records its own pair in
+   _relay/names.json) or "office", and the real names are put back when a remote
+   save is written to the share. */
 
 import * as C from "./config.js";
 import * as store from "./store.js";
@@ -272,8 +277,10 @@ async function bridgeTick() {
   if (!store.dir || store.relay) { B.state = "off"; return C.BRIDGE_IDLE_MS; }
   const cfg = await readBridgeCfg();
   if (!cfg) { B.state = "off"; return C.BRIDGE_IDLE_MS; }
+  await notePair();
   if (!(await holdLease())) { B.state = "other"; B.sigs.clear(); B.reset = true; return C.BRIDGE_IDLE_MS; }
   B.state = "this";
+  const names = await readNames();
 
   /* the share's files that changed since the last round, a chunk at a time */
   const list = await store.rootJsonFiles(), files = {}, sent = new Map();
@@ -281,7 +288,7 @@ async function bridgeTick() {
   for (const f of list) {
     if (B.sigs.get(f.name) === f.sig) continue;
     if (size > C.BRIDGE_CHUNK) { more = true; continue; }
-    const t = await store.fileText(f.file);
+    const t = masked(await store.fileText(f.file), names);
     files[f.name] = t; size += t.length; sent.set(f.name, f.sig);
   }
   for (const n of B.sigs.keys()) if (!list.some(f => f.name === n)) { files[n] = null; sent.set(n, null); }
@@ -317,6 +324,46 @@ async function bridgeTick() {
   return Date.now() - B.playerSeen < C.PLAYER_ACTIVE_MS ? C.BRIDGE_FAST_MS : C.BRIDGE_IDLE_MS;
 }
 
+/* ---- sign-in names --------------------------------------------------------- */
+/* This page's sign-in name and glass, added to _relay/names.json once a session. */
+async function notePair() {
+  if (B.paired || !S.me || !S.mine || !S.participants.some(p => same(p.name, S.mine))) return;
+  const m = await readNames(), k = S.me.trim().toLowerCase();
+  if (m[k] !== S.mine) {
+    m[k] = S.mine;
+    await store.writeSubText(C.RELAY_SUBDIR, C.NAMES_FILE, JSON.stringify(m, null, 1));
+  }
+  B.paired = true;
+}
+async function readNames() {
+  try { const o = JSON.parse(await store.readSubText(C.RELAY_SUBDIR, C.NAMES_FILE)); return o && typeof o === "object" ? o : {}; }
+  catch { return {}; }
+}
+/* A sign-in name as the relay may see it: a glass name, the bottle tag, or "office". */
+export function shownName(user, names) {
+  const u = String(user || "").trim();
+  if (!u || u === C.HIDRATE_TAG) return u;
+  const k = u.toLowerCase();
+  if (names[k]) return names[k];
+  const p = S.participants.find(x => same(x.name, u));
+  return p ? p.name : "office";
+}
+/* A file's text with every sign-in name replaced (participants and settings). */
+export function masked(text, names) {
+  let o;
+  try { o = JSON.parse(text); } catch { return text; }
+  if (!o || typeof o !== "object") return text;
+  /* ids first, from the real names, as loadAll would make them: an id made after the
+     swap would differ and the pour would come back as a second one */
+  if (Array.isArray(o.entries)) {
+    const seen = {};
+    for (const e of o.entries) { if (e && !e.eid) e.eid = store.deriveEid(e, seen); if (e) seen[e.eid] = true; }
+  }
+  for (const list of [o.entries, o.spends]) if (Array.isArray(list)) for (const x of list) if (x && x.by !== undefined) x.by = shownName(x.by, names);
+  for (const f of ["writerUser", "updatedBy", "by"]) if (typeof o[f] === "string") o[f] = shownName(o[f], names);
+  return JSON.stringify(o);
+}
+
 /* A remote save, written to the share the way the player's own page would have:
    "ok", "retry" (the file was busy) or "drop" (not a save this bridge can write). */
 export async function applyOp(op) {
@@ -327,8 +374,11 @@ export async function applyOp(op) {
   const p = S.participants.find(x => same(x.name, rec.name));
   if (!p) { store.diagNote("bridge: dropped a save for " + rec.name + ", who is not on the roster"); return "drop"; }
   rec.name = p.name;
-  if (!Array.isArray(rec.entries)) rec.entries = [];
-  for (const f of ["pets", "graves", "dayGoals"]) if (!rec[f] || typeof rec[f] !== "object") rec[f] = {};
+  store.cleanRecord(rec, p.color);
+  /* the share's own "who logged it" for anything it already has; the player's new ones are theirs */
+  const byE = new Map(p.entries.map(e => [e.eid, e.by])), byS = new Map((p.spends || []).map(s => [s.id, s.by]));
+  for (const e of rec.entries) e.by = byE.has(e.eid) ? byE.get(e.eid) : p.name;
+  for (const s of rec.spends) s.by = byS.has(s.id) ? byS.get(s.id) : p.name;
   const ok = await store.serial(() => store.saveParticipant(rec, a.removedIds, a.removedPets, a.revivedPets, a.clearRoll));
   if (ok) store.diagNote("bridge: wrote a save from " + p.name);
   return ok ? "ok" : "retry";

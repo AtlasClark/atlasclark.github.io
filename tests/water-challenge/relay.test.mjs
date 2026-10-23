@@ -14,6 +14,7 @@ globalThis.document = globalThis.document || { hidden: false };
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../tools/water-challenge/");
 const worker = (await import(pathToFileURL(path.join(ROOT, "relay/water-relay-worker.js")))).default;
 const relay = await import(pathToFileURL(path.join(ROOT, "js/relay.js")));
+const live = await import(pathToFileURL(path.join(ROOT, "js/live.js")));
 const store = web.store, M = web.model;
 
 /* D1's API over node:sqlite: prepare / bind / all / first / run, and batch in one transaction. */
@@ -123,10 +124,68 @@ test("relay round trip: a remote pour reaches the share, undo takes it back, off
   assert.ok(remote.text("Office Olu.json").includes("e:office:1"));
   assert.ok(!remote.text("Remote Rae.json").includes(eid), "and the undo held");
 
+  /* sign-in names: the office's own pair shows as its glass, others as "office"; the share keeps the real ones */
+  M.S.me = "o.login"; M.S.mine = "Office Olu";
+  await office();
+  rae = M.findParticipant("Remote Rae");
+  rae.entries.push({ eid: "e:forrae:1", ts: day + "T12:00:00", date: day, oz: 8, by: "o.login" });
+  assert.ok(await store.saveParticipant(rae, null));
+  const oluNow = M.findParticipant("Office Olu");
+  oluNow.entries.push({ eid: "e:office:2", ts: day + "T12:30:00", date: day, oz: 4, by: "someone.else" });
+  assert.ok(await store.saveParticipant(oluNow, null));
+  await relay.relayTest.bridgeRound();
+  M.S.me = "Remote Rae"; M.S.mine = "Remote Rae";
+  await asRemote();
+  await relay.relayTest.pull();
+  M.S.participants = await store.loadAll();
+  const seenBy = eidX => [...M.S.participants.flatMap(p => p.entries)].find(e => e.eid === eidX).by;
+  assert.equal(seenBy("e:forrae:1"), "Office Olu", "a known sign-in shows as its glass");
+  assert.equal(seenBy("e:office:2"), "office", "an unknown sign-in shows as office");
+  const relayRows = (await env.DB.prepare("SELECT body FROM files").all()).results.map(r => r.body || "").join("");
+  assert.ok(!relayRows.includes("o.login") && !relayRows.includes("someone.else"), "no sign-in names on the relay");
+  rae = M.findParticipant("Remote Rae");
+  rae.entries.push({ eid: "e:remote:2", ts: day + "T13:00:00", date: day, oz: 10, by: "Remote Rae" });
+  rae.color = '#fff" onmouseover="x';
+  rae.spends.push({ id: "s:evil", at: day + "T13:00:00", kind: "plinko", cost: "<b>9</b>", pet: '1"><a href=x>', chest: { add: "<i>", won: 1 } });
+  assert.ok(await store.saveParticipant(rae, null));
+  await relay.relayTest.flush();
+  M.S.me = "o.login"; M.S.mine = "Office Olu";
+  await office();
+  await relay.relayTest.bridgeRound();
+  const onShare = JSON.parse(share.text("Remote Rae.json"));
+  assert.equal(onShare.entries.find(e => e.eid === "e:forrae:1").by, "o.login", "the real name is put back on the share");
+  assert.equal(onShare.entries.find(e => e.eid === "e:remote:2").by, "Remote Rae");
+  assert.match(onShare.color, /^#[0-9a-f]{3,8}$/i, "no markup in a colour");
+  const evil = onShare.spends.find(s => s.id === "s:evil");
+  assert.deepEqual([evil.cost, evil.pet, evil.chest.add], [0, 0, 0], "numbers only where numbers go");
+  await relay.relayTest.bridgeRound();                                   /* confirms it */
+  M.S.me = "Remote Rae"; M.S.mine = "Remote Rae";
+  await asRemote();
+  await relay.relayTest.pull();
+  assert.equal(relay.remoteStatus().waiting, 0);
+
   /* the remote page's saves of other people's files stay on that page */
   const other = M.findParticipant("Office Olu");
   other.entries.push({ eid: "e:sneak:1", ts: day + "T11:00:00", date: day, oz: 5, by: "Remote Rae" });
   await store.saveParticipant(other, null);
   assert.equal(relay.remoteStatus().waiting, 0, "nothing sent for someone else");
   store.setRelay(null);
+});
+
+test("live events: only known fields, with their types", () => {
+  const ev = live.cleanEvent({ type: "drop", id: "x", at: "5", bin: '1"><img>', color: "red;background:url(x)", name: "<b>Rae</b>",
+                              path: [1, "x", 0], chest: { add: "<i>", won: 2 }, mine: true, extra: "<script>",
+                              info: { name: "Rae", kind: "3", title: "t", msg: "not shared" } });
+  assert.deepEqual(ev, { type: "drop", id: "x", name: "<b>Rae</b>", at: 5, bin: 0, color: "#60a5fa", path: [1, 0, 0],
+                         chest: { add: 0, won: 2 }, info: { name: "Rae", title: "t", kind: 3 } });
+});
+
+test("files: colours, numbers and dates are typed when read", () => {
+  const o = store.cleanRecord({ name: "X", color: "#abc\" style=\"x", entries: [{ eid: "e1", oz: "12<b>", date: "2026-10-22<i>", ts: 5, by: null }],
+                                spends: [{ id: "s1", cost: "3", hue: "<x>", fresh: "yes" }], pets: { 3: "<b>" }, away: [["2026-10-01", null], "bad"] }, "#123456");
+  assert.equal(o.color, "#123456");
+  assert.deepEqual(o.entries[0], { ts: "5", date: "2026-10-22", oz: 0, by: "", eid: "e1" });
+  assert.deepEqual([o.spends[0].cost, o.spends[0].hue, o.spends[0].fresh], [3, 0, true]);
+  assert.deepEqual(o.pets, { 3: 0 });
+  assert.deepEqual(o.away, [["2026-10-01", ""]]);
 });

@@ -738,6 +738,8 @@ function wireBottle() {
 
 /* ---- remote player (relay.js) ------------------------------------------------ */
 async function fillRemote() {
+  $("remoteBox").hidden = String(S.me || "").toLowerCase() !== C.RELAY_ADMIN;
+  if ($("remoteBox").hidden) return;
   const cfg = await readBridgeCfg();
   $("rmUrl").value = cfg ? cfg.url : ""; $("rmKey").value = cfg ? cfg.key : ""; $("rmKey").type = "password";
   $("rmWho").innerHTML = S.participants.map(p => '<option value="' + esc(p.name) + '">' + esc(p.name) + '</option>').join("");

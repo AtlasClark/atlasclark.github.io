@@ -210,6 +210,51 @@ export function deriveEid(e, seen) {
   return id;
 }
 
+/* ---- values from files are typed before use ------------------------------- */
+/* What a file holds ends up in the page, often inside HTML attributes. Every field the
+   page shows is forced to its type here, so a hand-edited file or a remote player's
+   save (js/relay.js) can't add markup: colours must be #hex, numbers are numbers. */
+const COLOR_RE = /^#[0-9a-f]{3,8}$/i;
+export const safeColor = (c, fallback) => COLOR_RE.test(String(c || "")) ? String(c) : fallback;
+const num = v => { const n = Number(v); return isFinite(n) ? n : 0; };
+const str = (v, max = 200) => (v === undefined || v === null ? "" : String(v)).slice(0, max);
+const SPEND_NUMS = ["cost", "pet", "hue", "tier", "bin", "slot", "from", "was"];
+function numMap(m) {
+  const out = {};
+  if (m && typeof m === "object") for (const k in m) if (has(m, k)) out[str(k, 20)] = num(m[k]);
+  return out;
+}
+export function cleanRecord(o, fallbackColor) {
+  o.name = str(o.name, 60);
+  o.color = safeColor(o.color, fallbackColor || C.PARTICIPANT_COLORS[0]);
+  o.entries = (Array.isArray(o.entries) ? o.entries : []).filter(e => e && typeof e === "object").map(e => {
+    const c = { ts: str(e.ts, 40), date: str(e.date, 10), oz: num(e.oz), by: str(e.by, 60) };
+    if (e.eid !== undefined) c.eid = str(e.eid, 120);
+    if (e.sid !== undefined) c.sid = str(e.sid, 120);
+    return c;
+  });
+  o.spends = (Array.isArray(o.spends) ? o.spends : []).filter(s => s && typeof s === "object" && s.id).map(s => {
+    const c = Object.assign({}, s, { id: str(s.id, 80), kind: str(s.kind, 20), at: str(s.at, 40), by: str(s.by, 60) });
+    for (const k of SPEND_NUMS) if (k in s) c[k] = num(s[k]);
+    for (const k of ["fresh", "revived", "fromFresh"]) if (k in s) c[k] = !!s[k];
+    if ("item" in s) c.item = str(s.item, 60);
+    if (s.chest) c.chest = { add: num(s.chest.add), won: num(s.chest.won) };
+    return c;
+  });
+  for (const f of ["pets", "graves", "dayGoals"]) o[f] = numMap(o[f]);
+  o.away = (Array.isArray(o.away) ? o.away : []).filter(Array.isArray).map(a => [str(a[0], 10), str(a[1], 10)]);
+  if (o.pen2 !== undefined) o.pen2 = str(o.pen2, 10);
+  for (const f of ["rollLog", "graveLog"]) {
+    const m = {};
+    if (o[f] && typeof o[f] === "object") for (const k in o[f]) {
+      const v = o[f][k];
+      m[str(k, 10)] = v && typeof v === "object" ? { k: num(v.k), n: num(v.n) } : num(v);
+    }
+    o[f] = m;
+  }
+  return o;
+}
+
 /* ---- merges ------------------------------------------------------------- */
 export function mergePets(memMap, diskMap, removed) {
   const out = {}, drop = {};
@@ -419,7 +464,7 @@ export async function loadAll() {
       if (!o.rollLog || typeof o.rollLog !== "object") o.rollLog = {};
       if (!o.graveLog || typeof o.graveLog !== "object") o.graveLog = {};
       if (!o.rerollDay) o.rerollDay = "";
-      if (!o.color) o.color = C.PARTICIPANT_COLORS[list.length % C.PARTICIPANT_COLORS.length];
+      cleanRecord(o, C.PARTICIPANT_COLORS[list.length % C.PARTICIPANT_COLORS.length]);
       const seen = {};
       for (const e of o.entries) {
         if (!e.eid) e.eid = deriveEid(e, seen);
