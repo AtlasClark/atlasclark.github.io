@@ -12,7 +12,7 @@ const css = name => getComputedStyle(document.documentElement).getPropertyValue(
 const RANGE_HANDLE_Y = -1.75;              /* where the swim-range handles sit, in r */
 
 export const TOOL_HINTS = {
-  select: "Click to select, Shift-click to add, drag to move. Double-click a path to add a point or bend a corner; Alt-click a point to delete it.",
+  select: "Click to select (a whole group; Ctrl-click for one shape in it), Shift-click to add, drag to move. Shift on a circle's handle keeps it round. Double-click a path to add a point or bend a corner; Alt-click a point to delete it.",
   ellipse: "Drag to draw. Shift for a circle, Alt to draw from the centre.",
   poly: "Click to add points. Click the first point or press Enter to close. Backspace removes the last point.",
   pen: "Click for a corner, drag for a curve. Click the first point to close and fill; Enter keeps it an open line.",
@@ -186,10 +186,12 @@ export class Editor {
       if (app.refDrag && app.ref) { app.begin(); this.drag = { type: "ref", w, x: app.ref.x, y: app.ref.y }; return; }
       const i = this.pick(...w);
       if (i >= 0) {
+        /* a click takes the shape's whole group; Ctrl (or Cmd) takes just the shape */
+        const one = e.ctrlKey || e.metaKey, grp = one ? [i] : app.groupOf(i);
         if (e.shiftKey) {
-          if (app.sel.has(i)) { app.sel.delete(i); app.selChanged(); return; }
-          app.sel.add(i);
-        } else if (!app.sel.has(i)) { app.sel.clear(); app.sel.add(i); }
+          if (app.sel.has(i)) { for (const j of grp) app.sel.delete(j); app.selChanged(); return; }
+          for (const j of grp) app.sel.add(j);
+        } else if (!app.sel.has(i) || (one && app.sel.size > 1)) { app.sel.clear(); for (const j of grp) app.sel.add(j); }
         app.selChanged();
         app.begin();
         this.drag = { type: "move", w, orig: this.cloneSel() };
@@ -285,7 +287,9 @@ export class Editor {
       const s = list[d.i], c = Math.cos(s.rot || 0), n = Math.sin(s.rot || 0);
       const vx = w[0] - s.x, vy = w[1] - s.y;
       const len = d.type === "rx" ? Math.abs(vx * c + vy * n) : Math.abs(-vx * n + vy * c);
-      s[d.type] = G.R5(Math.max(0.005, app.snap !== e.altKey ? Math.round(len / SNAP) * SNAP : len));
+      const v = G.R5(Math.max(0.005, app.snap !== e.altKey ? Math.round(len / SNAP) * SNAP : len));
+      if (e.shiftKey) s.rx = s.ry = v;                              /* Shift: a circle, or keeps one round */
+      else s[d.type] = v;
       app.live();
     } else if (d.type === "node") {
       const s = list[d.i] = G.clone(d.orig), n = d.node;
@@ -337,7 +341,7 @@ export class Editor {
       if ((x1 - x0) * this.view.z > 3 || (y1 - y0) * this.view.z > 3) {
         (app.shapes || []).forEach((s, i) => {
           const b = G.bounds([s]);
-          if (b && this.visible(s) && b.x1 >= x0 && b.x0 <= x1 && b.y1 >= y0 && b.y0 <= y1) app.sel.add(i);
+          if (b && this.visible(s) && b.x1 >= x0 && b.x0 <= x1 && b.y1 >= y0 && b.y0 <= y1) for (const j of (e.ctrlKey || e.metaKey ? [i] : app.groupOf(i))) app.sel.add(j);
         });
         app.selChanged();
       }

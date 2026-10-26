@@ -124,6 +124,40 @@ test("studio combine: shapes and strokes become one solid shape, with holes wher
   delete globalThis.polygonClipping;
 });
 
+test("studio pathfinder: each op gives the right area, in the right shape's colour",
+     { skip: fs.existsSync(GEOM) ? false : "Pet Studio not present" }, async () => {
+  const { createRequire } = await import("node:module");
+  globalThis.polygonClipping = createRequire(import.meta.url)(path.join(ROOT, "tools/water-challenge/studio/vendor/polygon-clipping.umd.js"));
+  const G = await import(pathToFileURL(GEOM));
+  const ringArea = r => { let a = 0; for (let i = 0; i < r.length; i++) { const p = r[i], q = r[(i + 1) % r.length]; a += p[0] * q[1] - q[0] * p[1]; } return Math.abs(a / 2); };
+  const area = mp => mp.reduce((t, poly) => t + ringArea(poly[0]) - poly.slice(1).reduce((h, r) => h + ringArea(r), 0), 0);
+  const circle = (x, r) => ({ t: "ell", x, y: 0, rx: r, ry: r, rot: 0, a0: 0, a1: 6.2832, fill: "body" });
+  const lens = 2 * Math.acos(0.5) - 0.5 * Math.sqrt(3), disc = Math.PI, two = [circle(0, 1), circle(1, 1)];
+  const want = { unite: [[0, 2 * disc - lens]], minusFront: [[0, disc - lens]], minusBack: [[1, disc - lens]], intersect: [[1, lens]],
+                 exclude: [[1, 2 * disc - 2 * lens]], divide: [[0, disc - lens], [1, lens], [1, disc - lens]], trim: [[0, disc - lens], [1, disc]], crop: [[0, lens]] };
+  const sorted = l => l.slice().sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+  for (const op of G.PATHFINDER) {
+    const got = sorted(G.pathfinder(op, two).map(p => [p.src, area(p.mp)])), exp = sorted(want[op]);
+    assert.equal(got.length, exp.length, op + ": pieces");
+    got.forEach((g, i) => { assert.equal(g[0], exp[i][0], op + ": colour"); assert.ok(Math.abs(g[1] - exp[i][1]) < 0.02, op + ": area " + g[1] + " vs " + exp[i][1]); });
+  }
+  assert.equal(G.pathfinder("intersect", [circle(0, 0.4), circle(3, 0.4)]).length, 0, "nothing in common, nothing left");
+  delete globalThis.polygonClipping;
+});
+
+test("shape opacity: fo and so fade the fill and outline on the canvas and in icons", () => {
+  const calls = [], ctx = new Proxy({ globalAlpha: 1 }, { set(t, k, v) { t[k] = v; if (k === "globalAlpha") calls.push(v); return true; },
+                                                         get(t, k) { return k in t ? t[k] : () => { if (k === "fill" || k === "stroke") calls.push(k); }; } });
+  const pal = { a: { c: "#123456" } };
+  P.drawShapes(ctx, [{ t: "path", d: [["M", 0, 0], ["L", 1, 0], ["L", 0, 1], ["Z"]], fill: "a", fo: 0.4, stroke: "a", so: 0.25, w: 0.1 }], 10, 0, pal, false);
+  ctx.globalAlpha = 0.5;
+  P.drawShapes(ctx, [{ t: "path", d: [["M", 0, 0], ["L", 1, 0], ["Z"]], fill: "a", fo: 0.5 }], 10, 0, pal, false);
+  assert.deepEqual(calls, [0.4, "fill", 0.25, "stroke", 1, 0.5, 0.25, "fill", 0.5], "each part at its own opacity, times what was set before; put back after");
+  assert.equal(P.opacityOf(undefined), 1); assert.equal(P.opacityOf(2), 1); assert.equal(P.opacityOf(-1), 0);
+  const svg = P.hatSvgFrom({ pal, shapes: [{ t: "ell", x: 0, y: 0, rx: 1, ry: 1, fill: "a", fo: 0.3, stroke: "a", so: 0.6, w: 0.1 }] }, 20, 20, "x");
+  assert.match(svg, /fill-opacity="0.3"/); assert.match(svg, /stroke-opacity="0.6"/);
+});
+
 test("studio import: every built-in pet draws the same from its shapes",
      { skip: fs.existsSync(IMPORTER) ? false : "Pet Studio not present" }, async () => {
   const I = await import(pathToFileURL(IMPORTER));

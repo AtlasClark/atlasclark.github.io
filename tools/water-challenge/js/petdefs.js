@@ -186,21 +186,27 @@ function drawEye(ctx, s, r, dead) {
 }
 
 /* Draws shapes at the current origin. */
+/* A shape's own opacity for its fill (fo) or outline (so), 0..1; missing = solid. */
+export const opacityOf = v => fin(v) ? Math.max(0, Math.min(1, v)) : 1;
+
 export function drawShapes(ctx, shapes, r, hue, pal, dead, finish) {
+  const ga = ctx.globalAlpha;
   for (const s of shapes) {
     if (s.show === "alive" && dead) continue;
     if (s.show === "dead" && !dead) continue;
     if (s.t === "eye") { drawEye(ctx, s, r, dead); continue; }
     tracePath(ctx, s, r);
-    if (s.fill) { ctx.fillStyle = colourOf(pal, s.fill, hue, finish); ctx.fill(); }
+    if (s.fill) { ctx.fillStyle = colourOf(pal, s.fill, hue, finish); ctx.globalAlpha = ga * opacityOf(s.fo); ctx.fill(); }
     if (s.stroke) {
       ctx.strokeStyle = colourOf(pal, s.stroke, hue, finish);
+      ctx.globalAlpha = ga * opacityOf(s.so);
       ctx.lineWidth = Math.max(1, (s.w || 0.05) * r);
       ctx.lineCap = s.cap === "round" ? "round" : "butt";
       ctx.lineJoin = s.cap === "round" ? "round" : "miter";
       ctx.stroke();
       ctx.lineCap = "butt"; ctx.lineJoin = "miter";
     }
+    ctx.globalAlpha = ga;
   }
 }
 
@@ -315,8 +321,9 @@ export function hatSvgFrom(hat, w, h, cls) {
   for (const s of hat.shapes) {
     if (s.show === "dead") continue;
     if (s.t === "eye") { parts.push('<circle cx="' + n4(s.x) + '" cy="' + n4(s.y) + '" r="' + n4(0.08 * (s.s || 1)) + '" fill="' + EYE_INK + '"/>'); continue; }
-    const paint = ' fill="' + (s.fill ? colourOf(hat.pal, s.fill, 0) : "none") + '"' +
-      (s.stroke ? ' stroke="' + colourOf(hat.pal, s.stroke, 0) + '" stroke-width="' + n4(s.w || 0.05) + '"' +
+    const fo = opacityOf(s.fo), so = opacityOf(s.so);
+    const paint = ' fill="' + (s.fill ? colourOf(hat.pal, s.fill, 0) : "none") + '"' + (s.fill && fo < 1 ? ' fill-opacity="' + n4(fo) + '"' : '') +
+      (s.stroke ? ' stroke="' + colourOf(hat.pal, s.stroke, 0) + '" stroke-width="' + n4(s.w || 0.05) + '"' + (so < 1 ? ' stroke-opacity="' + n4(so) + '"' : '') +
                   (s.cap === "round" ? ' stroke-linecap="round" stroke-linejoin="round"' : '') : '');
     if (s.t === "path") {
       parts.push('<path d="' + s.d.map(c => c[0] + c.slice(1).map(n4).join(" ")).join("") + '"' + paint + '/>');

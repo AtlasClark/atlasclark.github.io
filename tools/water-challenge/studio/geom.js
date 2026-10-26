@@ -242,7 +242,7 @@ export function straightenAll(s) {
   s.d = s.d.map(c => (c[0] === "Q" || c[0] === "C") ? ["L", c[c.length - 2], c[c.length - 1]] : c);
 }
 
-/* ---- solid outlines: Combine and Cut out ------------------------------------
+/* ---- solid outlines: Combine, Cut out and the pathfinder ---------------------
    Each shape becomes the area it paints (fill, plus its stroke as an outline);
    polygon-clipping (vendor/, MIT) unions or subtracts those areas. Output is
    GeoJSON-style multipolygons: [polygon], polygon = [outer ring, ...holes]. */
@@ -338,6 +338,46 @@ export function combine(shapes) { const a = shapes.map(areaOf).filter(m => m.len
 export function cutOut(subject, cutters) {
   const base = areaOf(subject), cuts = cutters.map(areaOf).filter(m => m.length);
   return cuts.length ? PC().difference(base, ...cuts) : base;
+}
+
+/* ---- pathfinder ----------------------------------------------------------------
+   shapes run bottom to top. Each op returns pieces [{ src, mp }]: src is the index in
+   shapes whose colour a piece takes, mp its area. Unite and Minus front keep the
+   lowest shape's colour (as Combine and Cut out always did); Minus back, Intersect
+   and Exclude the top one's; Divide, Trim and Crop keep each part's own colour. */
+export const PATHFINDER = ["unite", "minusFront", "minusBack", "intersect", "exclude", "divide", "trim", "crop"];
+const some = mp => mp && mp.length > 0;
+const uni = list => { const l = list.filter(some); return l.length ? PC().union(...l) : []; };
+export function pathfinder(op, shapes) {
+  const A = shapes.map(areaOf), top = A.length - 1;
+  const above = i => uni(A.slice(i + 1));
+  const minus = (a, b) => some(a) && some(b) ? PC().difference(a, b) : a;
+  const out = [];
+  const put = (src, mp) => { if (some(mp)) out.push({ src, mp }); };
+  if (op === "unite") put(0, uni(A));
+  else if (op === "minusFront") put(0, minus(A[0], uni(A.slice(1))));
+  else if (op === "minusBack") put(top, minus(A[top], uni(A.slice(0, top))));
+  else if (op === "intersect") put(top, A.some(m => !some(m)) ? [] : PC().intersection(...A));
+  else if (op === "exclude") { const l = A.filter(some); put(top, l.length ? PC().xor(...l) : []); }
+  else if (op === "trim") for (let i = 0; i <= top; i++) put(i, minus(A[i], above(i)));
+  else if (op === "crop") {
+    const frame = A[top];
+    if (some(frame)) for (let i = 0; i < top; i++) { const v = minus(A[i], uni(A.slice(i + 1, top))); if (some(v)) put(i, PC().intersection(v, frame)); }
+  } else if (op === "divide") {
+    /* every region where the overlaps differ is its own piece, in the colour on top there */
+    for (let i = top; i >= 0; i--) {
+      let pieces = [minus(A[i], above(i))];
+      for (let j = i - 1; j >= 0; j--) {
+        if (!some(A[j])) continue;
+        const next = [];
+        for (const p of pieces) { next.push(PC().intersection(p, A[j]), PC().difference(p, A[j])); }
+        pieces = next.filter(some);
+      }
+      for (const p of pieces) for (const poly of p) put(i, [poly]);
+    }
+    out.reverse();                                              /* bottom to top, like the list */
+  } else throw new Error("unknown pathfinder op " + op);
+  return out;
 }
 
 /* A multipolygon as one path: a closed sub-path per ring, straight edges, thinned. */

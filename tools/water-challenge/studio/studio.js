@@ -5,7 +5,7 @@
 
 import * as C from "../js/config.js";
 import { defs, hats, HAT_KEYS, HOLIDAY_KEYS, CUP_KEYS, FX_KEYS, colourOf, PET_DEFS_FORMAT, fxSpot, medalSpot, drawShapes, ZONES, zoneOf,
-         bodySpan, depthShare } from "../js/petdefs.js";
+         bodySpan, depthShare, opacityOf } from "../js/petdefs.js";
 import { COSMETICS } from "../js/cosmetics.js";
 import { CUP_PLACE, CUP_H } from "../js/styleart.js";
 import { drawPortrait, critterCrown, drawHeadstone, drawCoin, drawMedal } from "../js/art.js";
@@ -14,7 +14,7 @@ import { Editor, TOOL_HINTS } from "./editor.js";
 import { Preview } from "./preview.js";
 import * as G from "./geom.js";
 
-const REV = "studio 1.16.4";
+const REV = "studio 1.17.0";
 const PETS_URL = "../pets/pets.json";
 const $ = id => document.getElementById(id);
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -34,7 +34,8 @@ const W = {
   base: {},               /* item -> its drawing in the file as last read or written (canon JSON) */
   baseSig: null,          /* that file's lastModified:size, to spot someone else's save */
   touched: new Set(),     /* items changed here since then */
-  tryOn: 0                /* the pet shown under a hat while it is edited */
+  tryOn: 0,               /* the pet shown under a hat while it is edited */
+  openGroups: new Set()   /* groups shown open in the shapes list (folded by default) */
 };
 
 /* Items are pet kinds and the hats and props ("crown", "jester", "grave", "coin"). A hat or
@@ -118,7 +119,7 @@ const app = {
   get lastStroke() { return this.def && this.def.pal[W.lastStroke] ? W.lastStroke : firstKey(); },
   get ref() { const r = W.refs[W.kind]; return r && r[W.pose]; },
   get refDrag() { return W.refDrag; },
-  begin, commit, cancel, live, add,
+  begin, commit, cancel, live, add, groupOf,
   selChanged() { renderPanels(); editor.redraw(); },
   coords(w) { $("coords").textContent = w ? "x " + w[0].toFixed(3) + "  y " + w[1].toFixed(3) + " r  ·  " + Math.round(editor.view.z) + " px/r" : ""; },
   toast
@@ -202,10 +203,46 @@ function duplicateSel(M) {
   const list = app.shapes;
   if (!list || !W.sel.size) return;
   change(() => {
-    const copies = selIdx().map(i => G.mapShape(list[i], M || G.translateM(0.04, 0.04), false));
+    const copies = regroup(selIdx().map(i => G.mapShape(list[i], M || G.translateM(0.04, 0.04), false)), list);
     W.sel.clear();
     for (const c of copies) { list.push(c); W.sel.add(list.length - 1); }
   });
+}
+
+/* ---- groups ---------------------------------------------------------------------
+   A group is the shapes sharing a "g" id, kept together in the list. The page draws
+   them as before (it ignores g); the studio selects, moves and folds them as one. */
+function groupOf(i) {
+  const list = app.shapes, g = list && list[i] && list[i].g;
+  return g ? list.map((s, j) => s.g === g ? j : -1).filter(j => j >= 0) : [i];
+}
+function newGroupId(list, taken = new Set()) {
+  const used = new Set([...list.map(s => s.g).filter(Boolean), ...taken]);
+  let n = 1;
+  while (used.has("g" + n)) n++;
+  return "g" + n;
+}
+/* Copies get their own group ids, so they never join the group they were copied from. */
+function regroup(shapes, list) {
+  const map = {}, taken = new Set();
+  for (const c of shapes) if (c.g) { if (!map[c.g]) { map[c.g] = newGroupId(list, taken); taken.add(map[c.g]); } c.g = map[c.g]; }
+  return shapes;
+}
+function groupSel() {
+  const list = app.shapes, idx = selIdx();
+  if (!list || idx.length < 2) { toast("Select two or more shapes to group."); return; }
+  change(() => {
+    const id = newGroupId(list.filter((_, i) => !W.sel.has(i))), picked = idx.map(i => list[i]);
+    const rest = list.filter((_, i) => !W.sel.has(i));
+    rest.splice(idx[idx.length - 1] + 1 - idx.length, 0, ...picked);       /* together, where the top one was */
+    list.length = 0; list.push(...rest);
+    for (const sh of picked) sh.g = id;
+    W.sel = new Set(picked.map(sh => list.indexOf(sh)));
+  });
+}
+function ungroupSel() {
+  if (!selIdx().some(i => app.shapes[i].g)) { toast("Nothing grouped is selected."); return; }
+  editSel(sh => { delete sh.g; return sh; });
 }
 function mirrorSel() {
   const b = G.bounds(selIdx().map(i => app.shapes[i]));
@@ -232,30 +269,49 @@ function reorder(dir) {           /* 1 forward, -1 back, 2 front, -2 back-most *
     }
   });
 }
-/* Combine: the selected shapes and strokes become one solid shape in the colour of
-   the lowest one. Cut out: the lowest keeps its colour and loses what the others
-   cover. Eyes stay separate. */
-function combineSel(cut) {
+/* Pathfinder (geom.js): the selected shapes and strokes become solid shapes. Unite
+   (Combine, Ctrl+E) and Minus front (Cut out) were the first two. Results that come
+   in pieces (Divide, Trim, Crop) are grouped. Eyes stay separate. */
+const PF = {
+  unite:      ["Unite", "Merge into one shape, in the lowest one's colour; strokes become solid (Ctrl+E)"],
+  minusFront: ["Minus front", "Cut the upper shapes out of the lowest one"],
+  minusBack:  ["Minus back", "Cut the lower shapes out of the top one"],
+  intersect:  ["Intersect", "Keep only where they all overlap, in the top one's colour"],
+  exclude:    ["Exclude", "Keep where they don't overlap: overlaps become holes, in the top one's colour"],
+  divide:     ["Divide", "Split into every separate piece, each in the colour seen there"],
+  trim:       ["Trim", "Remove the parts hidden behind others; each keeps its colour"],
+  crop:       ["Crop", "Cut everything below to the top shape's outline; the top shape goes"]
+};
+function pathfinderSel(op) {
   const list = app.shapes;
   if (!list) return;
   const idx = selIdx().filter(i => list[i].t !== "eye");
   if (!idx.length) { toast("Select shapes or strokes first. Eyes stay separate."); return; }
-  if (cut && idx.length < 2) { toast("Select a shape and what to cut from it. The lowest one keeps its colour."); return; }
-  const base = list[idx[0]], parts = idx.map(i => list[i]);
-  let d;
-  try { d = G.areaToPath(cut ? G.cutOut(parts[0], parts.slice(1)) : G.combine(parts)); }
-  catch (e) { toast("Could not combine: " + (e.message || e)); return; }
-  const shows = new Set(parts.map(s => s.show || ""));
+  if (op !== "unite" && idx.length < 2) { toast("Select two or more shapes for " + PF[op][0] + "."); return; }
+  const parts = idx.map(i => list[i]);
+  let pieces;
+  try { pieces = G.pathfinder(op, parts); }
+  catch (e) { toast("Could not do " + PF[op][0] + ": " + (e.message || e)); return; }
+  const shows = new Set(parts.map(p => p.show || "")), groups = new Set(parts.map(p => p.g || ""));
+  const outs = pieces.map(pc => {
+    const src = parts[pc.src], d = G.areaToPath(pc.mp);
+    if (!d) return null;
+    const o = { t: "path", d, fill: src.fill || src.stroke }, op1 = src.fill ? src.fo : src.so;
+    if (op1 !== undefined && op1 < 1) o.fo = op1;
+    const show = pieces.length === 1 ? (shows.size === 1 ? src.show : "") : src.show;
+    if (show) o.show = show;
+    return o;
+  }).filter(Boolean);
+  const keep = list.filter((_, i) => !idx.includes(i));
+  const gid = outs.length > 1 ? newGroupId(keep) : groups.size === 1 && parts[0].g ? parts[0].g : "";
+  for (const o of outs) if (gid) o.g = gid;
   change(() => {
-    const out = { t: "path", d: d || [], fill: base.fill || base.stroke };
-    if (shows.size === 1 && base.show) out.show = base.show;
-    const keep = list.filter((_, i) => !idx.includes(i));
-    const at = idx[0] - idx.filter(i => i < idx[0]).length;
     list.length = 0; list.push(...keep);
-    W.sel.clear();
-    if (d) { list.splice(at, 0, out); W.sel.add(at); }
+    list.splice(idx[0], 0, ...outs);                                   /* where the lowest one was */
+    W.sel = new Set(outs.map((_, n) => idx[0] + n));
   });
-  if (!d) toast("Nothing was left, so the shapes were removed. Undo brings them back.");
+  if (!outs.length) toast("Nothing was left, so the shapes were removed. Undo brings them back.");
+  else if (outs.length > 1) toast(PF[op][0] + ": " + outs.length + " pieces, grouped.");
 }
 
 function nudge(dx, dy) { editSel(s => G.mapShape(s, G.translateM(dx, dy))); }
@@ -272,7 +328,8 @@ function paste() {
   change(() => {
     for (const [k, v] of Object.entries(W.clip.pal)) if (!app.def.pal[k]) app.def.pal[k] = G.clone(v);
     W.sel.clear();
-    for (const s of W.clip.shapes) { app.shapes.push(same ? G.mapShape(s, G.translateM(0.04, 0.04), false) : G.clone(s)); W.sel.add(app.shapes.length - 1); }
+    const copies = regroup(W.clip.shapes.map(s => same ? G.mapShape(s, G.translateM(0.04, 0.04), false) : G.clone(s)), app.shapes);
+    for (const c of copies) { app.shapes.push(c); W.sel.add(app.shapes.length - 1); }
   });
 }
 
@@ -292,13 +349,14 @@ const idb = (() => {
 })();
 
 let saveTimer = 0;
+function writeDraft() {
+  const pets = {};
+  for (const [k, p] of Object.entries(W.pets)) if (p.edited) pets[k] = p.def;
+  return idb.set("draft", { pets, base: W.base, refs: W.refs, dirty: W.dirty, at: Date.now() }).catch(() => { });
+}
 function autosave() {
   clearTimeout(saveTimer);
-  saveTimer = setTimeout(() => {
-    const pets = {};
-    for (const [k, p] of Object.entries(W.pets)) if (p.edited) pets[k] = p.def;
-    idb.set("draft", { pets, base: W.base, refs: W.refs, dirty: W.dirty, at: Date.now() }).catch(() => { });
-  }, 500);
+  saveTimer = setTimeout(writeDraft, 500);
   renderSaveState();
 }
 
@@ -715,12 +773,14 @@ function shapeTab() {
   if (!sel.length) {
     return '<h4>Nothing selected</h4><p class="note">Pick a tool above and draw, or click a shape. Every shape takes a colour from the Colours tab; ' +
       'pet colours follow each pet&rsquo;s own hue in the game.</p>' +
-      '<p class="note"><kbd>Del</kbd> delete &middot; <kbd>Ctrl D</kbd> duplicate &middot; <kbd>Ctrl E</kbd> combine into one solid shape &middot; <kbd>Ctrl C/V</kbd> copy between pets &middot; <kbd>M</kbd> mirror &middot; ' +
+      '<p class="note"><kbd>Del</kbd> delete &middot; <kbd>Ctrl D</kbd> duplicate &middot; <kbd>Ctrl E</kbd> unite into one solid shape &middot; <kbd>Ctrl G</kbd> group, <kbd>Ctrl Shift G</kbd> ungroup &middot; <kbd>Ctrl C/V</kbd> copy between pets &middot; <kbd>M</kbd> mirror &middot; ' +
       '<kbd>Shift M</kbd> mirrored copy across the centre line &middot; <kbd>[ ]</kbd> order &middot; arrows nudge &middot; wheel zoom &middot; Space or right-drag pan &middot; <kbd>0</kbd> fit</p>';
   }
   const all = (f) => { const v = sel.map(s => s[f] ?? ""); return v.every(x => x === v[0]) ? v[0] : "mixed"; };
   const eyesOnly = sel.every(s => s.t === "eye"), h = [];
-  if (sel.length > 1) h.push('<h4>' + sel.length + ' shapes</h4>');
+  const gs = new Set(sel.map(s => s.g || "")), oneGroup = gs.size === 1 && sel[0].g && groupOf(selIdx()[0]).length === sel.length;
+  if (oneGroup) h.push('<h4>Group of ' + sel.length + '</h4>');
+  else if (sel.length > 1) h.push('<h4>' + sel.length + ' shapes</h4>');
   else h.push('<h4>' + ({ ell: "Ellipse", path: G.isClosed(sel[0]) ? "Shape" : "Line", eye: "Eye" })[sel[0].t] + '</h4>');
   if (!eyesOnly) {
     h.push('<div class="row"><label>Fill</label><select data-f="fill">' + palOptions(all("fill"), "none") + '</select></div>');
@@ -729,6 +789,14 @@ function shapeTab() {
     h.push('<div class="row"><label>Width</label><input type="range" data-f="w" min="0.5" max="40" step="0.5" value="' + (w === "mixed" || w === "" ? W.brush * 100 : w * 100) + '">' +
            '<span class="val">' + (w === "mixed" ? "&ndash;" : w === "" ? "&ndash;" : (w * 100).toFixed(1)) + '</span></div>');
     h.push('<div class="row"><label>Ends</label><select data-f="cap"><option value="">square</option><option value="round"' + (all("cap") === "round" ? " selected" : "") + '>round</option></select></div>');
+    /* this shape's own see-through, apart from its colour's alpha */
+    const op = (f, has) => { const v = sel.filter(has).map(s => s[f] ?? 1); return !v.length ? null : v.every(x => x === v[0]) ? v[0] : "mixed"; };
+    for (const [f, label, has] of [["fo", "Fill opacity", s => s.fill], ["so", "Outline opacity", s => s.stroke]]) {
+      const v = op(f, has);
+      if (v === null) continue;
+      h.push('<div class="row"><label>' + label + '</label><input type="range" data-f="' + f + '" min="0" max="100" step="5" value="' + (v === "mixed" ? 100 : Math.round(v * 100)) + '">' +
+             '<span class="val">' + (v === "mixed" ? "&ndash;" : Math.round(v * 100) + "%") + '</span></div>');
+    }
   }
   const show = all("show");
   h.push('<div class="row"><label>Shows</label><select data-f="show"><option value="">alive and drowned</option>' +
@@ -759,11 +827,18 @@ function shapeTab() {
     '<button type="button" class="btn small" data-act="dup">Duplicate</button>' +
     '<button type="button" class="btn small" data-act="mirror">Mirror</button>' +
     '<button type="button" class="btn small" data-act="mirrorx" title="A mirrored copy across the centre line (x = 0)">Mirror copy</button>' +
-    '<button type="button" class="btn small" data-act="combine" title="Merge into one solid shape in the colour of the lowest; strokes become solid (Ctrl+E)">Combine</button>' +
-    (sel.length > 1 ? '<button type="button" class="btn small" data-act="cutout" title="Cut the upper shapes out of the lowest one">Cut out</button>' : '') +
+    (sel.length > 1 && !oneGroup ? '<button type="button" class="btn small" data-act="group" title="Keep them together: a click selects all of them (Ctrl+G)">Group</button>' : '') +
+    (sel.some(s => s.g) ? '<button type="button" class="btn small" data-act="ungroup" title="Separate shapes again (Ctrl+Shift+G)">Ungroup</button>' : '') +
     '<button type="button" class="btn small" data-act="front">To front</button>' +
     '<button type="button" class="btn small" data-act="back">To back</button>' +
     '<button type="button" class="btn small danger" data-act="del">Delete</button></div>');
+  if (!eyesOnly) {
+    const many = sel.filter(s => s.t !== "eye").length > 1;
+    h.push('<div class="sep"></div><h4>Pathfinder</h4><div class="btns pf">' +
+      Object.entries(PF).filter(([k]) => many || k === "unite").map(([k, [name, tip]]) =>
+        '<button type="button" class="btn small" data-pf-op="' + k + '" title="' + esc(tip) + '">' + name + '</button>').join("") + '</div>' +
+      (many ? '' : '<p class="note">Select two or more shapes for the others.</p>'));
+  }
   return h.join("");
 }
 
@@ -956,19 +1031,38 @@ function refTab() {
   return h.join("");
 }
 
+/* Top of the list = drawn last. A run of shapes sharing a group id gets a header row
+   that folds; a group with only some members selected opens by itself. */
 function renderLayers() {
   const list = app.shapes, el = $("layers");
   if (!list) { el.innerHTML = '<p class="note" style="padding:6px">No portrait drawing.</p>'; return; }
   const pal = app.def.pal, h = [];
-  for (let i = list.length - 1; i >= 0; i--) {
+  const swatch = s => {
+    const col = s.t === "eye" ? "#2a2118" : colourOf(pal, s.fill || s.stroke, W.hue);
+    return '<span class="sw' + (!s.fill && s.stroke ? " stroke" : "") + '" style="background:' + col + ';border-color:' + col +
+           ';opacity:' + opacityOf(s.fill ? s.fo : s.so) + '"></span>';
+  };
+  const row = (i, member) => {
     const s = list[i];
     const label = s.t === "eye" ? "Eye" : s.t === "ell" ? ((s.a1 ?? G.TAU) - (s.a0 ?? 0) < 6.28 ? (s.chord ? "Dome" : "Arc") : Math.abs(s.rx - s.ry) < 1e-4 ? "Circle" : "Ellipse")
                 : G.isClosed(s) ? "Shape · " + G.anchorCount(s) + " pts" : "Line · " + G.anchorCount(s) + " pts";
-    const col = s.t === "eye" ? "#2a2118" : colourOf(pal, s.fill || s.stroke, W.hue);
-    h.push('<div class="layer' + (W.sel.has(i) ? " on" : "") + '" data-i="' + i + '" draggable="true">' +
-      '<span class="ix">' + (i + 1) + '</span><span class="sw' + (!s.fill && s.stroke ? " stroke" : "") + '" style="background:' + col + ';border-color:' + col + '"></span>' +
+    return '<div class="layer' + (member ? " member" : "") + (W.sel.has(i) ? " on" : "") + '" data-i="' + i + '" draggable="true">' +
+      '<span class="ix">' + (i + 1) + '</span>' + swatch(s) +
       '<span class="ln">' + label + (s.t !== "eye" ? ' <span class="dim">' + esc([s.fill, s.stroke].filter(Boolean).join(" / ")) + '</span>' : '') + '</span>' +
-      (s.show ? '<span class="tag ' + s.show + '">' + (s.show === "dead" ? "drowned" : "alive") + '</span>' : '') + '</div>');
+      (s.show ? '<span class="tag ' + s.show + '">' + (s.show === "dead" ? "drowned" : "alive") + '</span>' : '') + '</div>';
+  };
+  for (let i = list.length - 1; i >= 0; i--) {
+    const g = list[i].g;
+    if (!g) { h.push(row(i, false)); continue; }
+    let lo = i;
+    while (lo > 0 && list[lo - 1].g === g) lo--;
+    const n = i - lo + 1, picked = Array.from({ length: n }, (_, k) => W.sel.has(lo + k)), all = picked.every(Boolean);
+    const open = W.openGroups.has(g) || (picked.some(Boolean) && !all);
+    h.push('<div class="layer group' + (all ? " on" : "") + (open ? " open" : "") + '" data-g="' + esc(g) + '" data-top="' + i + '" data-lo="' + lo + '" draggable="true">' +
+      '<button type="button" class="tw" data-fold title="' + (open ? "Fold" : "Unfold") + '" aria-expanded="' + open + '">' + (open ? "&#9662;" : "&#9656;") + '</button>' +
+      swatch(list[i]) + '<span class="ln">Group <span class="dim">' + n + ' shapes</span></span></div>');
+    if (open) for (let k = i; k >= lo; k--) h.push(row(k, true));
+    i = lo;
   }
   el.innerHTML = h.join("") || '<p class="note" style="padding:6px">Nothing drawn yet.</p>';
 }
@@ -989,8 +1083,8 @@ function act(a, el) {
     case "dup": return duplicateSel();
     case "mirror": return mirrorSel();
     case "mirrorx": return duplicateSel(G.scaleM(0, 0, -1, 1));
-    case "combine": return combineSel(false);
-    case "cutout": return combineSel(true);
+    case "group": return groupSel();
+    case "ungroup": return ungroupSel();
     case "front": return reorder(2);
     case "back": return reorder(-2);
     case "del": return deleteSel();
@@ -1086,6 +1180,8 @@ function wire() {
   /* side panel */
   const body = $("tabBody");
   body.addEventListener("click", e => {
+    const pf = e.target.closest("[data-pf-op]");
+    if (pf) return pathfinderSel(pf.dataset.pfOp);
     const b = e.target.closest("[data-act]");
     if (b && b.tagName === "BUTTON") return act(b.dataset.act, b);
     const pb = e.target.closest("[data-pact]");
@@ -1098,6 +1194,18 @@ function wire() {
   body.addEventListener("input", e => {
     const t = e.target;
     if (t.dataset.f === "hue") { W.hue = Number(t.value); t.nextElementSibling.textContent = t.value; editor.redraw(); refreshSwatches(); return; }
+    if ((t.dataset.f === "fo" || t.dataset.f === "so") && t.type === "range") {
+      const f = t.dataset.f, v = Number(t.value) / 100;
+      t.nextElementSibling.textContent = t.value + "%";
+      begin();
+      for (const i of W.sel) {
+        const sh = app.shapes[i];
+        if (!sh || sh.t === "eye" || !(f === "fo" ? sh.fill : sh.stroke)) continue;
+        if (v >= 1) delete sh[f]; else sh[f] = v;
+      }
+      live();
+      return;
+    }
     if (t.dataset.f === "w" && t.type === "range") {
       t.nextElementSibling.textContent = Number(t.value).toFixed(1);
       begin();
@@ -1113,7 +1221,7 @@ function wire() {
   body.addEventListener("change", e => {
     const t = e.target;
     if (t.dataset.f === "hue") return;
-    if (t.dataset.f === "w") { commit(); return; }
+    if (t.dataset.f === "w" || t.dataset.f === "fo" || t.dataset.f === "so") { commit(); return; }
     if (t.dataset.f === "tryon") { W.tryOn = Number(t.value); editor.redraw(); return; }
     if (t.dataset.f === "name") { const v = t.value.trim(); change(() => { if (v && v !== baseName(W.kind)) app.def.name = v.slice(0, 24); else app.def.name = ""; }); return; }
     if (t.dataset.f === "zone") { change(() => { app.def.zone = t.value === "middle" || t.value === "bottom" ? t.value : undefined; }); return; }
@@ -1157,33 +1265,49 @@ function wire() {
     }
   });
 
-  /* layers: click to select, drag to reorder */
+  /* layers: click to select (a group row selects the group), drag to reorder */
   const layers = $("layers");
-  let dragFrom = -1;
+  let dragFrom = null;                                                /* { lo, hi, group } of the rows dragged */
+  const ROW = "[data-i],[data-g]";
+  const rangeOf = row => row.dataset.g ? { lo: Number(row.dataset.lo), hi: Number(row.dataset.top), group: true }
+                                       : { lo: Number(row.dataset.i), hi: Number(row.dataset.i), group: false };
   layers.addEventListener("click", e => {
-    const row = e.target.closest("[data-i]"); if (!row) return;
-    const i = Number(row.dataset.i);
-    if (e.shiftKey || e.ctrlKey) { if (W.sel.has(i)) W.sel.delete(i); else W.sel.add(i); } else { W.sel.clear(); W.sel.add(i); }
+    const row = e.target.closest(ROW); if (!row) return;
+    if (row.dataset.g && e.target.closest("[data-fold]")) {
+      if (row.classList.contains("open")) W.openGroups.delete(row.dataset.g); else W.openGroups.add(row.dataset.g);
+      renderLayers();
+      return;
+    }
+    const r = rangeOf(row), ids = Array.from({ length: r.hi - r.lo + 1 }, (_, k) => r.lo + k);
+    if (e.shiftKey || e.ctrlKey) { const on = ids.every(i => W.sel.has(i)); for (const i of ids) on ? W.sel.delete(i) : W.sel.add(i); }
+    else { W.sel.clear(); for (const i of ids) W.sel.add(i); }
     renderPanels(); editor.redraw();
   });
-  layers.addEventListener("dragstart", e => { const row = e.target.closest("[data-i]"); dragFrom = row ? Number(row.dataset.i) : -1; });
+  layers.addEventListener("dragstart", e => { const row = e.target.closest(ROW); dragFrom = row ? rangeOf(row) : null; });
   layers.addEventListener("dragover", e => {
     e.preventDefault();
     for (const r of layers.querySelectorAll(".drop-above")) r.classList.remove("drop-above");
-    const row = e.target.closest("[data-i]"); if (row) row.classList.add("drop-above");
+    const row = e.target.closest(ROW); if (row) row.classList.add("drop-above");
   });
   layers.addEventListener("drop", e => {
     e.preventDefault();
-    const row = e.target.closest("[data-i]");
-    if (!row || dragFrom < 0) return;
-    const to = Number(row.dataset.i);
-    if (to === dragFrom) { renderLayers(); return; }
+    const row = e.target.closest(ROW), from = dragFrom;
+    dragFrom = null;
+    if (!row || !from) { renderLayers(); return; }
+    const list = app.shapes, onto = rangeOf(row);
+    if (onto.hi >= from.lo && onto.hi <= from.hi) { renderLayers(); return; }   /* dropped on itself */
+    /* It lands just above the row it was dropped on (above the whole group, for a group
+       row). A shape dropped on a group member's row joins that group; one dropped
+       anywhere else leaves its own. A dragged group stays whole. */
+    let target = list[onto.hi];
+    const member = !onto.group && row.classList.contains("member");
+    if (from.group && member) target = list[Number(layers.querySelector('[data-g="' + CSS.escape(target.g) + '"]').dataset.top)];
     change(() => {
-      const list = app.shapes, [s] = list.splice(dragFrom, 1);
-      list.splice(dragFrom < to ? to : to + 1, 0, s);          /* lands just above the row it was dropped on */
-      W.sel.clear(); W.sel.add(list.indexOf(s));
+      const moved = list.splice(from.lo, from.hi - from.lo + 1);
+      if (!from.group) { if (member) moved[0].g = target.g; else delete moved[0].g; }
+      list.splice(list.indexOf(target) + 1, 0, ...moved);
+      W.sel = new Set(moved.map(m => list.indexOf(m)));
     });
-    dragFrom = -1;
   });
 
   /* keys */
@@ -1197,7 +1321,8 @@ function wire() {
     if (ctrl && k.toLowerCase() === "y") { e.preventDefault(); undo(true); return; }
     if (ctrl && k.toLowerCase() === "s") { e.preventDefault(); saveToRepo(); return; }
     if (ctrl && k.toLowerCase() === "d") { e.preventDefault(); duplicateSel(); return; }
-    if (ctrl && k.toLowerCase() === "e") { e.preventDefault(); combineSel(false); return; }
+    if (ctrl && k.toLowerCase() === "e") { e.preventDefault(); pathfinderSel("unite"); return; }
+    if (ctrl && k.toLowerCase() === "g") { e.preventDefault(); if (e.shiftKey) ungroupSel(); else groupSel(); return; }
     if (ctrl && k.toLowerCase() === "c") { copySel(); return; }
     if (ctrl && k.toLowerCase() === "v") { paste(); return; }
     if (ctrl && k.toLowerCase() === "a") { e.preventDefault(); W.sel = new Set((app.shapes || []).map((_, i) => i)); renderPanels(); editor.redraw(); return; }
@@ -1215,12 +1340,41 @@ function wire() {
     if (arrows[k] && W.sel.size) { e.preventDefault(); nudge(...arrows[k]); }
   });
   window.addEventListener("keyup", e => { if (e.key === " ") editor.space = false; });
-  window.addEventListener("beforeunload", e => { if (W.dirty) { e.preventDefault(); e.returnValue = ""; } });
+  window.addEventListener("beforeunload", e => { if (W.dirty && !reloading) { e.preventDefault(); e.returnValue = ""; } });
+  $("updateGo").onclick = freshReload;
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) checkVersion(); });
 }
 
 function refreshSwatches() {
   for (const it of document.querySelectorAll(".pal-item")) it.querySelector(".sw").style.background = colourOf(app.def.pal, it.dataset.pk, W.hue);
   editor.redraw();
+}
+
+/* ---- updates --------------------------------------------------------------------
+   The studio and the page modules it draws with, as published, read past every cache.
+   A newer one shows a banner; Reload saves the draft, refetches every file (a plain
+   reload can keep cached modules and mix two versions) and reloads. */
+const STUDIO_FILES = ["./", "studio.js", "editor.js", "geom.js", "preview.js", "importer.js", "studio.css"];
+let reloading = false;
+async function publishedRevs() {
+  const get = f => fetch(f + "?check=" + Date.now(), { cache: "no-store" }).then(r => r.ok ? r.text() : "").catch(() => "");
+  const [st, cf] = await Promise.all([get("studio.js"), get("../js/config.js")]);
+  return { studio: (/const REV = "([^"]+)"/.exec(st) || [])[1] || "", page: (/REV\s*=\s*"([^"]+)"/.exec(cf) || [])[1] || "" };
+}
+async function checkVersion() {
+  const r = await publishedRevs();
+  const studio = r.studio && r.studio !== REV, page = r.page && r.page !== C.REV;
+  if (!studio && !page) return;
+  $("updateRev").textContent = studio ? r.studio : "page " + r.page;
+  $("updateNote").hidden = false;
+}
+async function freshReload() {
+  clearTimeout(saveTimer);
+  await writeDraft();
+  const files = [...STUDIO_FILES, ...C.SITE_FILES.filter(f => f.startsWith("js/") || f.startsWith("pets/")).map(f => "../" + f)];
+  await Promise.all(files.map(f => fetch(f, { cache: "reload" }).catch(() => { })));
+  reloading = true;
+  location.reload();
 }
 
 /* ---- the start note ------------------------------------------------------------ */
@@ -1294,6 +1448,8 @@ async function start() {
   if (note) toast(note);
   startNote();
   setInterval(() => { watchFile().catch(() => { }); }, WATCH_MS);
+  checkVersion();
+  setInterval(() => { if (!document.hidden) checkVersion(); }, C.VERSION_CHECK_MS);
   window.STUDIO = { W, app, editor, petsJson, syncDefs, watchFile };     /* for checks from the console */
 }
 

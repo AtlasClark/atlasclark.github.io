@@ -5,7 +5,7 @@
   them, and saves tools/water-challenge/pets/pets.json into a local copy of the repo
   (Chrome or Edge). Commit and push that file to publish. Stores nothing on the site.
   vendor/polygon-clipping.umd.js: polygon-clipping 0.15.7 (MIT, Mike Fogel), unmodified,
-  used by Combine and Cut out.
+  used by the pathfinder (Unite, Minus front, Minus back, Intersect, Exclude, Divide, Trim, Crop).
 -->
 <html lang="en">
 <head>
@@ -39,6 +39,11 @@
   <span id="startText"></span>
   <button type="button" id="startAct" class="btn small primary" hidden></button>
   <button type="button" id="startX" class="start-x" title="Hide" aria-label="Hide this note">&times;</button>
+</div>
+
+<div id="updateNote" class="update-note" role="status" hidden>
+  <span>A new studio version is out (<b id="updateRev"></b>). Your unsaved work comes back after the reload.</span>
+  <button type="button" id="updateGo" class="btn small primary">Reload</button>
 </div>
 
 <main class="studio">
