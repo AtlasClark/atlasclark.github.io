@@ -5,7 +5,7 @@
 import { drawCritter, drawPortrait, drawHeadstone, drawCoin, drawGoldPile, drawMedal } from "../js/art.js";
 import { hats, hatSvgFrom, fxSpot, anchorY, zoneOf, restY } from "../js/petdefs.js";
 import { drawEffect, drawDecor } from "../js/cosmetics.js";
-import { UNDERWATER_TINT, SWIM_RANGE, WALL_GAP_R } from "../js/config.js";
+import { UNDERWATER_TINT, SWIM_RANGE, WALL_GAP_R, FLOOR_GAP } from "../js/config.js";
 import { bounds } from "./geom.js";
 
 const css = name => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
@@ -130,7 +130,7 @@ export class Preview {
     if (app.kind === "grave") {
       const gw = Math.min(104, gh * 0.7), r = Math.min(gw * 0.26, 30);
       [0, 120, 240].forEach((dh, i) => {
-        this.glass(x, top, gw, gh, 0, L => drawHeadstone(L, x + gw / 2, top + gh - 4, r, (app.hue + dh) % 360), i ? "" : "drained glasses");
+        this.glass(x, top, gw, gh, 0, L => drawHeadstone(L, x + gw / 2, top + gh - FLOOR_GAP, r, (app.hue + dh) % 360), i ? "" : "drained glasses");
         x += gw + 12;
       });
       x += 14;
@@ -185,7 +185,7 @@ export class Preview {
     const b = app.def ? bounds(app.def.swim.filter(q => q.show !== "dead")) : null, reach = b ? Math.max(-b.x0, b.x1) * r1 : r1;
     const amp = Math.max(0, Math.min(gw * SWIM_RANGE * app.range, gw / 2 - reach - r1 * WALL_GAP_R));
     /* where it lives (zone), at low, half and full water, with the page's bob for that zone */
-    const z = zoneOf(app.def), floor = top + gh - 4;
+    const z = zoneOf(app.def), floor = top + gh - FLOOR_GAP;
     const bob = z === "bottom" ? -Math.abs(Math.sin(t * 1.6 * Math.PI)) * r1 * 0.06 : z === "middle" ? Math.sin(t * 1.3) * r1 * 0.12 : Math.sin(t * 2.1) * r1 * 0.05;
     [0.15, 0.5, 0.92].forEach((lv, i) => {
       this.glass(x, top, gw, gh, lv, (L, s) => {
@@ -200,7 +200,7 @@ export class Preview {
     /* close-up */
     const cw = Math.min(170, gh * 1.15), r2 = Math.min(gh * 0.26, 34);
     this.glass(x, top, cw, gh, 0.5, (L, s) => {
-      const cy = anchorY(app.def, r2, s, top + gh - 4, true) + Math.sin(t * 2.1) * r2 * 0.04, spot = app.fx && app.def ? fxSpot(app.def) : null;
+      const cy = anchorY(app.def, r2, s, top + gh - FLOOR_GAP, true) + Math.sin(t * 2.1) * r2 * 0.04, spot = app.fx && app.def ? fxSpot(app.def) : null;
       if (spot) drawEffect(L, "aura", x + cw / 2 + spot[0] * r2, cy + spot[1] * r2, r2, t, hue, "back");
       drawCritter(L, x + cw / 2, cy, r2, Math.sin(t * 1.3) * 0.05, crown, false, k, hue, false, null, app.medal);
       if (spot) drawEffect(L, "sparkles", x + cw / 2 + spot[0] * r2, cy + spot[1] * r2, r2, t, hue, "front");
@@ -209,7 +209,7 @@ export class Preview {
 
     /* drowned: upside down on the bottom, as the glass rests it */
     this.glass(x, top, gw, gh, 0.7, (L) => {
-      drawCritter(L, x + gw / 2, restY(app.def, r1, top + gh - 4, true), r1, Math.PI, false, true, k, hue, false);
+      drawCritter(L, x + gw / 2, restY(app.def, r1, top + gh - FLOOR_GAP, true), r1, Math.PI, false, true, k, hue, false);
     }, "drowned");
     x += gw + 26;
 

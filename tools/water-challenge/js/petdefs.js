@@ -235,25 +235,62 @@ export function fxSpot(def) {
 export const ZONES = ["surface", "middle", "bottom"];
 export const zoneOf = def => def && (def.zone === "middle" || def.zone === "bottom") ? def.zone : "surface";
 
-/* The swim drawing's top and bottom in r (dead-only shapes left out). fresh: measure
-   now (the Studio, while the drawing changes); otherwise once per drawing. */
-const spanCache = new WeakMap();
-export function bodySpan(def, fresh) {
-  if (!def || !def.swim) return { top: -0.6, bottom: 0.4 };
-  if (!fresh && spanCache.has(def.swim)) return spanCache.get(def.swim);
-  let top = Infinity, bottom = -Infinity;
-  const add = (y, h) => { top = Math.min(top, y - h); bottom = Math.max(bottom, y + h); };
+/* The box a drawing really covers, in r: { x0, x1, top, bottom }. Curves are walked
+   along their length (their control points can lie far outside them) and part arcs
+   only over their sweep; a stroke adds half its width. dead: the drowned drawing
+   (shapes shown alive only left out), else the living one. fresh: measure now (the
+   Studio, while the drawing changes); otherwise once per drawing. */
+const boxCache = { alive: new WeakMap(), dead: new WeakMap() };
+const NO_BOX = { x0: -0.6, x1: 0.6, top: -0.6, bottom: 0.4 };
+export function bodyBox(def, dead, fresh) {
+  if (!def || !def.swim) return NO_BOX;
+  const cache = boxCache[dead ? "dead" : "alive"];
+  if (!fresh && cache.has(def.swim)) return cache.get(def.swim);
+  let x0 = Infinity, x1 = -Infinity, top = Infinity, bottom = -Infinity;
+  const add = (x, y, h) => { x0 = Math.min(x0, x - h); x1 = Math.max(x1, x + h); top = Math.min(top, y - h); bottom = Math.max(bottom, y + h); };
+  const N = 12;
   for (const sh of def.swim) {
-    if (sh.show === "dead") continue;
+    if (sh.show === (dead ? "alive" : "dead")) continue;
     const p = sh.stroke ? (sh.w || 0.05) / 2 : 0;
-    if (sh.t === "eye") add(sh.y, 0.09 * (sh.s || 1));
-    else if (sh.t === "ell") { const a = sh.rot || 0; add(sh.y, Math.hypot(sh.rx * Math.sin(a), sh.ry * Math.cos(a)) + p); }   /* its true height, turned */
-    else for (const c of sh.d) for (let i = 2; i < c.length; i += 2) add(c[i], p);
+    if (sh.t === "eye") { add(sh.x, sh.y, 0.09 * (sh.s || 1)); continue; }
+    if (sh.t === "ell") {
+      const a0 = fin(sh.a0) ? sh.a0 : 0, a1 = fin(sh.a1) ? sh.a1 : 6.2832, c = Math.cos(sh.rot || 0), n = Math.sin(sh.rot || 0);
+      if (a1 - a0 >= 6.283) {                                       /* a whole ellipse: its exact box, turned */
+        const hx = Math.hypot(sh.rx * c, sh.ry * n), hy = Math.hypot(sh.rx * n, sh.ry * c);
+        x0 = Math.min(x0, sh.x - hx - p); x1 = Math.max(x1, sh.x + hx + p); top = Math.min(top, sh.y - hy - p); bottom = Math.max(bottom, sh.y + hy + p);
+        continue;
+      }
+      const steps = Math.max(8, Math.ceil(Math.abs(a1 - a0) / 6.2832 * 48));
+      for (let i = 0; i <= steps; i++) {
+        const t = a0 + (a1 - a0) * i / steps, ex = sh.rx * Math.cos(t), ey = sh.ry * Math.sin(t);
+        add(sh.x + ex * c - ey * n, sh.y + ex * n + ey * c, p);
+      }
+      if (sh.chord || a1 - a0 < 6.283) add(sh.x, sh.y, 0);         /* a part arc closes through its centre or chord */
+      continue;
+    }
+    let cx = 0, cy = 0, sx = 0, sy = 0;
+    for (const cm of sh.d) {
+      const k = cm[0];
+      if (k === "M") { cx = sx = cm[1]; cy = sy = cm[2]; add(cx, cy, p); }
+      else if (k === "L") { cx = cm[1]; cy = cm[2]; add(cx, cy, p); }
+      else if (k === "Q") {
+        for (let i = 1; i <= N; i++) { const t = i / N, u = 1 - t; add(u * u * cx + 2 * u * t * cm[1] + t * t * cm[3], u * u * cy + 2 * u * t * cm[2] + t * t * cm[4], p); }
+        cx = cm[3]; cy = cm[4];
+      } else if (k === "C") {
+        for (let i = 1; i <= N; i++) {
+          const t = i / N, u = 1 - t, a = u * u * u, b = 3 * u * u * t, d = 3 * u * t * t, e = t * t * t;
+          add(a * cx + b * cm[1] + d * cm[3] + e * cm[5], a * cy + b * cm[2] + d * cm[4] + e * cm[6], p);
+        }
+        cx = cm[5]; cy = cm[6];
+      } else if (k === "Z") { cx = sx; cy = sy; }
+    }
   }
-  const span = top <= bottom ? { top, bottom } : { top: -0.6, bottom: 0.4 };
-  if (!fresh) spanCache.set(def.swim, span);
-  return span;
+  const box = top <= bottom ? { x0, x1, top, bottom } : NO_BOX;
+  if (!fresh) cache.set(def.swim, box);
+  return box;
 }
+/* The living drawing's top and bottom in r. */
+export function bodySpan(def, fresh) { const b = bodyBox(def, false, fresh); return { top: b.top, bottom: b.bottom }; }
 
 /* How far down the water a drawing sits, as the Studio shows it in a full glass
    (waterline 0, floor line at narrowCup().floor): null when it crosses the waterline
@@ -276,12 +313,11 @@ export function anchorY(def, r, surface, floor, fresh) {
   return travel <= 0 ? rest : Math.min(rest, surface + f * travel - s.top * r);
 }
 
-/* Where a drowned pet's origin goes, upside down on the floor (px). A drawing across the
-   waterline rests as every pet always has; one drawn below it is turned over its origin,
-   so its body is stood on the floor instead of left floating above it. */
+/* Where a drowned pet's origin goes, upside down (turned half round its origin) on the
+   floor (px): the top of its drowned drawing, now its lowest point, touches the floor.
+   rev 1.35.0: every pet; before, a pet across the waterline rested at a fixed 1.62 r. */
 export function restY(def, r, floor, fresh) {
-  const s = bodySpan(def, fresh);
-  return s.top >= 0 ? floor + s.top * r : floor - r * 1.62;
+  return floor + bodyBox(def, true, fresh).top * r;
 }
 
 export function medalSpot(def) {

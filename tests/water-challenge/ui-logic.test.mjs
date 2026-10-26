@@ -206,7 +206,7 @@ test("identity: usernames come from the data, and a near-miss is caught", () => 
 
 test("walls: each pet's reach is measured, and its drawing stays inside the glass facing either way", async () => {
   const e = G.critterExtent(0);
-  assert.ok(Math.abs(e.left - 0.88) < 0.01 && Math.abs(e.right - 0.66) < 0.01, "the duck: bill 0.88 r ahead, tail 0.66 r behind");
+  assert.ok(Math.abs(e.left - 0.88) < 0.01 && Math.abs(e.right - 0.64) < 0.01, "the duck: bill 0.88 r ahead, tail 0.64 r behind (along its curves)");
   assert.ok(G.critterExtent(C.MYSTERY_KIND).right > 1.4, "the dragon's tail reaches far behind");
   for (const [n, w] of [[8, 343], [8, 748], [3, 1300]]) {                /* narrowest and widest glasses */
     G.applyLayout(G.pickLayout(n, w));
@@ -457,3 +457,50 @@ test("zones: pets.json keeps middle and bottom; anything else reads as surface",
   } finally { P.applyDefs({ format: 1, pets: {} }); }
   assert.equal(P.zoneOf(P.defs[7]), "surface", "built-in pets live at the surface");
 });
+
+/* rev 1.35.0: pets turn round the middle of their body, and walls, floor and rest
+   come from the box the drawing really covers (curves walked, not their control points). */
+test("turning: a pet drawn far below its waterline, tilted for a leap, stays inside the glass", () => {
+  G.applyLayout(G.pickLayout(8, 748));
+  const r = G.petR(), W = G.dims.W, Wp = G.wallProbe;
+  const def = deep(2.8, "middle");
+  def.swim.push({ t: "ell", x: -0.9, y: 3.2, rx: 0.5, ry: 0.15, fill: "b" });          /* a long one */
+  withDef(12, def, () => {
+    const st = G.animState("turner"); st.critterKind = 12; st.duckState = 1;
+    const mid = Wp.mid(st) / r, pts = [];
+    for (const sh of def.swim) for (let k = 0; k < 48; k++) { const t = k / 48 * 2 * Math.PI; pts.push([sh.x + sh.rx * Math.cos(t), sh.y + sh.ry * Math.sin(t)]); }
+    for (const ang of [-1.2, -0.6, 0, 0.6, 1.2]) for (const flip of [1, -1]) for (const want of [-50, W / 2, W + 50]) {
+      st.m.flip = flip;
+      const x = Wp.wallX(st, want, ang, flip), c = Math.cos(ang), n = Math.sin(ang);
+      for (const [px, py] of pts) {
+        const sx = x + flip * (px * c - (py - mid) * n) * r;            /* turned round the body middle, then mirrored */
+        assert.ok(sx >= -1e-6 && sx <= W + 1e-6, "turned " + ang + ", facing " + flip + ": " + sx.toFixed(1) + " in 0.." + W);
+      }
+    }
+  });
+});
+
+test("measure: curves count where they run, so a pet stands on the floor, not on its control points", () => {
+  const def = { pal: { b: { c: "#123456" } }, swim: [{ t: "path", d: [["M", -0.5, 0], ["C", -0.5, 0.9, 0.5, 0.9, 0.5, 0], ["Z"]], fill: "b" }] };
+  const b = P.bodyBox(def, false, true);
+  assert.ok(Math.abs(b.bottom - 0.675) < 0.01, "a cubic bulge with controls at 0.9 reaches 0.675: " + b.bottom);
+  G.applyLayout(G.pickLayout(8, 748));
+  const r = G.petR(), L = G.leapProbe;
+  withDef(7, def, () => {
+    const st = G.animState("stander"); st.critterKind = 7; st.duckState = 1; st.level = st.target = 0;
+    assert.ok(Math.abs(L.home(st, st) + b.bottom * r - L.floor()) < 1e-9, "an empty glass stands it on the floor");
+  });
+  const dragon = P.bodyBox(P.defs[C.MYSTERY_KIND]);
+  assert.ok(dragon.bottom <= P.bodySpan(P.defs[C.MYSTERY_KIND]).bottom + 1e-12 && dragon.bottom === P.bodySpan(P.defs[C.MYSTERY_KIND]).bottom, "one measure for both");
+});
+
+test("drowned: every pet rests upside down with the top of its drowned drawing on the floor", () => {
+  const floor = 200, r = 20;
+  for (const k of [0, 5, 12, C.MYSTERY_KIND, C.HOMUNCULUS_KIND]) {
+    const def = P.defs[k], b = P.bodyBox(def, true), y = P.restY(def, r, floor);
+    assert.ok(Math.abs(y - b.top * r - floor) < 1e-9, C.PET_NAMES[k] + ": its lowest point when upside down touches the floor");
+  }
+  const below = deep(2.5, "bottom"), b2 = P.bodyBox(below, true);
+  assert.ok(Math.abs(P.restY(below, r, floor) - (floor + b2.top * r)) < 1e-9, "a drawing below its waterline too");
+});
+

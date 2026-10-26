@@ -7,7 +7,7 @@
 import * as C from "./config.js";
 import { rnd } from "./util.js";
 import { drawCritter, drawHeadstone } from "./art.js";
-import { defs as petDefs, fxSpot, anchorY, zoneOf, bodySpan, restY as restAt } from "./petdefs.js";
+import { defs as petDefs, fxSpot, anchorY, zoneOf, bodyBox, restY as restAt } from "./petdefs.js";
 import { drawDecor, drawEffect } from "./cosmetics.js";
 
 const clock = () => performance.now() / 1000;
@@ -16,6 +16,10 @@ const lookOf = st => st.look || {};
 export const anim = {};
 const reduceMotion = typeof window !== "undefined" && window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)");
 export const dims = { card: 0, cols: 0, gw: 132, gh: 246, W: 124, H: 239, head: 34, pad: 0 };
+/* The water canvas reaches this far (px) under the glass's border on every side; the
+   glass clips it at its inside edge. At 125% or 150% screen scaling the inside edge
+   falls between pixels and a canvas that stopped exactly there left a pale seam. */
+const BLEED = 2;
 export const stats = { errors: 0, lastError: "", fps: 0 };
 
 let active = true;              /* false while another tab is showing */
@@ -36,53 +40,45 @@ export function pickLayout(count, avail) {
 
 export const petR = () => Math.min(dims.W * C.PET_R_SHARE, C.PET_R_MAX);
 
-/* How far a pet's drawing reaches left and right of its anchor, in r, as drawn
-   (facing left): { left, right }. Measured once per drawing on a recording context. */
-const extents = {};
-export function critterExtent(kind) {
-  const def = petDefs[kind] || null, c = extents[kind];
-  if (c && c.def === def) return c.e;
-  const b = new BoundsCtx();
-  try { drawCritter(b, 0, 0, 100, 0, false, false, kind, 0, false); } catch { }
-  const e = b.x0 <= b.x1 ? { left: Math.max(0, -b.x0 / 100), right: Math.max(0, b.x1 / 100) } : { left: 0.6, right: 0.6 };
-  extents[kind] = { def, e };
-  return e;
-}
+/* ---- where a pet is: its body box and turning point ------------------------
+   Every pet turns (tilts, dives, leaps, flips over when it drowns, spins as it drops in)
+   round the middle of its body, not round its drawing's origin: a drawing set far below
+   its waterline would otherwise swing sideways out of the glass. Walls and floor are
+   kept from the box the drawing really covers (bodyBox, petdefs.js). */
+const defOf = pet => petDefs[pet.critterKind || 0] || petDefs[0];
 
-/* A canvas stand-in that only tracks the box of what is filled or stroked. */
-class BoundsCtx {
-  constructor() {
-    this.m = [1, 0, 0, 1, 0, 0]; this.st = []; this.pts = [];
-    this.x0 = Infinity; this.x1 = -Infinity;
-    this.lineWidth = 1; this.fillStyle = this.strokeStyle = ""; this.lineCap = this.lineJoin = this.font = this.textAlign = "";
-    this.globalAlpha = 1; this.globalCompositeOperation = "";
-  }
-  save() { this.st.push({ m: this.m.slice(), lw: this.lineWidth }); }
-  restore() { const s = this.st.pop(); if (s) { this.m = s.m; this.lineWidth = s.lw; } }
-  translate(x, y) { const m = this.m; m[4] += m[0] * x + m[2] * y; m[5] += m[1] * x + m[3] * y; }
-  scale(x, y) { const m = this.m; m[0] *= x; m[1] *= x; m[2] *= y; m[3] *= y; }
-  rotate(a) { const m = this.m, c = Math.cos(a), s = Math.sin(a), [a0, b0, c0, d0] = m;
-    m[0] = a0 * c + c0 * s; m[1] = b0 * c + d0 * s; m[2] = c0 * c - a0 * s; m[3] = d0 * c - b0 * s; }
-  p(x, y) { const m = this.m; this.pts.push(m[0] * x + m[2] * y + m[4]); this.last = [x, y]; }
-  beginPath() { this.pts = []; }
-  moveTo(x, y) { this.p(x, y); }
-  lineTo(x, y) { this.p(x, y); }
-  quadraticCurveTo(a, b, x, y) { this.p(a, b); this.p(x, y); }            /* controls bound the curve */
-  bezierCurveTo(a, b, c, d, x, y) { this.p(a, b); this.p(c, d); this.p(x, y); }
-  arc(x, y, r, a0, a1) { this.ellipse(x, y, r, r, 0, a0, a1); }
-  ellipse(x, y, rx, ry, rot, a0, a1) {
-    for (let i = 0; i <= 24; i++) {
-      const t = a0 + (a1 - a0) * i / 24, ex = rx * Math.cos(t), ey = ry * Math.sin(t);
-      this.p(x + ex * Math.cos(rot) - ey * Math.sin(rot), y + ex * Math.sin(rot) + ey * Math.cos(rot));
-    }
-  }
-  rect(x, y, w, h) { this.p(x, y); this.p(x + w, y + h); }
-  closePath() { }
-  commit(pad) { for (const x of this.pts) { this.x0 = Math.min(this.x0, x - pad); this.x1 = Math.max(this.x1, x + pad); } }
-  fill() { this.commit(0); }
-  stroke() { this.commit(this.lineWidth * Math.hypot(this.m[0], this.m[1]) / 2); }
-  fillRect(x, y, w, h) { this.beginPath(); this.rect(x, y, w, h); this.fill(); }
-  clearRect() { } fillText() { } setLineDash() { }
+/* How far a pet's drawing reaches left and right of its anchor, in r, as drawn
+   (facing left): { left, right }. */
+export function critterExtent(kind) {
+  const b = bodyBox(petDefs[kind] || petDefs[0]);
+  return { left: Math.max(0, -b.x0), right: Math.max(0, b.x1) };
+}
+/* The turning point below the origin, in px: the middle of the body. */
+const bodyMid = st => { const b = bodyBox(defOf(st)); return (b.top + b.bottom) / 2 * petR(); };
+/* How far the drawing reaches left and right of its anchor (px, facing left) when
+   turned by ang round its body middle: the turned corners of its box. */
+function reachAt(st, ang) {
+  const b = bodyBox(defOf(st)), r = petR();
+  if (!ang) return { left: Math.max(0, -b.x0) * r, right: Math.max(0, b.x1) * r };
+  const mid = (b.top + b.bottom) / 2, c = Math.cos(ang), n = Math.sin(ang);
+  let lo = Infinity, hi = -Infinity;
+  for (const x of [b.x0, b.x1]) for (const y of [b.top - mid, b.bottom - mid]) { const v = x * c - y * n; lo = Math.min(lo, v); hi = Math.max(hi, v); }
+  return { left: Math.max(0, -lo) * r, right: Math.max(0, hi) * r };
+}
+/* x kept inside the walls for the drawing turned by ang and facing flip (1 left, -1 right). */
+function wallX(st, x, ang, flip) {
+  const e = reachAt(st, ang), gap = petR() * C.WALL_GAP_R, s = flip;
+  const left = s >= 0 ? s * e.left : -s * e.right, right = s >= 0 ? s * e.right : -s * e.left;
+  const lo = left + gap, hi = dims.W - right - gap;
+  return lo > hi ? dims.W / 2 : Math.max(lo, Math.min(hi, x));
+}
+/* Draws the pet with its origin at (ox, oy) as it stands, turned by ang round its body
+   middle; ctx is already mirrored for the way it faces (about x = ox). */
+function drawTurned(ctx, ox, oy, mid, ang, draw) {
+  ctx.save();
+  ctx.translate(ox, oy + mid);
+  draw(mid * Math.sin(ang), -mid * Math.cos(ang));
+  ctx.restore();
 }
 
 export function applyLayout(lay) {
@@ -146,11 +142,12 @@ function sizeCanvas(cv, w, h) {
   return ctx;
 }
 /* Back to the canvas's own scale (also undoes anything a failed frame left behind). */
-const reset = ctx => ctx.setTransform(ctx._sx || 1, 0, 0, ctx._sy || 1, 0, 0);
+const reset = ctx => ctx.setTransform(ctx._sx || 1, 0, 0, ctx._sy || 1, (ctx._ox || 0) * (ctx._sx || 1), (ctx._ox || 0) * (ctx._sy || 1));
 
 export function bindCanvases(name, glassCanvas, petCanvas, gw, gh) {
   const st = animState(name);
-  st.ctx = glassCanvas ? sizeCanvas(glassCanvas, dims.W, dims.H) : null;
+  st.ctx = glassCanvas ? sizeCanvas(glassCanvas, dims.W + 2 * BLEED, dims.H + 2 * BLEED) : null;
+  if (glassCanvas) { glassCanvas.style.left = glassCanvas.style.top = -BLEED + "px"; st.ctx._ox = BLEED; }  /* drawn in the glass's own px */
   st.dctx = petCanvas ? sizeCanvas(petCanvas, gw + 2 * dims.pad, gh + dims.head) : null;
   if (petCanvas) petCanvas.style.left = -dims.pad + "px";
   st.dcv = petCanvas || null;
@@ -162,7 +159,7 @@ export function unbindAll() { for (const k in anim) { anim[k].ctx = null; anim[k
 const motionOn = () => C.PET_MOTION && !(reduceMotion && reduceMotion.matches);
 const depthAt = level => Math.min(Math.max(level, 0), 1) * (dims.H - C.SURFACE_BAND);
 const surfaceY = st => dims.H - Math.min(Math.max(st.level, 0), 1) * (dims.H - C.SURFACE_BAND);
-const floorY = () => dims.H - 4;
+const floorY = () => dims.H - C.FLOOR_GAP;
 const zone = pet => zoneOf(petDefs[pet.critterKind || 0]);
 /* Where pet's origin sits in water's glass: on the surface (with the wave at x, if
    given), halfway down the water, or standing on the floor (anchorY, petdefs.js). */
@@ -173,16 +170,13 @@ function homeY(pet, water, x) {
 /* Drift across the glass, plus whatever ground a dive covered. The drift is narrowed
    for a pet whose drawing reaches far (so it turns before the wall, facing either
    way), and the drawing as it faces now is kept inside the walls. */
-export function petX(st) {
-  const r = petR(), m = st.m, e = critterExtent(st.critterKind || 0), gap = r * C.WALL_GAP_R;
-  const reach = Math.max(e.left, e.right) * r;
-  const def = petDefs[st.critterKind || 0], range = def && def.range !== undefined ? def.range : 1;
+export function petX(st, ang = 0) {
+  const r = petR(), m = st.m, e = reachAt(st, 0), gap = r * C.WALL_GAP_R;
+  const reach = Math.max(e.left, e.right);
+  const def = defOf(st), range = def && def.range !== undefined ? def.range : 1;
   const amp = Math.max(0, Math.min(dims.W * C.SWIM_RANGE * range, dims.W / 2 - reach - gap));
   const x = dims.W / 2 + Math.sin(st.phase * 0.31) * amp + (m.xs || 0);
-  const s = motionOn() ? m.flip : 1;
-  const left = (s >= 0 ? s * e.left : -s * e.right) * r, right = (s >= 0 ? s * e.right : -s * e.left) * r;
-  const lo = left + gap, hi = dims.W - right - gap;
-  return lo > hi ? dims.W / 2 : Math.max(lo, Math.min(hi, x));
+  return wallX(st, x, ang, motionOn() ? m.flip : 1);                 /* turned as it is now, still inside */
 }
 
 /* Enough water under the surface for a dive, now and where the level is heading. */
@@ -272,8 +266,7 @@ function divePath(m, s) {
    faster; out on a gravity arc at that speed (capped like a dive's breach, so it fits
    the headroom); then down again, quick at first and settling at its depth. y is the
    offset from its anchor (negative is up). */
-const bodyMid = st => { const s = bodySpan(petDefs[st.critterKind || 0]); return (s.top + s.bottom) / 2 * petR(); };
-const topBelow = (st, water) => homeY(st, water) + bodySpan(petDefs[st.critterKind || 0]).top * petR() - surfaceY(water);
+const topBelow = (st, water) => homeY(st, water) + bodyBox(defOf(st)).top * petR() - surfaceY(water);
 function startLeap(st, water = st) {
   const m = st.m, r = petR(), g = r * C.GRAVITY_R;
   m.leap = 0; m.splashed = 0;
@@ -322,9 +315,9 @@ function buildWave(st, W, step) {
 }
 
 function drawGlass(st) {
-  const ctx = st.ctx, W = dims.W, H = dims.H;
+  const ctx = st.ctx, W = dims.W, H = dims.H, B = BLEED;
   reset(ctx);
-  ctx.clearRect(0, 0, W, H);
+  ctx.clearRect(-B, -B, W + 2 * B, H + 2 * B);
   const lvl = Math.min(Math.max(st.level, 0), 1);
   if (lvl <= 0.002) return;
   const top = H - lvl * (H - C.SURFACE_BAND);
@@ -332,20 +325,20 @@ function drawGlass(st) {
   buildWave(st, W, step);
 
   const surface = () => {
-    ctx.lineTo(0, top + waveBuf[0]);
+    ctx.lineTo(-B, top + waveBuf[0]);
     for (let i = 0; i < waveN; i++) ctx.lineTo(Math.min(i * step, W), top + waveBuf[i]);
-    ctx.lineTo(W, top + waveBuf[waveN - 1]);
+    ctx.lineTo(W + B, top + waveBuf[waveN - 1]);
   };
 
-  /* body, with a soft depth gradient over the person's colour */
+  /* body, with a soft depth gradient over the person's colour, out under the border */
   ctx.beginPath();
-  ctx.moveTo(0, H);
+  ctx.moveTo(-B, H + B);
   surface();
-  ctx.lineTo(W, H);
+  ctx.lineTo(W + B, H + B);
   ctx.closePath();
   ctx.fillStyle = st.color;
   ctx.fill();
-  const g = ctx.createLinearGradient(0, top, 0, H);
+  const g = ctx.createLinearGradient(0, top, 0, H + B);
   g.addColorStop(0, "rgba(255,255,255,0.10)");
   g.addColorStop(1, "rgba(0,20,40,0.16)");
   ctx.fillStyle = g;
@@ -363,7 +356,7 @@ function drawGlass(st) {
   ctx.restore();
 
   ctx.beginPath();
-  ctx.moveTo(0, top + waveBuf[0]);
+  ctx.moveTo(-B, top + waveBuf[0]);
   surface();
   ctx.strokeStyle = "rgba(255,255,255,0.55)";
   ctx.lineWidth = 2.5;
@@ -396,13 +389,16 @@ function drawGlass(st) {
 
 const duckRestY = (st, r) => restAt(petDefs[st.critterKind || 0], r, floorY());
 
+/* Rolls over round its body middle as it goes down, from where it swam to the middle of
+   the floor, ending as the resting pose draws it (origin at duckRestY, upside down). */
 function drawSinking(ctx, st, W, H, top, offX, offY, r) {
-  const t = st.duckT, restY = duckRestY(st, r);
-  const dx = W / 2 + Math.sin(st.phase * 0.31) * (W * 0.21) * (1 - t);
-  const from = homeY(st, st, dx);
-  const dy = from + (restY - from) * (t * t);
-  const ang = Math.PI * (t < 0.55 ? t / 0.55 : 1);
-  drawCritter(ctx, dx + offX, dy + offY, r, ang, st.duckCrown, true, st.critterKind || 0, st.critterHue || 0, st.duckJester, lookOf(st).finish);
+  const t = st.duckT, mid = bodyMid(st), ang = Math.PI * (t < 0.55 ? t / 0.55 : 1);
+  const x0 = W / 2 + Math.sin(st.phase * 0.31) * (W * 0.21);
+  const dx = wallX(st, x0 + (W / 2 - x0) * t, ang, 1);
+  const from = homeY(st, st, x0) + mid, to = duckRestY(st, r) - mid;      /* the body middle, start and end */
+  const py = from + (to - from) * (t * t), dy = py;
+  drawTurned(ctx, dx + offX, py - mid + offY, mid, ang, (x, y) =>
+    drawCritter(ctx, x, y, r, ang, st.duckCrown, true, st.critterKind || 0, st.critterHue || 0, st.duckJester, lookOf(st).finish));
   for (let i = 0; i < 3; i++) {
     const bt = t - i * 0.12;
     if (bt <= 0) continue;
@@ -487,7 +483,7 @@ function drawPetLayer(st) {
   ctx.rect(offX, offY, W, H);
   ctx.clip();
   const r = petR();
-  if (st.duckState === 4) drawHeadstone(ctx, W / 2 + offX, H - 4 + offY, r, st.critterHue);
+  if (st.duckState === 4) drawHeadstone(ctx, W / 2 + offX, floorY() + offY, r, st.critterHue);
   else if (st.duckState === 1 && !st.visit) drawFloating(ctx, st, st, W, H, top, offX, offY, r);
   else if (st.duckState === 2) drawSinking(ctx, st, W, H, top, offX, offY, r);
   else if (st.duckState === 3) {
@@ -503,14 +499,15 @@ function drawPetLayer(st) {
 /* water: whose glass it is in (waves, surface). pet: who is drawn (its motion, kind,
    hue, crown); the same object for a pet at home, a visitor's own for a guest. */
 function drawFloating(ctx, water, pet, W, H, top, offX, offY, r) {
-  const m = pet.m, moving = motionOn(), flip = moving ? m.flip : 1;
-  let dx = petX(pet);
-  const slope = (waveAt(water, dx + 5) - waveAt(water, dx - 5)) / 10, z = zone(pet);
-  let dy = homeY(pet, water, dx), ang = z === "surface" ? Math.atan(slope) * (flip < 0 ? -1 : 1) : 0;
+  const m = pet.m, moving = motionOn(), flip = moving ? m.flip : 1, mid = bodyMid(pet);
+  const x0 = petX(pet);
+  const slope = (waveAt(water, x0 + 5) - waveAt(water, x0 - 5)) / 10, z = zone(pet);
+  let dy = homeY(pet, water, x0), ang = z === "surface" ? Math.atan(slope) * (flip < 0 ? -1 : 1) : 0;
   if (moving && m.drop >= 0) {
     if (m.dropWait > 0) return;                                     /* still on the unlock card */
-    const u = m.drop, from = -offY - r * 1.4;
-    dy = from + (dy - from) * u * u;                                /* falls, accelerating */
+    /* falls, accelerating, from wholly above the pet layer to its place */
+    const u = m.drop, b = bodyBox(defOf(pet)), from = -offY - (b.bottom - b.top) / 2 * r - r * 0.3, home = dy + mid;
+    dy = from + (home - from) * u * u - mid;
     ang += (1 - u) * 2.4;
   } else if (moving && z === "bottom") {                           /* walks the floor, level, as the Studio shows it */
     const pace = Math.abs(Math.cos(pet.phase * 0.31)), w = m.t * C.WALK_STEP_HZ * Math.PI;
@@ -521,7 +518,7 @@ function drawFloating(ctx, water, pet, W, H, top, offX, offY, r) {
       const l = leapPath(m, m.leap);
       dy += l.y;
       ang = -Math.atan2(l.vy, Math.max(l.vx, r * 0.4)) * 0.85;       /* nose follows the path */
-      if (m.leap > C.LEAP_UP_SECS + m.tb + 0.2) airBubbles(ctx, m, dx, dy, top, offX, offY, r);
+      if (m.leap > C.LEAP_UP_SECS + m.tb + 0.2) airBubbles(ctx, m, x0, dy + bodyBox(defOf(pet)).top * r, top, offX, offY, r);
     }
   } else if (moving) {
     dy += Math.sin(m.t * 2.1) * r * 0.035;                          /* a slow breath */
@@ -529,29 +526,33 @@ function drawFloating(ctx, water, pet, W, H, top, offX, offY, r) {
       const d = divePath(m, m.dive);
       dy += d.y;
       ang = -Math.atan2(d.vy, Math.max(d.vx, r * 0.4)) * 0.85;       /* nose follows the path */
-      if (m.dive > 0.3 && m.dive < C.DIVE_UNDER_SECS - 0.3) airBubbles(ctx, m, dx, dy, top, offX, offY, r);
+      if (m.dive > 0.3 && m.dive < C.DIVE_UNDER_SECS - 0.3) airBubbles(ctx, m, x0, dy + bodyBox(defOf(pet)).top * r, top, offX, offY, r);
     } else if (m.hop >= 0) {
       dy -= r * C.HOP_R * Math.sin(Math.PI * m.hop);
       ang += 0.22 * Math.sin(2 * Math.PI * m.hop);
     }
   }
+  const dx = moving ? wallX(pet, x0, ang, flip) : x0;                 /* turned as it is now, still inside */
   const look = lookOf(pet), t = clock(), px = dx + offX, py = dy + offY;
-  const spot = look.effect ? fxSpot(petDefs[pet.critterKind || 0]) : null;
+  const spot = look.effect ? fxSpot(defOf(pet)) : null;
   const fs = Math.abs(flip) < 0.04 ? (flip < 0 ? -0.04 : 0.04) : flip;
-  const fx = spot && px + spot[0] * r * fs, fy = spot && py + spot[1] * r;   /* follows the pet's facing */
+  let fx = 0, fy = 0;
+  if (spot) {                                                         /* follows the pet's facing and turn */
+    const lx = spot[0] * r, ly = spot[1] * r - mid, c = Math.cos(ang), n = Math.sin(ang);
+    fx = px + fs * (lx * c - ly * n); fy = py + mid + lx * n + ly * c;
+  }
   if (look.effect) drawEffect(ctx, look.effect, fx, fy, r, t, pet.critterHue || 0, "back");
-  ctx.save();
-  ctx.translate(px, py);
-  ctx.scale(fs, 1);                                                   /* mid-turn: edge on */
-  drawCritter(ctx, 0, 0, r, ang, pet.duckCrown, false, pet.critterKind || 0, pet.critterHue || 0, pet.duckJester, look.finish, pet.duckMedal);
-  ctx.restore();
+  drawTurned(ctx, px, py, mid, ang, (x, y) => {
+    ctx.scale(fs, 1);                                                 /* mid-turn: edge on */
+    drawCritter(ctx, x, y, r, ang, pet.duckCrown, false, pet.critterKind || 0, pet.critterHue || 0, pet.duckJester, look.finish, pet.duckMedal);
+  });
   if (look.effect) drawEffect(ctx, look.effect, fx, fy, r, t, pet.critterHue || 0, "front");
 }
 
-/* Air a pet lets go of under the water, rising to the surface. */
-function airBubbles(ctx, m, dx, dy, top, offX, offY, r) {
+/* Air a pet lets go of under the water, rising from the top of its body to the surface. */
+function airBubbles(ctx, m, dx, topY, top, offX, offY, r) {
   for (let i = 0; i < 3; i++) {
-    const by = dy - r * 0.6 - ((m.t * 26 + i * 9) % (r * 1.6));
+    const by = topY - ((m.t * 26 + i * 9) % (r * 1.6));
     if (by < top + 2) continue;
     ctx.beginPath();
     ctx.arc(dx + offX + (i - 1) * r * 0.22, by + offY, r * (0.07 - i * 0.012), 0, 6.2832);
@@ -850,12 +851,11 @@ function drawFlights() {
     const x = u * u * p0[0] + 2 * u * t * p1[0] + t * t * p2[0], y = u * u * p0[1] + 2 * u * t * p1[1] + t * t * p2[1];
     const vx = 2 * u * (p1[0] - p0[0]) + 2 * t * (p2[0] - p1[0]), vy = 2 * u * (p1[1] - p0[1]) + 2 * t * (p2[1] - p1[1]);
     const right = p2[0] > p0[0];                                    /* pets are drawn facing left */
-    const ang = (right ? -Math.atan2(vy, vx) : Math.atan2(-vy, -vx)) * 0.8;
-    ctx.save();
-    ctx.translate(x, y);
-    ctx.scale(right ? -1 : 1, 1);
-    drawCritter(ctx, 0, 0, r, ang, st.duckCrown, false, st.critterKind || 0, st.critterHue || 0, st.duckJester, lookOf(st).finish, st.duckMedal);
-    ctx.restore();
+    const ang = (right ? -Math.atan2(vy, vx) : Math.atan2(-vy, -vx)) * 0.8, mid = bodyMid(st);
+    drawTurned(ctx, x, y, mid, ang, (ox, oy) => {
+      ctx.scale(right ? -1 : 1, 1);
+      drawCritter(ctx, ox, oy, r, ang, st.duckCrown, false, st.critterKind || 0, st.critterHue || 0, st.duckJester, lookOf(st).finish, st.duckMedal);
+    });
   }
   flightDirty = flying.length > 0;
 }
@@ -865,6 +865,9 @@ export const visitOf = name => { const v = anim[name] && anim[name].visit; retur
 
 /* For tests: a middle pet's leap, and where a pet lives in a glass. */
 export const leapProbe = { start: startLeap, path: leapPath, secs: leapSecs, can: canLeap, home: homeY, surface: surfaceY, floor: floorY, mid: bodyMid };
+
+/* For tests: the turning point, the reach of a turned drawing, and x kept inside the walls. */
+export const wallProbe = { mid: bodyMid, reach: reachAt, wallX };
 
 /* For tests: where a dive puts the pet s seconds in, and how long it lasts. */
 export const diveProbe = { start: startDive, path: divePath, secs: diveSecs };

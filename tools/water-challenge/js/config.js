@@ -1,8 +1,8 @@
 /* Water Challenge (web) - constants: rules, tunables and the on-disk contract
    (FORMAT_REV, UTF-16 LE + BOM JSON, unknown fields kept). */
 
-export const REV         = "rev 1.34.0";
-export const APP_VERSION = "web 1.34.0";   /* stamped as writerVersion */
+export const REV         = "rev 1.35.0";
+export const APP_VERSION = "web 1.35.0";   /* stamped as writerVersion */
 /* Every file is written at FORMAT_REV. A file stamped higher came from a newer
    build, and the page asks for a reload. */
 export const FORMAT_REV    = 22;
@@ -253,11 +253,13 @@ export const WALL_GAP_R     = 0.06;
 /* The narrowest glass in pet radii: half its width, how far a drawing can reach and
    still swim a given share of the range, and how deep it is full (surface to floor),
    which is the Pet Studio's floor line. The Studio draws these. */
+/* The glass floor sits this far above the inside bottom (px): pets stand and rest on it. */
+export const FLOOR_GAP = 2;
 export function narrowCup() {
   const W = Math.round(CARD_MIN * GLASS_W_RATIO) - 8, r = Math.min(W * PET_R_SHARE, PET_R_MAX), wr = W / r;
   const H = Math.round(CARD_MIN * GLASS_H_RATIO) - 7;
   return { half: wr / 2, swim: SWIM_RANGE * wr, reachFor: range => wr / 2 - range * SWIM_RANGE * wr - WALL_GAP_R,
-           floor: (H - 4 - SURFACE_BAND) / r };
+           floor: (H - FLOOR_GAP - SURFACE_BAND) / r };
 }
 export const DIVE_EVERY     = [25, 60];   /* random gap between dives */
 export const HOP_EVERY      = [9, 24];    /* random gap between small hops */

@@ -181,7 +181,7 @@ function drawRoom() {
   /* the pet swims slowly across and back at its own depth, hopping now and then */
   const sway = Math.sin(t * 0.9), face = Math.cos(t * 0.9) >= 0 ? -1 : 1, z = zoneOf(defs[kind]);
   const px = gx + W / 2 + sway * W * 0.24, hopU = (t % 3.2) / 0.7, hop = hopU < 1 && z !== "middle" ? Math.sin(Math.PI * hopU) * r * (z === "bottom" ? 0.35 : 0.6) : 0;
-  const py = anchorY(defs[kind], r, top + wave(px - gx), gy + H - 4) - hop + Math.sin(t * (z === "middle" ? 1.3 : 2.1)) * r * (z === "middle" ? 0.12 : 0.035);
+  const py = anchorY(defs[kind], r, top + wave(px - gx), gy + H - C.FLOOR_GAP) - hop + Math.sin(t * (z === "middle" ? 1.3 : 2.1)) * r * (z === "middle" ? 0.12 : 0.035);
   const spot = fxSpot(defs[kind]), fx = px + spot[0] * r * face, fy = py + spot[1] * r;
   if (look.effect) drawEffect(ctx, look.effect, fx, fy, r, t, hue, "back");
   ctx.save(); ctx.translate(px, py); ctx.scale(face, 1);
