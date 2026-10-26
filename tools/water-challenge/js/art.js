@@ -2,7 +2,7 @@
    pen1art.js, pen2art.js, propart.js, then pets.json); only the gold pile's layout is code. */
 
 import * as C from "./config.js";
-import { defs, hats, drawShapes, drawHat, hatSvgFrom, medalSpot, bodySpan } from "./petdefs.js";
+import { defs, hats, drawShapes, drawHat, hatSvgFrom, medalSpot, bodyBox } from "./petdefs.js";
 import { todayKey, parseKey } from "./util.js";
 import { finishFn, finishWrap } from "./cosmetics.js";
 
@@ -100,28 +100,23 @@ function drawCoin(ctx, x, y, d) {
   drawHat(ctx, hats.coin, x, y, d);
 }
 
-function drawPortrait(ctx, x, y, r, kind, hue, fresh) {   /* fresh: the Studio, measuring as it draws */
-  /* The Pets-tab icon: a drawn pet's portrait (or its swim drawing), else the glass drawing. */
-  var def = defs[kind];
-  if (def) {
-    ctx.save();
-    ctx.translate(x, y);
-    if (!def.portrait) {
-      /* A swim drawing set below the waterline (a middle or floor pet) would hang under
-         the frame: lift its middle to where a floating pet's body sits (0.6 r above the
-         origin, the frame's centre), and shrink one taller than the frame. */
-      var sp = bodySpan(def, fresh);
-      if (sp.top >= 0) {
-        var k = Math.min(1, 2.6 / Math.max(0.01, sp.bottom - sp.top));
-        ctx.translate(0, -0.6 * r - (sp.top + sp.bottom) / 2 * r * k);
-        ctx.scale(k, k);
-      }
-    }
-    drawShapes(ctx, def.portrait || def.swim, r, hue, def.pal, false);
-    ctx.restore();
-    return;
-  }
-  drawCritter(ctx, x, y, r, 0, false, false, kind, hue);
+/* The Pets-tab icon: a drawn pet's portrait, or its swim drawing. Centre-locked: the box
+   the drawing really covers is centred on the frame's centre (x, 0.6 r above y), wherever
+   it was drawn (at the surface, deep, on the floor or flying above the water), and one
+   bigger than the frame (2.8 r wide, 2.6 r tall) is shrunk to fit. fresh: the Studio,
+   measuring as it draws. */
+const portraitCache = new WeakMap();
+function drawPortrait(ctx, x, y, r, kind, hue, fresh) {
+  var def = defs[kind] || defs[0], shapes = def.portrait || def.swim;
+  var holder = portraitCache.get(shapes);
+  if (!holder) { holder = { swim: shapes }; portraitCache.set(shapes, holder); }
+  var b = bodyBox(holder, false, fresh);
+  var k = Math.min(1, 2.8 / Math.max(0.01, b.x1 - b.x0), 2.6 / Math.max(0.01, b.bottom - b.top));
+  ctx.save();
+  ctx.translate(x - (b.x0 + b.x1) / 2 * r * k, y - 0.6 * r - (b.top + b.bottom) / 2 * r * k);
+  ctx.scale(k, k);
+  drawShapes(ctx, shapes, r, hue, def.pal, false);
+  ctx.restore();
 }
 
 function drawGoldPile(ctx, W, H, n) {

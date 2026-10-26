@@ -194,9 +194,10 @@ export class Preview {
         L.save(); L.translate(px, py); L.scale(face, 1);
         drawCritter(L, 0, 0, r1, z === "surface" ? Math.sin(t * 1.3) * 0.06 : 0, crown, false, k, hue, false, null, app.medal);
         L.restore();
-      }, i ? "" : "in the glass: low, half, full");
+      }, "");
       x += gw + (i < 2 ? 8 : 18);
     });
+    this.label("in the glass: low, half, full", (14 + x - 18) / 2, top + gh + 14);   /* centred under all three */
 
     /* close-up */
     const cw = Math.min(170, gh * 1.15), r2 = Math.min(gh * 0.26, 34);
@@ -214,19 +215,16 @@ export class Preview {
     }, "drowned");
     x += gw + 26;
 
-    /* Pets-tab icons */
-    const hues = [hue, (hue + 90) % 360, (hue + 180) % 360, (hue + 270) % 360];
+    /* the Pets-tab icon, as the page draws it */
     const size = Math.min(66, (gh - 8) / 1.05), iy = top + (gh - size) / 2;
-    hues.forEach((h, i) => {
-      const ix = x + i * (size + 8);
-      if (ix + size > W - 8) return;
+    if (x + size <= W - 8) {
       ctx.fillStyle = css("--panel-2"); ctx.strokeStyle = css("--line");
-      ctx.beginPath(); ctx.roundRect(ix, iy, size, size, 12); ctx.fill(); ctx.stroke();
+      ctx.beginPath(); ctx.roundRect(x, iy, size, size, 12); ctx.fill(); ctx.stroke();
       const s = size / 60;
-      ctx.save(); ctx.translate(ix, iy); ctx.scale(s, s);
-      drawPortrait(ctx, 30, 42, 20, k, h, true);
+      ctx.save(); ctx.translate(x, iy); ctx.scale(s, s);
+      drawPortrait(ctx, 30, 42, 20, k, hue, true);
       ctx.restore();
-    });
-    this.label("Pets tab, four hues", x + Math.min(4, Math.floor((W - 8 - x) / (size + 8))) * (size + 8) / 2, top + gh + 14);
+      this.label("Pets tab", x + size / 2, top + gh + 14);
+    }
   }
 }
