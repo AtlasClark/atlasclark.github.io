@@ -447,11 +447,13 @@ test("zones: a middle pet leaps out within the headroom and comes back; no leap 
   });
 });
 
-test("zones: pets.json keeps middle and bottom; anything else reads as surface", () => {
+test("zones: pets.json keeps middle, bottom and air; anything else reads as surface", () => {
   try {
     P.applyDefs({ format: 1, pets: { 7: { crown: [0, -1], pal: { b: { c: "#123456" } }, swim: [{ t: "ell", x: 0, y: 0, rx: 0.5, ry: 0.3, fill: "b" }], zone: "bottom" },
+                                   8: { crown: [0, -1], pal: { b: { c: "#123456" } }, swim: [{ t: "ell", x: 0, y: -0.6, rx: 0.4, ry: 0.3, fill: "b" }], zone: "air" },
                                    12: { crown: [0, -1], pal: { b: { c: "#123456" } }, swim: [{ t: "ell", x: 0, y: 0, rx: 0.5, ry: 0.3, fill: "b" }], zone: "<b>sky</b>" } } });
     assert.equal(P.zoneOf(P.defs[7]), "bottom");
+    assert.equal(P.zoneOf(P.defs[8]), "air");
     assert.equal(P.zoneOf(P.defs[12]), "surface");
     assert.equal(P.defs[12].zone, undefined);
   } finally { P.applyDefs({ format: 1, pets: {} }); }
@@ -502,5 +504,26 @@ test("drowned: every pet rests upside down with the top of its drowned drawing o
   }
   const below = deep(2.5, "bottom"), b2 = P.bodyBox(below, true);
   assert.ok(Math.abs(P.restY(below, r, floor) - (floor + b2.top * r)) < 1e-9, "a drawing below its waterline too");
+});
+
+test("flying: hovers at the height it is drawn, skims down to just touch the water, never dives or leaps", () => {
+  G.applyLayout(G.pickLayout(8, 748));
+  const r = G.petR(), L = G.leapProbe, kind = C.PEN3_FIRST + 7;                /* the Will-o'-Wisp */
+  assert.equal(P.zoneOf(P.defs[kind]), "air", "built-in flyers fly");
+  const b = P.bodyBox(P.defs[kind]);
+  assert.ok(b.bottom < -0.15, "drawn wholly above its waterline");
+  const st = G.animState("flyer"); st.critterKind = kind; st.duckState = 1; st.level = st.target = 0.6;
+  st.m.nextDive = 0; st.m.nextLeap = 0; st.m.nextHop = 0;
+  const gap = L.surface(st) - (L.home(st, st) + b.bottom * r);
+  assert.ok(Math.abs(gap + b.bottom * r) < 1e-9, "the gap it hovers at is the one drawn: " + gap.toFixed(1) + " px");
+  let skimmed = false;
+  for (let i = 0; i < 40 * 30; i++) {
+    G.stepMotion(st, 1);
+    assert.ok(st.m.dive < 0 && !(st.m.leap >= 0) && st.m.hop < 0, "no dives, leaps or hops");
+    if (st.m.skim >= 0) skimmed = true;
+  }
+  assert.ok(skimmed, "skims now and then (every " + C.SKIM_EVERY.join("-") + " s)");
+  for (const i of [3, 5, 9]) assert.notEqual(P.zoneOf(P.defs[C.PEN3_FIRST + i]), "surface", C.PET_NAMES[C.PEN3_FIRST + i] + " lives below");
+  assert.ok(Math.abs(P.bodyBox(P.defs[C.PEN3_FIRST + 5]).bottom - C.narrowCup().floor) < 0.05, "the Mimic stands on the floor line");
 });
 

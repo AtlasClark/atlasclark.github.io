@@ -186,7 +186,8 @@ export class Preview {
     const amp = Math.max(0, Math.min(gw * SWIM_RANGE * app.range, gw / 2 - reach - r1 * WALL_GAP_R));
     /* where it lives (zone), at low, half and full water, with the page's bob for that zone */
     const z = zoneOf(app.def), floor = top + gh - FLOOR_GAP;
-    const bob = z === "bottom" ? -Math.abs(Math.sin(t * 1.6 * Math.PI)) * r1 * 0.06 : z === "middle" ? Math.sin(t * 1.3) * r1 * 0.12 : Math.sin(t * 2.1) * r1 * 0.05;
+    const bob = z === "bottom" ? -Math.abs(Math.sin(t * 1.6 * Math.PI)) * r1 * 0.06 : z === "middle" ? Math.sin(t * 1.3) * r1 * 0.12
+              : z === "air" ? Math.sin(t * 2 * Math.PI * 0.32) * r1 * 0.07 : Math.sin(t * 2.1) * r1 * 0.05;
     [0.15, 0.5, 0.92].forEach((lv, i) => {
       this.glass(x, top, gw, gh, lv, (L, s) => {
         const px = x + gw / 2 + sway * amp, py = anchorY(app.def, r1, s, floor, true) + bob;

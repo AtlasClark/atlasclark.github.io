@@ -5,7 +5,7 @@
 
 import * as C from "../js/config.js";
 import { defs, hats, HAT_KEYS, HOLIDAY_KEYS, CUP_KEYS, FX_KEYS, colourOf, PET_DEFS_FORMAT, fxSpot, medalSpot, drawShapes, ZONES, zoneOf,
-         bodySpan, depthShare, opacityOf } from "../js/petdefs.js";
+         bodySpan, depthShare, opacityOf, ZONE_LABELS } from "../js/petdefs.js";
 import { COSMETICS } from "../js/cosmetics.js";
 import { CUP_PLACE, CUP_H } from "../js/styleart.js";
 import { drawPortrait, critterCrown, drawHeadstone, drawCoin, drawMedal } from "../js/art.js";
@@ -14,7 +14,7 @@ import { Editor, TOOL_HINTS } from "./editor.js";
 import { Preview } from "./preview.js";
 import * as G from "./geom.js";
 
-const REV = "studio 1.17.1";
+const REV = "studio 1.18.0";
 const PETS_URL = "../pets/pets.json";
 const $ = id => document.getElementById(id);
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -82,9 +82,9 @@ function rarityOf(k) {
   if (isHat(k)) return { name: { crown: "leader, goal met", jester: "leader, under goal", grave: "a drowned pet", coin: "tokens", medal: "yesterday's winner" }[k], i: 0 };
   if (k === C.HOMUNCULUS_KIND) return { name: "Full-pen reward", i: 5 };
   if (k === C.MYSTERY_KIND) return { name: "Secret", i: 6 };
-  const base = k >= C.PEN2_FIRST ? k - C.PEN2_FIRST : k;
+  const pen = k >= C.PEN3_FIRST ? 3 : k >= C.PEN2_FIRST ? 2 : 1, base = k - C.PEN_STARTS[pen];
   const b = C.PET_BINS.findIndex(x => x.kinds.includes(base));
-  return { name: (b >= 0 ? C.PET_BINS[b].name : "?") + (k >= C.PEN2_FIRST ? " · second pen" : ""), i: b };
+  return { name: (b >= 0 ? C.PET_BINS[b].name : "?") + (pen > 1 ? " · " + C.PEN_LABELS[pen].toLowerCase() : ""), i: b };
 }
 function iconHue(k) { let h = 0; const n = baseName(k) + k; for (let i = 0; i < n.length; i++) h = (h * 31 + n.charCodeAt(i)) % 360; return h; }
 
@@ -365,7 +365,7 @@ function normalize(p) {
   return { name: typeof p.name === "string" ? p.name : "", crown: Array.isArray(p.crown) ? p.crown : [0, -1], pal,
            swim: Array.isArray(p.swim) ? p.swim : [], portrait: Array.isArray(p.portrait) && p.portrait.length ? p.portrait : null,
            range: typeof p.range === "number" ? Math.max(0, Math.min(1, p.range)) : 1,
-           zone: p.zone === "middle" || p.zone === "bottom" ? p.zone : undefined,
+           zone: ZONES.includes(p.zone) && p.zone !== "surface" ? p.zone : undefined,
            fx: Array.isArray(p.fx) && p.fx.length === 2 && p.fx.every(Number.isFinite) ? p.fx : null,
            medal: Array.isArray(p.medal) && p.medal.length === 2 && p.medal.every(Number.isFinite) ? p.medal : null,
            crownScale: Number.isFinite(p.crownScale) ? p.crownScale : 1, crownRot: Number.isFinite(p.crownRot) ? p.crownRot : 0,
@@ -453,7 +453,7 @@ function petsJson() {
     if (d.name && d.name !== baseName(k)) parts.push('      "name": ' + JSON.stringify(d.name));
     parts.push('      "crown": ' + tidy(d.crown));
     if (d.range !== undefined && d.range < 1) parts.push('      "range": ' + G.R5(d.range));
-    if (d.zone === "middle" || d.zone === "bottom") parts.push('      "zone": "' + d.zone + '"');
+    if (ZONES.includes(d.zone) && d.zone !== "surface") parts.push('      "zone": "' + d.zone + '"');
     if (d.fx) parts.push('      "fx": ' + tidy(d.fx));
     if (d.medal) parts.push('      "medal": ' + tidy(d.medal));
     for (const f of ["crownScale", "crownRot", "medalScale", "medalRot"]) {
@@ -662,6 +662,7 @@ function renderPetList() {
   const order = [{ pen: "First pen" }, ...C.PET_BINS.map((b, i) => ({ name: b.name, i, kinds: b.kinds })),
                  { name: "Reward and secret", i: 5, kinds: [C.HOMUNCULUS_KIND, C.MYSTERY_KIND] },
                  { pen: "Second pen" }, ...C.PEN2_BINS.map((b, i) => ({ name: b.name, i, kinds: b.kinds })),
+                 { pen: "Third pen" }, ...C.PEN3_BINS.map((b, i) => ({ name: b.name, i, kinds: b.kinds })),
                  { pen: "Hats and props" }, { name: "Crown and jester", i: 0, kinds: ["crown", "jester"] },
                  { name: "Holiday hats", i: 0, kinds: HOLIDAY_KEYS },
                  { name: "Headstone, coin and medal", i: 0, kinds: ["grave", "coin", "medal"] },
@@ -1002,8 +1003,9 @@ function petTab() {
     '<p class="note">How far it wanders, as a share of the normal range. Lower it so a big creature moves less; ' +
     'drag the dashed lines on the canvas to set it. A pet that reaches past them swims less anyway.</p>' +
     '<div class="row"><label>Moves like</label><select data-f="zone" data-focus="zone">' + ZONES.map(z => '<option value="' + z + '"' +
-      (zoneOf(d) === z ? ' selected' : '') + '>' + { surface: "Surface", middle: "Middle", bottom: "Bottom" }[z] + '</option>').join("") + '</select></div>' +
-    '<p class="note">Surface floats, hops and dives. Middle bobs and leaps out now and then. Bottom walks the floor.</p>' +
+      (zoneOf(d) === z ? ' selected' : '') + '>' + ZONE_LABELS[z] + '</option>').join("") + '</select></div>' +
+    '<p class="note">Surface floats, hops and dives. Middle bobs and leaps out now and then. Bottom walks the floor. ' +
+    'Flying hovers and skims the water now and then: draw it above the waterline, as high as it should hover.</p>' +
     '<p class="note"><b>' + sitsAt(d) + '</b> Where it sits comes from the drawing: across the waterline it floats there; ' +
     'lower, it keeps its share of the way down to the floor line at any fill, and stands on the floor when the water runs low. ' +
     'The preview shows low, half and full water.</p>' +
@@ -1224,7 +1226,7 @@ function wire() {
     if (t.dataset.f === "w" || t.dataset.f === "fo" || t.dataset.f === "so") { commit(); return; }
     if (t.dataset.f === "tryon") { W.tryOn = Number(t.value); editor.redraw(); return; }
     if (t.dataset.f === "name") { const v = t.value.trim(); change(() => { if (v && v !== baseName(W.kind)) app.def.name = v.slice(0, 24); else app.def.name = ""; }); return; }
-    if (t.dataset.f === "zone") { change(() => { app.def.zone = t.value === "middle" || t.value === "bottom" ? t.value : undefined; }); return; }
+    if (t.dataset.f === "zone") { change(() => { app.def.zone = ZONES.includes(t.value) && t.value !== "surface" ? t.value : undefined; }); return; }
     if (t.dataset.f === "range") { const n = Number(t.value); if (isFinite(n)) change(() => { app.def.range = Math.max(0, Math.min(1, n / 100)); }); return; }
     if (t.dataset.f === "fxx" || t.dataset.f === "fxy") {
       const n = Number(t.value);

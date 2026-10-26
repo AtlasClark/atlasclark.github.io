@@ -442,6 +442,39 @@ test("second pen: opens for good once all 25 are alive; rolls, Plinko and the sh
 });
 
 
+test("third pen: opens for good once all 50 of the first two pens are alive; rolls, Plinko and the shop follow it", { skip: skipReason }, async () => {
+  const { S, day, M, mem } = await fresh();
+  const p = S.participants.find(x => M.isActive(x)), P = web.pets;
+  const fill = start => { for (let k = start; k < start + C.PET_COUNT; k++) { p.pets[String(k)] = p.pets[String(k)] ?? 100; delete p.graves[String(k)]; } };
+  assert.equal(shop.pickBlock(p, C.PEN3_FIRST), "Opens with the third pen.");
+  wholePen(p);
+  await web.store.saveParticipant(p, null);
+  await web.pets.reconcilePets();
+  assert.ok(P.pen2Open(p) && !P.pen3Open(p), "the first pen full opens only the second");
+  fill(C.PEN2_FIRST);
+  delete p.pets["3"]; p.graves["3"] = 1;                                 /* one of the first pen is buried */
+  await web.store.saveParticipant(p, null, ["3"]);
+  await web.pets.reconcilePets();
+  assert.ok(!P.pen3Open(p), "both pens must be full at once");
+  p.pets["3"] = 1; delete p.graves["3"];
+  await web.store.saveParticipant(p, null, null, ["3"]);
+  await web.pets.reconcilePets();
+  assert.ok(P.pen3Open(p), "opened");
+  assert.equal(p.pen3, day);
+  assert.equal(JSON.parse(mem.text(web.store.participantFileName(p.name))).pen3, day, "saved in the person's file");
+  assert.deepEqual(P.pensOf(p), [1, 2, 3]);
+  assert.equal(P.rollPen(p), 3);
+  for (let i = 0; i < 300; i++) { const d = shop.plinkoDrop(p); if (!d.chest && d.kind >= 0) assert.equal(P.penOf(d.kind), 3, "Plinko gives third-pen pets"); }
+  const k = P.todaysPet(p);
+  assert.ok(k === C.MYSTERY_KIND || P.penOf(k) === 3, "the daily roll comes from the third pen");
+  for (let i = 0; i < C.PET_COUNT; i++) {
+    assert.equal(P.petBinIndex(C.PEN3_FIRST + i), P.petBinIndex(i), C.PET_NAMES[C.PEN3_FIRST + i] + " has its first-pen partner's rarity");
+    assert.equal(P.penOf(C.PEN3_FIRST + i), 3);
+  }
+  assert.equal(C.PET_NAMES[C.PEN3_FIRST + 5], "Mimic", "the Mimic is the third pen's ???");
+  assert.notEqual(shop.pickBlock(p, C.PEN3_FIRST + 1), "Opens with the third pen.", "no longer locked: a shard can bring one in");
+});
+
 test("cosmetics: buy once, wear and take off, recolour; the look only shows what is owned", { skip: skipReason }, async () => {
   const { rich, mem } = await fresh();
   const cos = await import(pathToFileURL(path.join(JS, "cosmetics.js")));
@@ -525,9 +558,9 @@ test("effect spot: a pet's own fx wins; otherwise the middle of what sits above 
   const P = await import(pathToFileURL(path.join(JS, "petdefs.js")));
   const cos = await import(pathToFileURL(path.join(JS, "cosmetics.js")));
   assert.ok(!cos.SLOTS.some(s => s.key === "trail"), "no trails");
-  for (let k = 0; k < web.C.PET_MAX; k++) {
-    const s = P.fxSpot(P.defs[k]);
-    assert.ok(s[1] < 0.6 && s[1] > -2.2 && Math.abs(s[0]) < 1.5, k + ": " + s);
+  for (let k = 0; k < web.C.PET_MAX; k++) {                         /* on the pet, wherever it lives in the glass */
+    const s = P.fxSpot(P.defs[k]), b = P.bodyBox(P.defs[k]);
+    assert.ok(s[0] >= b.x0 - 0.05 && s[0] <= b.x1 + 0.05 && s[1] >= b.top - 0.05 && s[1] <= b.bottom + 0.05, k + ": " + s + " outside " + JSON.stringify(b));
   }
   P.applyDefs({ format: 1, pets: { "0": { fx: [0.1, -0.7], pal: { b: { c: "#123456" } }, swim: [{ t: "ell", x: 0, y: 0.2, rx: 0.5, ry: 0.4, fill: "b" }] } } });
   assert.deepEqual(P.fxSpot(P.defs[0]), [0.1, -0.7], "set in the studio");

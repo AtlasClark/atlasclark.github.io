@@ -8,7 +8,7 @@ import { balance, spentTotal, rerollBlock, reroll, plinkoBlock, plinkoPlay, plin
          fuseBlock, fuse, pickBlock, pickPet, tierOf } from "./shop.js";
 import { landed as landedIds, setFlying, HOLD_MS, hiddenPets, shownBalance, shownChest, anyPending, rollHoldLeft, shownShards } from "./reveal.js";
 import { onLive, emit } from "./live.js";
-import { petLabel, petGridOrder, rarityLabel, petBinIndex, isGrave, announce, penOf, pen2Open, penAlive } from "./pets.js";
+import { petLabel, petGridOrder, rarityLabel, petBinIndex, isGrave, announce, penOf, pensOf, penAlive } from "./pets.js";
 import { PlinkoBoard } from "./plinko.js";
 import { $, esc, has, todayKey, prettyTime, localStamp, bus, aAn } from "./util.js";
 import { setMsg, ensureIcons, ui, render, setHtml } from "./ui.js";
@@ -120,11 +120,11 @@ export function renderShop() {
                C.SHARD_FUSE + ' &rarr; 1 ' + shardIcon(t + 1) + '</button>'
              : '<span class="dim sx">top</span>') + '</div>').join(""));
   const h = [];
-  /* both pens once the second is open, one tab each */
-  const twoPens = pen2Open(p), pen = twoPens ? (ui.shopPen || 2) : 1;
-  $("buyPens").hidden = !twoPens;
-  if (twoPens) setHtml("buyPens", [1, 2].map(x => '<button type="button" class="pen-tab' + (x === pen ? ' on' : '') + '" data-pen="' + x + '">' +
-    (x === 1 ? 'First pen' : 'Second pen') + ' <b>' + penAlive(p, x) + '</b></button>').join(""));
+  /* every open pen, one tab each, once there is more than one */
+  const pens = pensOf(p), pen = pens.includes(ui.shopPen) ? ui.shopPen : pens.at(-1);
+  $("buyPens").hidden = pens.length < 2;
+  if (pens.length > 1) setHtml("buyPens", pens.map(x => '<button type="button" class="pen-tab' + (x === pen ? ' on' : '') + '" data-pen="' + x + '">' +
+    C.PEN_LABELS[x] + ' <b>' + penAlive(p, x) + '</b></button>').join(""));
   for (const kind of petGridOrder(pen)) {
     const held = hidden.has(kind), owned = has(p.pets, kind) && !held, buried = isGrave(p, kind) || (held && hidden.get(kind));
     const t = petBinIndex(kind), why = sh[t] < 1 ? "Needs " + aAn(tierName(t)) + " shard." : held ? "" : pickBlock(p, kind);

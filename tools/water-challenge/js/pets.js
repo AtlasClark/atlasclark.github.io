@@ -55,17 +55,20 @@ export function rollOdds() {
   return { bins: out.slice(0, -1).map(v => v / 10), dragon: out[out.length - 1] / 10 };
 }
 
-/* ---- the two pens ---- */
-export const penOf = k => (k >= 0 && k < C.PET_COUNT) ? 1 : (k >= C.PEN2_FIRST && k < C.PEN2_FIRST + C.PET_COUNT) ? 2 : 0;
-export const penKinds = pen => Array.from({ length: C.PET_COUNT }, (_, i) => (pen === 2 ? C.PEN2_FIRST : 0) + i);
-export const binsFor = pen => pen === 2 ? C.PEN2_BINS : C.PET_BINS;
+/* ---- the three pens ---- */
+export const penOf = k => { for (let n = 1; n < C.PEN_STARTS.length; n++) if (k >= C.PEN_STARTS[n] && k < C.PEN_STARTS[n] + C.PET_COUNT) return n; return 0; };
+export const penKinds = pen => Array.from({ length: C.PET_COUNT }, (_, i) => C.PEN_STARTS[pen] + i);
+export const binsFor = pen => pen === 3 ? C.PEN3_BINS : pen === 2 ? C.PEN2_BINS : C.PET_BINS;
 /* Open for good once earned. */
 export const pen2Open = p => !!(p && p.pen2);
-/* The pen new pets come from: the second once it is open (the first is complete). */
-export const rollPen = p => pen2Open(p) ? 2 : 1;
+export const pen3Open = p => !!(p && p.pen2 && p.pen3);
+/* The pens a person can see, in order. */
+export const pensOf = p => pen3Open(p) ? [1, 2, 3] : pen2Open(p) ? [1, 2] : [1];
+/* The pen new pets come from: the newest one open. */
+export const rollPen = p => pensOf(p).at(-1);
 export const penAlive = (p, pen) => penKinds(pen).filter(k => has(p.pets, k)).length;
 export const penBuried = (p, pen) => penKinds(pen).filter(k => isGrave(p, k)).length;
-const baseKind = k => penOf(k) === 2 ? k - C.PEN2_FIRST : k;
+const baseKind = k => { const n = penOf(k); return n > 1 ? k - C.PEN_STARTS[n] : k; };
 
 export function petRarityOf(kind) {
   for (const b of C.PET_BINS) if (b.kinds.includes(baseKind(kind))) return b;
@@ -326,6 +329,15 @@ export async function syncHomunculus(p) {
   return false;
 }
 
+/* The third pen opens, for good, the first time all 50 of the first two pens are alive at once. */
+export async function openPen3(p) {
+  if (p.pen3 || !p.pen2 || penAlive(p, 1) < C.PET_COUNT || penAlive(p, 2) < C.PET_COUNT) return false;
+  p.pen3 = todayKey();
+  if (!(await saveParticipant(p, null))) { delete p.pen3; return false; }
+  bus.msg(p.name + " opened the third pen: " + C.PET_COUNT + " creatures of legend to find. Rolls and Plinko come from it now.", true);
+  return true;
+}
+
 /* The second pen opens, for good, the first time all 25 are alive at once. */
 export async function openPen2(p) {
   if (p.pen2 || !penComplete(p)) return false;
@@ -340,6 +352,7 @@ export async function reconcilePets() {
   const key = todayKey();
   for (const p of S.participants) if (await syncHomunculus(p)) bus.petReset(p.name);
   for (const p of S.participants) await openPen2(p);
+  for (const p of S.participants) await openPen3(p);
   for (const p of S.participants) {
     if (!isActive(p)) continue;
     const total = totalOn(p, key), goal = personalGoal(p, key);

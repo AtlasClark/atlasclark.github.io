@@ -20,6 +20,7 @@
 import * as C from "./config.js";
 import { PEN1_ART, EXTRA_ART } from "./pen1art.js";
 import { PEN2_ART } from "./pen2art.js";
+import { PEN3_ART } from "./pen3art.js";
 import { PROP_ART, HOLIDAY_ART } from "./propart.js";
 import { CUP_ART, FX_ART } from "./styleart.js";
 
@@ -61,16 +62,19 @@ function cleanShape(s, pal) {
   return s;
 }
 
-/* Every pet's built-in drawing (both pens, the Homunculus, the dragon) sits in defs
-   from the start, and every hat and prop in hats; pets.json can replace any of them. */
+/* Every pet's built-in drawing (the three pens, the Homunculus, the dragon) sits in defs
+   from the start, and every hat and prop in hats; pets.json can replace any of them.
+   A built-in drawing may say how it moves (zone): the third pen's flyers and deep ones. */
 function seedPens() {
   const all = [...PEN1_ART.map((p, i) => [i, p]), ...PEN2_ART.map((p, i) => [C.PEN2_FIRST + i, p]),
+               ...PEN3_ART.map((p, i) => [C.PEN3_FIRST + i, p]),
                ...Object.entries(EXTRA_ART).map(([k, p]) => [Number(k), p])];
   for (const [k, p] of all) {
     const pal = {};
     for (const [n, c] of Object.entries(p.pal)) { const v = cleanColour(c); if (v) pal[n] = v; }
     const swim = p.swim.map(s => cleanShape(s, pal)).filter(Boolean);
-    if (swim.length) defs[k] = { pal, swim, portrait: null, crown: p.crown, range: 1 };
+    if (swim.length) defs[k] = Object.assign({ pal, swim, portrait: null, crown: p.crown, range: 1 },
+                                             ZONES.includes(p.zone) && p.zone !== "surface" ? { zone: p.zone } : {});
   }
   for (const [key, h] of Object.entries({ ...PROP_ART, ...HOLIDAY_ART, ...CUP_ART, ...FX_ART })) {
     const pal = {};
@@ -231,9 +235,12 @@ export function fxSpot(def) {
    than the automatic effect spot, kept above the waterline. */
 /* ---- how a pet moves, and where it sits in the glass ------------------------ */
 /* zone sets the movement: surface pets float, hop and dive; middle pets bob and leap
-   out; bottom pets walk the floor (glass.js). */
-export const ZONES = ["surface", "middle", "bottom"];
-export const zoneOf = def => def && (def.zone === "middle" || def.zone === "bottom") ? def.zone : "surface";
+   out; bottom pets walk the floor; air pets hover just over the water and skim it now
+   and then (glass.js). A flyer is drawn wholly above its waterline: the gap it leaves
+   is the height it hovers at. */
+export const ZONES = ["surface", "middle", "bottom", "air"];
+export const ZONE_LABELS = { surface: "Surface", middle: "Middle", bottom: "Bottom", air: "Flying" };
+export const zoneOf = def => def && ZONES.includes(def.zone) ? def.zone : "surface";
 
 /* The box a drawing really covers, in r: { x0, x1, top, bottom }. Curves are walked
    along their length (their control points can lie far outside them) and part arcs
@@ -328,12 +335,9 @@ export function medalSpot(def) {
 }
 function autoFx(def) {
   if (fxCache.has(def.swim)) return fxCache.get(def.swim);
-  const b = hatBounds(def.swim.filter(s => s.show !== "dead"));
-  let spot = [0, -0.42];
-  if (b.x0 <= b.x1) {
-    const top = b.y0, bot = Math.min(b.y1, 0), y = bot - top >= 0.25 ? Math.min((top + bot) / 2, -0.2) : (b.y0 + b.y1) / 2;
-    spot = [Math.round((b.x0 + b.x1) / 2 * 100) / 100, Math.round(y * 100) / 100];
-  }
+  const b = bodyBox(def, false, true);                              /* the living drawing, curves walked */
+  const top = b.top, bot = Math.min(b.bottom, 0), y = bot - top >= 0.25 ? Math.min((top + bot) / 2, -0.2) : (b.top + b.bottom) / 2;
+  const spot = [Math.round((b.x0 + b.x1) / 2 * 100) / 100, Math.round(y * 100) / 100];
   fxCache.set(def.swim, spot);
   return spot;
 }

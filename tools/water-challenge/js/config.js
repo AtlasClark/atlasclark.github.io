@@ -1,8 +1,8 @@
 /* Water Challenge (web) - constants: rules, tunables and the on-disk contract
    (FORMAT_REV, UTF-16 LE + BOM JSON, unknown fields kept). */
 
-export const REV         = "rev 1.35.0";
-export const APP_VERSION = "web 1.35.0";   /* stamped as writerVersion */
+export const REV         = "rev 1.36.0";
+export const APP_VERSION = "web 1.36.0";   /* stamped as writerVersion */
 /* Every file is written at FORMAT_REV. A file stamped higher came from a newer
    build, and the page asks for a reload. */
 export const FORMAT_REV    = 22;
@@ -66,7 +66,7 @@ export const BACKUP_KEEP_DAYS = 14;
    Every file the page is made of. When a new version is out, these are re-fetched
    past the browser cache before reloading, so old and new modules never mix. */
 export const SITE_FILES = ["./", "app.css",
-  "js/app.js", "js/art.js", "js/bottle.js", "js/config.js", "js/glass.js", "js/guard.js", "js/live.js", "js/model.js", "js/hydration.js", "js/hydfx.js", "js/cosmetics.js", "js/styleart.js", "js/styleui.js", "js/pen1art.js", "js/pen2art.js", "js/propart.js", "js/petdefs.js",
+  "js/app.js", "js/art.js", "js/bottle.js", "js/config.js", "js/glass.js", "js/guard.js", "js/live.js", "js/model.js", "js/hydration.js", "js/hydfx.js", "js/cosmetics.js", "js/styleart.js", "js/styleui.js", "js/pen1art.js", "js/pen2art.js", "js/pen3art.js", "js/propart.js", "js/petdefs.js",
   "js/pets.js", "js/plinko.js", "js/radial.js", "js/reveal.js", "js/shop.js", "js/shopui.js", "js/store.js", "js/ui.js", "js/util.js", "pets/pets.json"];
 export const VERSION_CHECK_MS = 300000;
 
@@ -148,6 +148,17 @@ export const PEN2_NAMES = [
   "Orca","Hammerhead","Anglerfish","Manatee","Polar Bear",
   "Kraken","Leafy Sea Dragon","Coelacanth","Kelpie"
 ];
+/* The third pen: kinds PEN3_FIRST .. PEN3_FIRST + 24, opened for good the first time
+   all 50 pets of the first two pens are alive at once. Mythical, from all over. Kind
+   PEN3_FIRST + i has first-pen kind i's rarity; drawings in js/pen3art.js. */
+export const PEN3_FIRST = 52;
+export const PEN3_NAMES = [
+  "Kappa","Selkie","Nixie","Mermaid","Hippocampus","Mimic",
+  "Jackalope","Will-o'-Wisp","Tiddalik","Bunyip","Pixie",
+  "Sea-Goat","Cockatrice","Wyvern","Yeti","Umibozu",
+  "Griffin","Pegasus","Unicorn","Kitsune","Sphinx",
+  "Phoenix","Hydra","Leviathan","Cerberus"
+];
 export const PET_NAMES = [
   "Duck","Frog","Turtle","Whale","Octopus","???",
   "Goldfish","Crab","Snail","Penguin","Seal",
@@ -155,7 +166,8 @@ export const PET_NAMES = [
   "Shark","Alligator","Flamingo","Platypus","Otter",
   "Narwhal","Axolotl","Nessie","Cat in a Ring",
   "Homunculus","Dragon",
-  ...PEN2_NAMES
+  ...PEN2_NAMES,
+  ...PEN3_NAMES
 ];
 /* PET_NAMES can be renamed by pets/pets.json; these never change (icon hues use them). */
 export const PET_BASE_NAMES = PET_NAMES.slice();
@@ -167,11 +179,15 @@ export const PET_BINS = [
   { name: "???",      weight: 1,  kinds: [5] }
 ];
 export const PEN2_BINS = PET_BINS.map(b => ({ name: b.name, weight: b.weight, kinds: b.kinds.map(k => k + PEN2_FIRST) }));
+export const PEN3_BINS = PET_BINS.map(b => ({ name: b.name, weight: b.weight, kinds: b.kinds.map(k => k + PEN3_FIRST) }));
+/* Where each pen's kinds start (index = pen number), and what they are called. */
+export const PEN_STARTS = [null, 0, PEN2_FIRST, PEN3_FIRST];
+export const PEN_LABELS = [null, "First pen", "Second pen", "Third pen"];
 export const PET_COUNT        = 25;                /* per pen */
 export const HOMUNCULUS_KIND  = 25;
 export const MYSTERY_KIND     = 26;
 export const MYSTERY_CHANCE   = 0.006;
-export const PET_MAX          = PEN2_FIRST + 25;   /* every kind: two pens, the reward, the dragon */
+export const PET_MAX          = PEN3_FIRST + 25;   /* every kind: three pens, the reward, the dragon */
 export const PET_NO_PET       = -1;
 export const JOKE_KIND        = 5;
 export const GRAVE_LINES = [
@@ -297,6 +313,13 @@ export const LEAP_EVERY     = [18, 45];   /* random gap between a middle pet's l
 export const LEAP_UP_SECS   = 0.9;        /* up from its depth to the surface */
 export const LEAP_DOWN_SECS = 1.6;        /* down from the surface to its depth */
 export const LEAP_MIN_DEPTH_R = 1.0;      /* water above it a leap needs, in pet radii */
+/* Flying pets (zone "air"): a hover bob, a slow sway, and now and then a skim down to
+   touch the water (a ring where it touches) and back up. */
+export const AIR_BOB_R      = 0.07;       /* hover bob, in pet radii */
+export const AIR_BOB_HZ     = 0.32;       /* hover bobs a second */
+export const AIR_SWAY       = 0.07;       /* sway, radians either way */
+export const SKIM_EVERY     = [10, 26];   /* random gap between skims */
+export const SKIM_SECS      = 1.5;        /* down and back up */
 export const TURN_EASE      = 0.16;       /* how fast a pet turns to face its drift */
 export const TURN_SKIP_CHANCE = 0.10;     /* at a side, the chance it keeps facing the way it was */
 export const UNDERWATER_TINT = 0.42;      /* water colour over anything below the surface */

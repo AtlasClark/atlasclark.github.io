@@ -512,6 +512,14 @@ function drawFloating(ctx, water, pet, W, H, top, offX, offY, r) {
   } else if (moving && z === "bottom") {                           /* walks the floor, level, as the Studio shows it */
     const pace = Math.abs(Math.cos(pet.phase * 0.31)), w = m.t * C.WALK_STEP_HZ * Math.PI;
     dy -= Math.abs(Math.sin(w)) * r * C.WALK_BOB_R * (0.3 + 0.7 * pace);
+  } else if (moving && z === "air") {                              /* hovers over the water */
+    dy += Math.sin(m.t * C.AIR_BOB_HZ * 2 * Math.PI) * r * C.AIR_BOB_R;
+    ang = Math.sin(m.t * 1.1) * C.AIR_SWAY;
+    if (m.skim >= 0) {                                              /* down until it just touches, and up again */
+      const gap = Math.max(0, surfaceY(water) + waveAt(water, x0) - (dy + bodyBox(defOf(pet)).bottom * r));
+      dy += gap * Math.sin(Math.PI * Math.min(1, m.skim));
+      ang -= 0.25 * Math.sin(2 * Math.PI * Math.min(1, m.skim));
+    }
   } else if (moving && z === "middle") {                           /* hangs in the water */
     dy += Math.sin(m.t * 1.3) * r * C.MID_BOB_R;
     if (m.leap >= 0) {
@@ -644,7 +652,7 @@ function stepDrops(st, dt) {
 export function stepMotion(st, f, water = st) {
   const m = st.m, dt = f / 30, r = petR(), play = st.play || 1;
   m.t += dt;
-  if (st.duckState !== 1 || !motionOn()) { m.dive = -1; m.hop = -1; m.drop = -1; m.leap = -1; return; }
+  if (st.duckState !== 1 || !motionOn()) { m.dive = -1; m.hop = -1; m.drop = -1; m.leap = -1; m.skim = -1; return; }
 
   if (m.drop >= 0) {
     if (m.dropWait > 0) { m.dropWait -= dt; return; }
@@ -713,9 +721,16 @@ function stepDeep(st, m, z, dt, water, play) {
   } else if (m.hop >= 0) {
     m.hop += dt / C.HOP_SECS;
     if (m.hop >= 1) { m.hop = -1; m.nextHop = every(...C.HOP_EVERY); }
+  } else if (m.skim >= 0) {
+    m.skim += dt / C.SKIM_SECS;
+    if (!m.skimRing && m.skim >= 0.5) { m.skimRing = true; if (water.level > 0.02) { ringAt(water, petX(st), false); water.amp = Math.max(water.amp, 5); } }
+    if (m.skim >= 1) { m.skim = -1; m.nextSkim = every(...C.SKIM_EVERY); }
   } else if (z === "middle") {
     if (m.nextLeap === undefined) m.nextLeap = every(...C.LEAP_EVERY);
     else if (m.t > m.nextLeap) { if (canLeap(st, water)) startLeap(st, water); else m.nextLeap = every(...C.LEAP_EVERY); }
+  } else if (z === "air") {
+    if (m.nextSkim === undefined) m.nextSkim = every(...C.SKIM_EVERY);
+    else if (m.t > m.nextSkim) { m.skim = 0; m.skimRing = false; }
   }
 }
 
@@ -731,7 +746,7 @@ export function neighborsOf(name) {
   return out;
 }
 
-const settled = st => st.duckState === 1 && st.m.drop < 0 && st.m.dive < 0 && st.m.hop < 0 && !(st.m.leap >= 0);
+const settled = st => st.duckState === 1 && st.m.drop < 0 && st.m.dive < 0 && st.m.hop < 0 && !(st.m.leap >= 0) && !(st.m.skim >= 0);
 const wet = st => st.level >= C.VISIT_MIN_LEVEL && st.target >= C.VISIT_MIN_LEVEL;
 const canHost = h => !!h && !!h.dcv && !h.visit && !h.guest && wet(h) && (h.duckState === 0 || h.duckState === 1);
 
