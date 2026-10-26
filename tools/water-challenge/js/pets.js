@@ -158,14 +158,15 @@ function petsList(p) {
 }
 const drownable = k => penOf(k) > 0;
 
-/* Same victim on every machine: a hash of name and date, not Math.random. */
-export function pickVictim(p) {
+/* Same victim on every machine: a hash of name and date, not Math.random. Any pen
+   pet may go, rarer ones more likely (DROWN_WEIGHTS by rarity). */
+export function pickVictim(p, day = todayKey()) {
   const list = petsList(p).filter(drownable);
   if (!list.length) return C.PET_NO_PET;
-  const str = p.name + "|" + todayKey();
-  let seed = 0;
-  for (let i = 0; i < str.length; i++) seed = (seed * 31 + str.charCodeAt(i)) % 100003;
-  return list[seed % list.length];
+  const w = list.map(k => C.DROWN_WEIGHTS[petBinIndex(k)] || 1), sum = w.reduce((a, b) => a + b, 0);
+  let at = dayRng(p.name, day + "|drown")() * sum;
+  for (let i = 0; i < list.length; i++) if ((at -= w[i]) < 0) return list[i];
+  return list[list.length - 1];
 }
 
 /* ---- events (each one saves; callers run inside serial()) --------------- */
@@ -278,8 +279,9 @@ function releaseMystery(p) {
    takes a pen pet, which breaks the set instead. */
 async function killPet(p) {
   if (p.graveDay === todayKey()) return null;
+  /* Wearing the dragon still risks it; otherwise the water picks (pickVictim). */
   let k = petKindFor(p), byLot = false;
-  if (k < 0 || !has(p.pets, k) || k === C.HOMUNCULUS_KIND) { k = pickVictim(p); byLot = true; }
+  if (k !== C.MYSTERY_KIND || !has(p.pets, k)) { k = pickVictim(p); byLot = true; }
   if (k < 0 || !has(p.pets, k)) return null;
   const hue = Number(p.pets[String(k)]);
   delete p.pets[String(k)];
@@ -296,8 +298,8 @@ async function killPet(p) {
   p.graveDay = todayKey();
   p.deadKind = k;
   if (!(await saveParticipant(p, null, [String(k)]))) return null;
-  bus.msg(p.name + " drowned " + (byLot ? "a " : "their ") + petLabel(k) +
-          (byLot ? ", picked out of the collection." : ". Gone for good."), false);
+  bus.msg(p.name + " drowned " + (byLot ? "the " : "their ") + petLabel(k) +
+          (byLot ? ". Randomly selected." : ". Gone for good."), false);
   return { kind: k, hue };
 }
 

@@ -1,8 +1,8 @@
 /* Water Challenge (web) - constants: rules, tunables and the on-disk contract
    (FORMAT_REV, UTF-16 LE + BOM JSON, unknown fields kept). */
 
-export const REV         = "rev 1.32.2";
-export const APP_VERSION = "web 1.32.2";   /* stamped as writerVersion */
+export const REV         = "rev 1.33.0";
+export const APP_VERSION = "web 1.33.0";   /* stamped as writerVersion */
 /* Every file is written at FORMAT_REV. A file stamped higher came from a newer
    build, and the page asks for a reload. */
 export const FORMAT_REV    = 22;
@@ -24,6 +24,9 @@ export const SHARD_KINDS  = ["shard", "fuse"];
 /* Passing the cap drowns a pet and pays this many tokens, for days from CAP_BONUS_SINCE.
    Computed from each day's total, like goal-day tokens, so an undo takes it back. */
 export const CAP_BONUS       = 5;
+/* Which pet the water takes (rev 1.33.0): any pen pet, not the one worn, so the cap
+   bonus can't be farmed by wearing a cheap pet. Weight per rarity (Common .. ???). */
+export const DROWN_WEIGHTS   = [1, 2, 3, 4, 5];
 export const CAP_BONUS_SINCE = "2026-10-13";
 export const REROLL_COST  = 1;
 export const PLINKO_COST  = 1;

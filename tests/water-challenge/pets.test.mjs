@@ -52,6 +52,23 @@ function entry(day, n, oz) {
 async function pour(p, e) { p.entries.push(clone(e)); await web.store.saveParticipant(p, null); await web.pets.reconcilePets(); }
 async function unpour(p, eid) { p.entries = p.entries.filter(x => x.eid !== eid); await web.store.saveParticipant(p, [eid]); await web.pets.reconcilePets(); }
 
+test("drowning: the water picks any pen pet, not the one worn, rarer ones more often (rev 1.33.0)", () => {
+  const P = web.pets, C = web.C, pets = {};
+  for (let k = 0; k < C.PET_COUNT; k++) pets[k] = 0;
+  pets[C.HOMUNCULUS_KIND] = 0;
+  const tally = C.PET_BINS.map(() => 0), days = 2000;
+  for (let i = 0; i < days; i++) {
+    const day = new Date(Date.UTC(2026, 0, 1) + i * 864e5).toISOString().slice(0, 10);
+    const k = P.pickVictim({ name: "Ada", pets, equippedPet: 0 }, day);
+    assert.equal(P.pickVictim({ name: "Ada", pets, equippedPet: 7 }, day), k, "the worn pet makes no difference");
+    assert.ok(P.penOf(k) > 0, "only pen pets drown");
+    tally[P.petBinIndex(k)]++;
+  }
+  const want = C.PET_BINS.map((b, t) => b.kinds.length * C.DROWN_WEIGHTS[t]), sum = want.reduce((a, b) => a + b);
+  tally.forEach((n, t) => assert.ok(Math.abs(n / days - want[t] / sum) < 0.04, C.PET_BINS[t].name + " share " + n / days));
+  assert.equal(P.pickVictim({ name: "Ada", pets: { [C.HOMUNCULUS_KIND]: 0 } }, "2026-10-26"), C.PET_NO_PET, "nothing in the pens, nothing drowns");
+});
+
 test("goal, cap and undo: roll, drown, revive and take back, for every active person", { skip: skipReason }, async () => {
   const files = readDataFiles(), day = dayKeys(backupDay(files), "2099-01-01")[1];   /* a fresh day */
   setToday(day);

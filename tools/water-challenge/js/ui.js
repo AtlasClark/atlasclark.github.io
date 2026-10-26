@@ -901,6 +901,8 @@ function weekRecapHtml() {
   }
   const chest = topBy(w.rows.filter(r => r.shop), r => r.shop.chestWon);
   if (chest) line("Chest", chest.label + ' won ' + plural(chest.best, "token"));
+  const sunk = topBy(w.rows, r => r.drowned.length);
+  if (sunk) line("Most drownings", sunk.label + ' &middot; ' + plural(sunk.best, "pet"));
   h.push('<div><h4>Highlights</h4>' + (hl.length ? '<ul class="rc-hl">' + hl.join("") + '</ul>' : '<p class="dim">A quiet week.</p>') + '</div>');
 
   /* Pets: new finds and drownings, one line per person. */
