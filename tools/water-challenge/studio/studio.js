@@ -14,7 +14,7 @@ import { Editor, TOOL_HINTS } from "./editor.js";
 import { Preview } from "./preview.js";
 import * as G from "./geom.js";
 
-const REV = "studio 1.16.2";
+const REV = "studio 1.16.3";
 const PETS_URL = "../pets/pets.json";
 const $ = id => document.getElementById(id);
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -1226,26 +1226,29 @@ function refreshSwatches() {
 /* ---- the start note ------------------------------------------------------------ */
 /* Where the art on screen came from, and how to make sure it is the latest before
    editing: an edit made on an old copy can undo someone else's work. */
+const NOTE_SEEN = "pet-studio-note-seen";                         /* this tab already read the "loaded" note */
 function startNote() {
   const el = $("startNote"), text = $("startText"), act = $("startAct"), name = W.dirHandle ? W.dirHandle.name : "";
-  let msg, label = "", fn = null;
+  const hide = () => { el.hidden = true; }, seen = () => { try { sessionStorage.setItem(NOTE_SEEN, "1"); } catch { } };
+  let msg, label = "", fn = null, quiet = false;
   if (W.loadedFrom === "reconnect") {
     msg = "Reconnect to " + name + " to load its latest art before you edit. Until then you see the site's art.";
     label = "Reconnect";
     fn = async () => { if (await W.dirHandle.requestPermission({ mode: "readwrite" }) === "granted") location.reload(); };
   } else if (W.loadedFrom === "folder" && W.target && W.target.data) {
     msg = "Loaded the latest " + FOLDER_FILE + " from " + name + ". If this studio was left open a while, reload before you edit.";
-    label = "Reload"; fn = () => location.reload();
+    label = "Reload"; fn = () => { seen(); location.reload(); };
+    try { quiet = sessionStorage.getItem(NOTE_SEEN) === "1"; } catch { }   /* just reloaded: the art is fresh */
   } else if (W.loadedFrom === "folder") {
     msg = "Editing the repo's pets.json in " + name + ". Pull the latest from GitHub first, so you start from the newest art.";
   } else {
     msg = "Before you edit, open the challenge's " + FOLDER_FILE + " so you start from the latest art: Folder\u2026, then pick its data folder.";
-    label = "Choose folder"; fn = () => pickSaveFolder();
+    label = "Choose folder"; fn = async () => { if (await pickSaveFolder()) hide(); };
   }
   text.textContent = msg;
   act.hidden = !fn; act.textContent = label; act.onclick = fn;
-  $("startX").onclick = () => { el.hidden = true; };
-  el.hidden = false;
+  $("startX").onclick = () => { if (W.loadedFrom === "folder") seen(); hide(); };
+  el.hidden = quiet;
 }
 
 /* ---- start -------------------------------------------------------------------- */
