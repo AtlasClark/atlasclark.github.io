@@ -337,6 +337,13 @@ function guard() {
   if (!ui.connected) { setMsg("Not connected. Nothing saved.", false); return false; }
   return true;
 }
+/* The shop also waits for a reload once a newer version is out: an old page may still
+   carry a fixed bug (rev 1.32.0 let two combines spend the same shards). */
+function shopGuard() {
+  if (!guard()) return false;
+  if (ui.staleRev) { setMsg("A new version is out. Reload to use the shop.", false); return false; }
+  return true;
+}
 
 async function setAwayNow(p, away) {
   if (!p.away) p.away = [];
@@ -540,7 +547,7 @@ function wire() {
   $("bankShop").onclick = () => { closeOverlays(); tab("shop"); };
   uiHooks.renderShop = renderShop;
   uiHooks.bottle = bottleView;
-  initShop({ settle, guard, askConfirm, pollSoon, whoAmI: () => askIdentity(false) });
+  initShop({ settle, guard: shopGuard, askConfirm, pollSoon, whoAmI: () => askIdentity(false) });
   $("cog").onclick = () => $("settingsPanel").hidden ? openSettings() : closeSettings();
   $("staleBanner").addEventListener("click", e => { if (e.target.closest("[data-act=hta-ok]")) htaDismiss(); });
   $("spClose").onclick = closeSettings;
@@ -743,6 +750,7 @@ async function checkVersion(atBoot) {
   }
   $("updateRev").textContent = rev.replace("rev ", "");
   $("updateBanner").hidden = false;
+  ui.staleRev = rev;
   return false;
 }
 

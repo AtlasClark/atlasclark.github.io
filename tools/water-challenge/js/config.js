@@ -1,8 +1,8 @@
 /* Water Challenge (web) - constants: rules, tunables and the on-disk contract
    (FORMAT_REV, UTF-16 LE + BOM JSON, unknown fields kept). */
 
-export const REV         = "rev 1.33.0";
-export const APP_VERSION = "web 1.33.0";   /* stamped as writerVersion */
+export const REV         = "rev 1.33.2";
+export const APP_VERSION = "web 1.33.2";   /* stamped as writerVersion */
 /* Every file is written at FORMAT_REV. A file stamped higher came from a newer
    build, and the page asks for a reload. */
 export const FORMAT_REV    = 22;
@@ -50,11 +50,10 @@ export const SETTINGS_FILE  = "_settings.json";
 export const REMOVED_SUBDIR = "_removed";
 /* Old HTA writers: a copy of the retired HTA left open still rewrites participant files
    (at format 21, dropping every web-only field: spends, day logs, looks). Each sighting
-   is logged in ALERTS_SUBDIR/HTA_LOG (a sub-folder, which the HTA never reads) and shown
-   as a banner for HTA_ALERT_DAYS. */
+   is logged in ALERTS_SUBDIR/HTA_LOG (a sub-folder, which the HTA never reads) and listed
+   in Diagnostics; the banner shows only while a file is still HTA-written. */
 export const ALERTS_SUBDIR  = "_alerts";
 export const HTA_LOG        = "hta.json";
-export const HTA_ALERT_DAYS = 7;
 /* Pet art for this folder only, saved there by the Pet Studio for testing. While it
    is there it replaces the site's pets/pets.json; delete it to go back. */
 export const FOLDER_PETS_FILE = "_pets.json";
@@ -286,12 +285,11 @@ export const HOP_SECS       = 0.7;
    the level is heading. Below SURFACE_DEPTH_R mid-dive, the pet turns back up. */
 export const DIVE_MIN_DEPTH_R = 2.4;
 export const SURFACE_DEPTH_R  = 1.2;
-/* Middle and bottom pets (zone, petdefs.js): a bottom pet walks the floor with a bob in
-   step and now and then a low hop; a middle pet bobs slowly and now and then shoots up
-   through the surface like a dolphin, then glides back down to its depth. */
+/* Middle and bottom pets (zone, petdefs.js): a bottom pet walks the floor, level, with a
+   bob in step (no hops); a middle pet bobs slowly and now and then shoots up through
+   the surface like a dolphin, then glides back down to its depth. */
 export const WALK_STEP_HZ   = 1.6;        /* steps a second at full drift speed */
 export const WALK_BOB_R     = 0.06;       /* bob of each step, in pet radii */
-export const FLOOR_HOP_R    = 0.35;       /* a bottom pet's hop */
 export const MID_BOB_R      = 0.12;       /* a middle pet's slow bob */
 export const LEAP_EVERY     = [18, 45];   /* random gap between a middle pet's leaps */
 export const LEAP_UP_SECS   = 0.9;        /* up from its depth to the surface */

@@ -6,7 +6,7 @@
 
 import * as C from "./config.js";
 import { S, tokensEarned, capBonus, dayWinners } from "./model.js";
-import { saveParticipant, petKindFor } from "./store.js";
+import { saveParticipant, petKindFor, setSpendCheck } from "./store.js";
 import { has, todayKey, localStamp, shiftKey, parseKey, aAn } from "./util.js";
 import { applyRoll, dayRng, grantHomunculus, isGrave, petBinIndex, penOf, binsFor, rollPen, pen2Open } from "./pets.js";
 import { COSMETICS, SLOTS, PAINT_COST } from "./cosmetics.js";
@@ -47,6 +47,23 @@ async function saveOrUndo(p, before, ...args) {
   Object.assign(p, before);
   return false;
 }
+
+/* Spends this save adds (not yet on disk) must leave what they are paid from at zero or
+   more, counted on the merged record: shards of the tier spent, tokens, shells. A debt
+   left by an older page (rev 1.32.0 and before could combine twice from one stale count)
+   stays where it is and blocks nothing else. */
+setSpendCheck((m, disk) => {
+  const old = new Set(((disk && disk.spends) || []).map(s => s.id));
+  const added = (m.spends || []).filter(s => s && !old.has(s.id));
+  if (!added.length) return "";
+  const n = shards(m);
+  for (const s of added) {
+    if ((s.kind === "fuse" || s.kind === "shard") && n[Number(s.tier)] < 0) return "not enough " + (C.PET_BINS[Number(s.tier)] || {}).name + " shards";
+  }
+  if (added.some(s => !notTokens(s) && Number(s.cost) > 0) && balance(m) < 0) return "not enough tokens";
+  if (added.some(s => isShell(s) && Number(s.cost) > 0) && shellBalance(m) < 0) return "not enough shells";
+  return "";
+});
 
 /* Wear a new pet, unless the dragon is on: it is lost the moment it comes off. */
 function wear(p, k) { if (petKindFor(p) !== C.MYSTERY_KIND) p.equippedPet = k; }

@@ -420,7 +420,7 @@ test("position: across the waterline it floats; below it keeps its share of the 
   }
 });
 
-test("zones: a middle pet leaps out within the headroom and comes back; no leap in shallow water; a bottom pet never dives", () => {
+test("zones: a middle pet leaps out within the headroom and comes back; no leap in shallow water; a bottom pet never dives or hops", () => {
   G.applyLayout(G.pickLayout(8, 748));
   const L = G.leapProbe, r = G.petR();
   withDef(12, deep(2.5, "middle"), () => {
@@ -440,9 +440,10 @@ test("zones: a middle pet leaps out within the headroom and comes back; no leap 
   withZone(7, "bottom", () => {
     const st = pet(1, 1);
     st.critterKind = 7;
-    let dived = false;
-    for (let i = 0; i < 60 * 30; i++) { G.stepMotion(st, 1); if (st.m.dive >= 0) dived = true; }
+    let dived = false, hopped = false;
+    for (let i = 0; i < 60 * 30; i++) { G.stepMotion(st, 1); if (st.m.dive >= 0) dived = true; if (st.m.hop >= 0) hopped = true; }
     assert.ok(!dived, "a dive was due at once, but a bottom pet walks");
+    assert.ok(!hopped, "and never hops (rev 1.33.2), as the Studio preview shows it");
   });
 });
 

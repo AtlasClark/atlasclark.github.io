@@ -14,7 +14,7 @@ import { Editor, TOOL_HINTS } from "./editor.js";
 import { Preview } from "./preview.js";
 import * as G from "./geom.js";
 
-const REV = "studio 1.16.3";
+const REV = "studio 1.16.4";
 const PETS_URL = "../pets/pets.json";
 const $ = id => document.getElementById(id);
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -674,7 +674,7 @@ function drawThumb(k) {
     else if (k === "coin") drawCoin(ctx, 30, 30, 44);
     else if (k === "medal") drawMedal(ctx, 30, 40, 66);
     else if (isHat(k)) critterCrown(ctx, 30, 40, 54, k);
-    else drawPortrait(ctx, 30, 42, 20, k, iconHue(k));
+    else drawPortrait(ctx, 30, 42, 20, k, iconHue(k), true);
   } catch { }
 }
 

@@ -223,7 +223,7 @@ export class Preview {
       ctx.beginPath(); ctx.roundRect(ix, iy, size, size, 12); ctx.fill(); ctx.stroke();
       const s = size / 60;
       ctx.save(); ctx.translate(ix, iy); ctx.scale(s, s);
-      drawPortrait(ctx, 30, 42, 20, k, h);
+      drawPortrait(ctx, 30, 42, 20, k, h, true);
       ctx.restore();
     });
     this.label("Pets tab, four hues", x + Math.min(4, Math.floor((W - 8 - x) / (size + 8))) * (size + 8) / 2, top + gh + 14);

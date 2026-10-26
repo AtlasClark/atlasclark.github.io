@@ -512,14 +512,9 @@ function drawFloating(ctx, water, pet, W, H, top, offX, offY, r) {
     const u = m.drop, from = -offY - r * 1.4;
     dy = from + (dy - from) * u * u;                                /* falls, accelerating */
     ang += (1 - u) * 2.4;
-  } else if (moving && z === "bottom") {                           /* walks the floor */
+  } else if (moving && z === "bottom") {                           /* walks the floor, level, as the Studio shows it */
     const pace = Math.abs(Math.cos(pet.phase * 0.31)), w = m.t * C.WALK_STEP_HZ * Math.PI;
     dy -= Math.abs(Math.sin(w)) * r * C.WALK_BOB_R * (0.3 + 0.7 * pace);
-    ang += Math.sin(w * 2) * 0.05 * pace;
-    if (m.hop >= 0) {
-      dy -= r * C.FLOOR_HOP_R * Math.sin(Math.PI * m.hop);
-      ang += 0.15 * Math.sin(2 * Math.PI * m.hop);
-    }
   } else if (moving && z === "middle") {                           /* hangs in the water */
     dy += Math.sin(m.t * 1.3) * r * C.MID_BOB_R;
     if (m.leap >= 0) {
@@ -700,7 +695,8 @@ export function stepMotion(st, f, water = st) {
 
 /* ---- visits ------------------------------------------------------------- */
 /* Glasses left to right, row by row, as on screen; set by ui.js on every render. */
-/* A bottom pet's hops and a middle pet's leaps; no dives, no surface rings for a hop
+/* A middle pet's leaps; no dives, and no hops for either (rev 1.33.1: a bottom pet's
+   hops looked jumpy beside the Studio preview). A hop already under way still ends.
    under the water. */
 function stepDeep(st, m, z, dt, water, play) {
   const every = (a, b) => m.t + rnd(a, b) * play;
@@ -719,8 +715,6 @@ function stepDeep(st, m, z, dt, water, play) {
   } else if (z === "middle") {
     if (m.nextLeap === undefined) m.nextLeap = every(...C.LEAP_EVERY);
     else if (m.t > m.nextLeap) { if (canLeap(st, water)) startLeap(st, water); else m.nextLeap = every(...C.LEAP_EVERY); }
-  } else if (m.t > m.nextHop) {
-    m.hop = 0;
   }
 }
 

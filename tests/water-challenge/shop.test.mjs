@@ -234,6 +234,36 @@ test("two windows spending for the same person both count", { skip: skipReason }
   assert.equal(file.tokensSpent, file.spends.reduce((a, s) => a + s.cost, 0));
 });
 
+test("two windows can't combine the same shards: the second save is refused and taken back", { skip: skipReason }, async () => {
+  const { rich, mem } = await fresh();
+  const name = web.store.participantFileName(rich.name);
+  const t = [0, 1, 2, 3].find(i => shop.shards(rich)[i] <= 5), have = shop.shards(rich)[t];
+  for (let i = have; i < 3; i++) rich.rollLog["2000-01-0" + (i + 1)] = { k: C.PET_BINS[t].kinds[0], n: 0 };   /* old repeats */
+  assert.ok(await web.store.saveParticipant(rich, null));
+  const start = shop.shards(rich)[t];
+  assert.ok(start >= 3 && start < 6, "3 to 5 shards of the tier");
+  const stale = JSON.parse(JSON.stringify(rich));          /* a second window, not yet re-read */
+  assert.equal(await shop.fuse(rich, t), t + 1);
+  assert.equal(shop.fuseBlock(stale, t), "", "the stale window still sees enough");
+  assert.equal(await shop.fuse(stale, t), null, "its save is refused");
+  assert.equal(shop.shards(stale)[t], start, "and taken back out of its memory");
+  const file = JSON.parse(mem.text(name));
+  assert.equal(file.spends.filter(s => s.kind === "fuse").length, rich.spends.filter(s => s.kind === "fuse").length, "one combine on disk");
+  assert.ok(shop.shards({ ...rich, spends: file.spends, rollLog: file.rollLog })[t] >= 0, "never below zero");
+});
+
+test("a debt left by an old page blocks nothing else", { skip: skipReason }, async () => {
+  const { rich, mem } = await fresh();
+  const name = web.store.participantFileName(rich.name), file = JSON.parse(mem.text(name));
+  (file.spends ||= []).push({ id: "s:old-page", at: "2026-10-23T09:56:37", kind: "fuse", cost: 3, by: "test", tier: 3 });   /* written by an old page */
+  const w = await (await mem.getFileHandle(name)).createWritable();
+  await w.write(Buffer.from("﻿" + JSON.stringify(file), "utf16le")); await w.close();
+  rich.entries.push({ eid: "debt:pour", ts: "2026-10-23T12:00:00", date: "2026-10-23", oz: 1, by: "test" });
+  assert.ok(await web.store.saveParticipant(rich, null), "a plain save still goes through");
+  assert.ok(shop.shards(rich)[3] < 0);
+  if (shop.balance(rich) >= C.PLINKO_COST) assert.ok(await shop.plinkoPlay(rich), "and tokens still spend");
+});
+
 test("live drops: written to _live, read back once, old ones cleared", { skip: skipReason }, async () => {
   await fresh();
   const now = Date.now();

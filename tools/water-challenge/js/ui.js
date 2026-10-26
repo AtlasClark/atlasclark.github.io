@@ -375,13 +375,11 @@ function renderTeamBar() {
 
 /* ---- warnings ----------------------------------------------------------- */
 /* An old HTA still open somewhere rewrites files and erases their web-only history.
-   One line naming whose copy wrote, for HTA_ALERT_DAYS after its newest write, until
-   this browser says "Got it"; a newer write brings it back. */
+   One line naming whose copy wrote, while a file is still HTA-written, until this
+   browser says "Got it"; a newer write brings it back. Past sightings stay in the log
+   (_alerts/hta.json), listed in Diagnostics. */
 const HTA_OK = "awc-hta-ok";
-function htaWrites() {
-  const since = shiftKey(todayKey(), -C.HTA_ALERT_DAYS);
-  return [...S.htaWriters, ...S.htaLog].filter(e => String(e.at || e.seen || "").slice(0, 10) >= since);
-}
+const htaWrites = () => S.htaWriters;
 const newestWrite = list => list.reduce((a, e) => String(e.at || e.seen || "") > a ? String(e.at || e.seen || "") : a, "");
 function htaWarning() {
   const list = htaWrites();

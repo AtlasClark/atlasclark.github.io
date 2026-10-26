@@ -2,7 +2,7 @@
    pen1art.js, pen2art.js, propart.js, then pets.json); only the gold pile's layout is code. */
 
 import * as C from "./config.js";
-import { defs, hats, drawShapes, drawHat, hatSvgFrom, medalSpot } from "./petdefs.js";
+import { defs, hats, drawShapes, drawHat, hatSvgFrom, medalSpot, bodySpan } from "./petdefs.js";
 import { todayKey, parseKey } from "./util.js";
 import { finishFn, finishWrap } from "./cosmetics.js";
 
@@ -100,12 +100,23 @@ function drawCoin(ctx, x, y, d) {
   drawHat(ctx, hats.coin, x, y, d);
 }
 
-function drawPortrait(ctx, x, y, r, kind, hue) {
+function drawPortrait(ctx, x, y, r, kind, hue, fresh) {   /* fresh: the Studio, measuring as it draws */
   /* The Pets-tab icon: a drawn pet's portrait (or its swim drawing), else the glass drawing. */
   var def = defs[kind];
   if (def) {
     ctx.save();
     ctx.translate(x, y);
+    if (!def.portrait) {
+      /* A swim drawing set below the waterline (a middle or floor pet) would hang under
+         the frame: lift its middle to where a floating pet's body sits (0.6 r above the
+         origin, the frame's centre), and shrink one taller than the frame. */
+      var sp = bodySpan(def, fresh);
+      if (sp.top >= 0) {
+        var k = Math.min(1, 2.6 / Math.max(0.01, sp.bottom - sp.top));
+        ctx.translate(0, -0.6 * r - (sp.top + sp.bottom) / 2 * r * k);
+        ctx.scale(k, k);
+      }
+    }
     drawShapes(ctx, def.portrait || def.swim, r, hue, def.pal, false);
     ctx.restore();
     return;

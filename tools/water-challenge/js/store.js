@@ -299,6 +299,12 @@ function mergeWithDisk(p, disk, removedIds, removedPets, revivedPets, clearRoll)
 }
 
 /* Returns true when the write landed. */
+/* A last check on the merged record before it is written (shop.js sets it): returns
+   why the save must not go ahead, or "". It sees the disk's spends too, so two pages
+   spending for one person at once can't both spend the same shard or token. */
+let spendCheck = null;
+export function setSpendCheck(fn) { spendCheck = fn; }
+
 export async function saveParticipant(p, removedIds, removedPets, revivedPets, clearRoll) {
   if (!dir) return false;
   const name = participantFileName(p.name);
@@ -310,6 +316,10 @@ export async function saveParticipant(p, removedIds, removedPets, revivedPets, c
         if (!e || e.name !== "NotFoundError") throw new Error("could not read it (" + (e && e.message || e) + "), so nothing was written");
       }
       const merged = mergeWithDisk(p, disk, removedIds, removedPets, revivedPets, clearRoll);
+      if (spendCheck) {
+        const why = spendCheck(Object.assign({}, p, merged), disk);
+        if (why) throw new Error(why + ", so nothing was written");
+      }
       await writeText(name, toJson(merged));
       p.entries = merged.entries;
       p.pets = merged.pets;

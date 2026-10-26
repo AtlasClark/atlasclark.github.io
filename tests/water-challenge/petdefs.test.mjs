@@ -40,9 +40,11 @@ test("pets.json: bad pets and shapes are dropped, names apply and reset", () => 
 
 test("pets.json: the committed file is valid", () => {
   const obj = JSON.parse(fs.readFileSync(path.join(ROOT, "tools/water-challenge/pets/pets.json"), "utf8"));
-  const took = P.applyDefs(obj);
-  assert.equal(took.length, Object.keys(obj.pets).length, "every pet in the file is usable");
-  P.applyDefs({ format: 1, pets: {} });
+  try {
+    const took = P.applyDefs(obj);
+    assert.deepEqual(took.filter(k => typeof k === "number").map(String), Object.keys(obj.pets), "every pet in the file is usable");
+    assert.deepEqual(took.filter(k => typeof k === "string").sort(), Object.keys(obj.hats || {}).sort(), "and every hat or prop");
+  } finally { P.applyDefs({ format: 1, pets: {} }); }   /* back to built-in, for the tests after */
 });
 
 test("hue: a colourable part follows the pet's hue, a fixed part does not", () => {
