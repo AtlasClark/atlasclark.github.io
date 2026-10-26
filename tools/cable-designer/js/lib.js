@@ -101,6 +101,8 @@
   add("Terminals", "ferrule", "Ferrule", { gender: false, kind: "term", face: { t: "one", icon: "ferrule" } });
   add("Terminals", "flying", "Flying leads (strip and tin)", { pins: 2, var: [1, 64], gender: false, kind: "flying", face: { t: "none" } });
 
+  add("Boards", "board", "Junction board", { pins: 4, var: [1, 200], gender: false, kind: "board", face: { t: "none" } });
+
   add("Nodes", "splice", "Splice", { gender: false, kind: "splice", face: { t: "none" } });
   add("Nodes", "ground", "Ground (chassis)", { gender: false, kind: "ground", face: { t: "none" } });
 
@@ -110,7 +112,7 @@
 
   const GENDERS = [["male", "Male (pins)"], ["female", "Female (sockets)"], ["none", "Not set"]];
   const SHIELDS = [["none", "None"], ["foil", "Foil"], ["braid", "Braid"], ["foil+braid", "Foil + braid"], ["spiral", "Spiral"]];
-  const SHIELD_TERMS = [["pigtail", "Pigtail / drain to pin"], ["360", "360° to shell"], ["float", "Floating (trim, insulate)"], ["none", "Not set"]];
+  const SHIELD_TERMS = [["pigtail", "Pigtail / drain to pin"], ["360", "360° to shell"], ["tied", "Tied (see shield ties)"], ["float", "Floating (trim, insulate)"], ["none", "Not set"]];
   const MARKS = [["label", "Label / marker"], ["heatshrink", "Heat-shrink"], ["sleeve", "Sleeving"], ["tie", "Cable tie"], ["boot", "Boot / strain relief"], ["tape", "Tape"], ["other", "Other"]];
   const MARK_ENDS = [["A", "End A"], ["B", "End B"], ["both", "Both ends"], ["mid", "Middle"], ["all", "Full length"]];
 

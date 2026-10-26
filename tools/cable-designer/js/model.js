@@ -26,10 +26,10 @@
   const blankProject = () => ({
     format: FORMAT, v: VERSION, meta: blankMeta(),
     pos: { wires: null, bom: null, notes: null },
-    history: [], notes: [], conns: [], cables: [], wires: [], callouts: []
+    history: [], notes: [], conns: [], cables: [], wires: [], callouts: [], ties: []
   });
 
-  const REF_PREFIX = { conn: "P", term: "E", flying: "FL", splice: "SP", ground: "GND" };
+  const REF_PREFIX = { conn: "P", term: "E", flying: "FL", splice: "SP", ground: "GND", board: "A" };
   function nextRef(p, prefix) {
     const used = new Set([...p.conns, ...p.cables].map(o => o.ref));
     for (let i = 1; ; i++) if (!used.has(prefix + i)) return prefix + i;
@@ -48,8 +48,26 @@
       term: part(), seal: part(), acc: [],
       face: !!(lib.face && lib.face.t !== "none"), faceFrom: "mate",
       custom: lib.custom ? { rows: 1, order: "rows" } : null, layout: null,
-      strip: "", note: "", x: Math.round(x || 0), y: Math.round(y || 0)
+      strip: "", note: "", x: Math.round(x || 0), y: Math.round(y || 0),
+      board: lib.kind === "board" ? { w: 150, h: 100, pins: boardPins(n) } : null
     };
+  }
+  // Junction board pins: half on the left edge, half on the right, evenly spaced (t = 0..1 along the edge).
+  function boardPins(n, sides) {
+    const out = [], left = sides === "R" ? 0 : sides === "L" ? n : Math.ceil(n / 2), right = n - left;
+    for (let i = 0; i < left; i++) out.push({ side: "L", t: (i + 1) / (left + 1) });
+    for (let i = 0; i < right; i++) out.push({ side: "R", t: (i + 1) / (right + 1) });
+    return out;
+  }
+  const SIDES = ["L", "R", "T", "B"];
+  function normBoard(b, n) {
+    if (!b || typeof b !== "object") return null;
+    const pins = (Array.isArray(b.pins) ? b.pins : []).map(x => ({ side: SIDES.includes(x && x.side) ? x.side : "L", t: Math.max(0, Math.min(1, num(x && x.t) == null ? 0.5 : num(x.t))) }));
+    while (pins.length < n) pins.push({ side: "R", t: 0.5 });
+    pins.length = n;
+    const im = b.img && typeof b.img.data === "string" && /^data:image\/(png|jpeg);base64,[A-Za-z0-9+/=]+$/.test(b.img.data) && num(b.img.w) > 0 && num(b.img.h) > 0
+      ? { data: b.img.data, w: num(b.img.w), h: num(b.img.h) } : null;
+    return { w: Math.max(60, num(b.w) || 150), h: Math.max(40, num(b.h) || 100), pins, img: im };
   }
   function setPinCount(p, c, n) {
     const lib = CD.LIB[c.lib] || CD.LIB.custom;
@@ -59,7 +77,9 @@
     while (c.pins.length < n) c.pins.push({ n: String(c.pins.length + 1), sig: "" });
     c.pins.length = n;
     if (c.layout) c.layout = CD.normLayout(c.layout, n);
+    if (c.board) c.board = normBoard(c.board, n);
     p.wires.forEach(w => ["a", "b"].forEach(e => { if (w[e] && w[e].c === c.id && w[e].p >= n) w[e] = null; }));
+    p.ties = (p.ties || []).filter(t => !(t.b.t === "pin" && t.b.c === c.id && t.b.p >= n));
     return n;
   }
 
@@ -70,10 +90,17 @@
     const L = c.layout;
     c.pins = order.map(i => c.pins[i]);
     if (L) L.pins = order.map(i => L.pins[i]);
+    if (c.board) c.board.pins = order.map(i => c.board.pins[i]);
     p.wires.forEach(w => ["a", "b"].forEach(e => {
       if (!w[e] || w[e].c !== c.id) return;
       w[e] = map.has(w[e].p) ? { c: c.id, p: map.get(w[e].p) } : null;
     }));
+    p.ties = (p.ties || []).filter(t => {
+      if (t.b.t !== "pin" || t.b.c !== c.id) return true;
+      if (!map.has(t.b.p)) return false;
+      t.b.p = map.get(t.b.p);
+      return true;
+    });
   }
   function removePins(p, c, idxs) {
     const drop = new Set(idxs);
@@ -83,13 +110,89 @@
   function addPins(c, list) {
     let next = c.pins.reduce((m, x) => Math.max(m, parseInt(x.n, 10) || 0), 0);
     list.forEach(lp => {
-      c.pins.push({ n: String(++next), sig: "" });
-      if (c.layout) c.layout.pins.push(Object.assign({ x: 0, y: 0, d: 1, sq: false }, lp));
+      c.pins.push({ n: lp && lp.n != null ? String(lp.n) : String(++next), sig: lp && lp.sig || "" });
+      if (c.layout) c.layout.pins.push(Object.assign({ x: 0, y: 0, d: 1, sq: false }, lp && { x: lp.x, y: lp.y, d: lp.d, sq: lp.sq }));
+      if (c.board) c.board.pins.push({ side: lp && lp.side || "R", t: lp && lp.t != null ? lp.t : 0.5 });
+    });
+  }
+  // Spread a board's pins evenly along each edge, keeping their order.
+  function spaceBoardPins(c) {
+    if (!c.board) return;
+    SIDES.forEach(s => {
+      const on = c.board.pins.filter(x => x.side === s).sort((a, b) => a.t - b.t);
+      on.forEach((x, i) => { x.t = (i + 1) / (on.length + 1); });
     });
   }
 
+  // ---------- shield ties ----------
+  // { id, a: { cable, end }, b: { t: "shield", cable, end } | { t: "pin", c, p } }
+  const newTie = (a, b) => ({ id: uid(), a: { cable: a.cable, end: a.end }, b: b.t === "shield" ? { t: "shield", cable: b.cable, end: b.end } : { t: "pin", c: b.c, p: b.p } });
+  function tieKey(e) { return e.t === "pin" ? "p:" + e.c + ":" + e.p : "s:" + e.cable + ":" + e.end; }
+  // Adds a tie unless the same pair is already tied. Sets the shield end(s) to "tied".
+  function addTie(p, a, b) {
+    const ka = tieKey(Object.assign({ t: "shield" }, a)), kb = tieKey(b);
+    if (ka === kb) return null;
+    if (p.ties.some(t => { const x = tieKey(Object.assign({ t: "shield" }, t.a)), y = tieKey(t.b); return (x === ka && y === kb) || (x === kb && y === ka); })) return null;
+    const t = newTie(a, b);
+    p.ties.push(t);
+    const set = e => { const c = byId(p.cables, e.cable); if (c && c.shield.type !== "none") c.shield[e.end] = "tied"; };
+    set(a); if (b.t === "shield") set(b);
+    return t;
+  }
+  function shieldText(p, cable, end) { const c = byId(p.cables, cable); return c ? c.ref + " shield " + end.toUpperCase() : "?"; }
+  function tieTargetText(p, b) { return b.t === "shield" ? shieldText(p, b.cable, b.end) : endText(p, { c: b.c, p: b.p }); }
+  function tiesOf(p, cable, end) {
+    return p.ties.filter(t => (t.a.cable === cable && t.a.end === end) || (t.b.t === "shield" && t.b.cable === cable && t.b.end === end));
+  }
+  // Removes ties that point at a cable, connector or pin that is gone.
+  function pruneTies(p) {
+    const cab = new Set(p.cables.map(c => c.id));
+    p.ties = (p.ties || []).filter(t => cab.has(t.a.cable) && (t.b.t === "shield" ? cab.has(t.b.cable) : (() => { const c = byId(p.conns, t.b.c); return c && t.b.p < c.pins.length; })()));
+  }
+
+  // ---------- junction board in a cable ----------
+  // Cuts the cable at a new board: the cable's end B lands on the board's left pins, a new cable
+  // (copy of this one, length to set) runs from the right pins to the old end B. Shields are tied
+  // through "SH" pins. Returns { board, cable }.
+  function insertBoard(p, cable) {
+    const list = conductors(p, cable), drains = list.filter(isDrain), cond = list.filter(w => !isDrain(w));
+    const shielded = cable.shield.type !== "none";
+    const n = cond.length, b = newConn(p, "board", cable.x, cable.y);
+    b.pins = []; b.board.pins = [];
+    cond.forEach((w, i) => { b.pins.push({ n: String(i + 1), sig: sigOf(p, w) }); b.board.pins.push({ side: "L", t: 0 }); });
+    if (shielded) { b.pins.push({ n: "SH1", sig: "SHIELD" }); b.board.pins.push({ side: "L", t: 0 }); }
+    cond.forEach((w, i) => { b.pins.push({ n: String(n + i + 1), sig: sigOf(p, w) }); b.board.pins.push({ side: "R", t: 0 }); });
+    if (shielded) { b.pins.push({ n: "SH2", sig: "SHIELD" }); b.board.pins.push({ side: "R", t: 0 }); }
+    b.board.h = Math.max(100, (n + (shielded ? 1 : 0)) * 14 + 40);
+    spaceBoardPins(b);
+    p.conns.push(b);
+    const shL = shielded ? n : -1, shR = shielded ? 2 * n + 1 : -1, rOff = n + (shielded ? 1 : 0);
+    const c2 = newCable(p, cable.x, cable.y, JSON.parse(JSON.stringify(Object.assign({}, cable, { id: undefined, ref: undefined, x: undefined, y: undefined }))));
+    c2.id = uid(); c2.ref = nextRef(p, "W"); c2.len = ""; c2.marks = []; c2.groups = [];
+    p.cables.push(c2);
+    const map = {};
+    list.forEach(w => {
+      const w2 = newWire(p, Object.assign(JSON.parse(JSON.stringify(w)), { id: uid(), ref: "", cable: c2.id, a: null, b: w.b }));
+      map[w.id] = w2.id;
+      const k = cond.indexOf(w);
+      if (k >= 0) { w.b = { c: b.id, p: k }; w2.a = { c: b.id, p: rOff + k }; }
+      else if (shielded) { w.b = { c: b.id, p: shL }; w2.a = { c: b.id, p: shR }; }
+      else { w.b = null; }
+      p.wires.push(w2);
+    });
+    c2.groups = cable.groups.map(g => newGroup(g.wires.map(id => map[id]).filter(Boolean), { lay: g.lay, shield: g.shield }));
+    if (shielded) {
+      p.ties.forEach(t => { if (t.a.cable === cable.id && t.a.end === "b") t.a.cable = c2.id; if (t.b.t === "shield" && t.b.cable === cable.id && t.b.end === "b") t.b.cable = c2.id; });
+      c2.shield.b = cable.shield.b;
+      addTie(p, { cable: cable.id, end: "b" }, { t: "pin", c: b.id, p: shL });
+      addTie(p, { cable: c2.id, end: "a" }, { t: "pin", c: b.id, p: shR });
+    }
+    void drains;
+    return { board: b, cable: c2 };
+  }
+
   // ---------- saved parts ("My parts") ----------
-  const PART_KEYS = ["lib", "gender", "desc", "mfr", "mpn", "ipn", "term", "seal", "acc", "face", "faceFrom", "custom", "layout", "strip", "note"];
+  const PART_KEYS = ["lib", "gender", "desc", "mfr", "mpn", "ipn", "term", "seal", "acc", "face", "faceFrom", "custom", "layout", "board", "strip", "note"];
   function partFromConn(c, name) {
     const o = { id: uid(), name: str(name) || c.desc || c.mpn || CD.libOf(c).name };
     PART_KEYS.forEach(k => { o[k] = JSON.parse(JSON.stringify(c[k] == null ? null : c[k])); });
@@ -109,6 +212,7 @@
     PART_KEYS.forEach(k => { if (k !== "lib" && part[k] !== undefined) c[k] = JSON.parse(JSON.stringify(part[k])); });
     c.pins = part.pins.map(x => ({ n: x.n, sig: "" }));
     if (c.layout) c.layout = CD.normLayout(c.layout, c.pins.length);
+    if (c.board) c.board = normBoard(c.board, c.pins.length);
     return c;
   }
 
@@ -197,6 +301,7 @@
       const o = Object.assign(b, c, { id: c.id || b.id, term: part(c.term), seal: part(c.seal) });
       o.pins = arr(c.pins).map(x => ({ n: str(x.n), sig: str(x.sig) }));
       o.layout = CD.normLayout(c.layout, o.pins.length);
+      o.board = CD.libOf(o).kind === "board" ? normBoard(c.board || { pins: boardPins(o.pins.length) }, o.pins.length) : null;
       o.acc = arr(c.acc).map(a => Object.assign(part(), a, { qty: str(a.qty || "1") }));
       return o;
     });
@@ -213,6 +318,12 @@
       ref: str(w.ref), cable: cab.has(w.cable) ? w.cable : null, a: end(w.a), b: end(w.b)
     }));
     p.callouts = arr(d.callouts).map(c => newCallout(c.x || 0, c.y || 0, c));
+    const ends = ["a", "b"];
+    p.ties = arr(d.ties).filter(t => t && t.a && t.b && ends.includes(t.a.end)).map(t => ({
+      id: str(t.id) || uid(), a: { cable: str(t.a.cable), end: t.a.end },
+      b: t.b.t === "shield" ? { t: "shield", cable: str(t.b.cable), end: ends.includes(t.b.end) ? t.b.end : "a" } : { t: "pin", c: str(t.b.c), p: Number.isInteger(t.b.p) ? t.b.p : -1 }
+    }));
+    pruneTies(p);
     p.cables.forEach(c => { c.groups = c.groups.filter(g => (g.wires = g.wires.filter(id => p.wires.some(w => w.id === id && w.cable === c.id))).length > 1); });
     return p;
   }
@@ -245,6 +356,7 @@
     if (!c) return "";
     const k = libOf(c).kind;
     if (k === "splice" || k === "ground" || k === "term") return c.ref;
+    if (k === "board" && !c.pins[e.p]) return c.ref;
     return c.ref + ":" + (c.pins[e.p] ? c.pins[e.p].n : "?");
   }
   const sigOf = (p, w) => {
@@ -286,7 +398,10 @@
       if (isDrain(w)) tw.push("drain");
       const L = wireLen(p, w);
       return { id: w.id, cells: [wireRef(p, w), c ? c.ref : "", gaugeText(w), colorText(w), L ? fmtLen(L, p.meta) : "", endText(p, w.a), endText(p, w.b), sigOf(p, w), tw.join(", "), w.note] };
-    });
+    }).concat((p.ties || []).map(t => {
+      const c = byId(p.cables, t.a.cable);
+      return { id: t.id, tie: true, cells: [(c ? c.ref : "?") + "-SH", c ? c.ref : "", "", "SHIELD", "", shieldText(p, t.a.cable, t.a.end), tieTargetText(p, t.b), "", "shield tie", ""] };
+    }));
   }
 
   // ---------- BOM ----------
@@ -309,7 +424,7 @@
       const lib = libOf(c);
       if ((lib.kind === "ground" || lib.kind === "flying") && !has(c)) return;
       const g = lib.gender && c.gender !== "none" ? (c.gender === "male" ? ", male" : ", female") : "";
-      const desc = c.desc || lib.name + (lib.var ? ", " + c.pins.length + " pos" : "") + g;
+      const desc = c.desc || (lib.kind === "board" ? lib.name : lib.name + (lib.var ? ", " + c.pins.length + " pos" : "") + g);
       put(keyOf("c", c, desc), { mfr: c.mfr, mpn: c.mpn, ipn: c.ipn, desc }, 1, "ea", c.ref, c.id);
     });
     p.conns.forEach(c => {
@@ -330,8 +445,8 @@
       if (c.kind === "bundle") return;
       const L = num(c.len);
       const desc = c.desc || "Cable";
-      const r = put(keyOf("w", c, desc), { mfr: c.mfr, mpn: c.mpn, ipn: c.ipn, desc }, L == null ? 1 : L, L == null ? "ea" : u, c.ref, c.id);
-      if (L == null && r.unit !== "ea") r.unit = u;
+      const r = put(keyOf("w", c, desc), { mfr: c.mfr, mpn: c.mpn, ipn: c.ipn, desc }, L == null ? 0 : L, u, c.ref, c.id);
+      if (L == null) r.tbd = true;   // a cable with no length yet
     });
     p.wires.forEach(w => {
       const c = byId(p.cables, w.cable);
@@ -356,7 +471,11 @@
     });
     return { rows, find };
   }
-  const bomCells = (r, m) => [String(r.item), r.unit === "ea" ? String(r.qty) : fmtLen(r.qty, Object.assign({}, m, { alt: false })), r.unit, r.ipn, r.mfr, r.mpn, r.desc, r.refs.join(", ")];
+  const bomQty = (r, m) => {
+    const q = r.unit === "ea" ? String(r.qty) : r.qty ? fmtLen(r.qty, Object.assign({}, m, { alt: false })) : "";
+    return r.tbd ? (q ? q + " + TBD" : "TBD") : q;
+  };
+  const bomCells = (r, m) => [String(r.item), bomQty(r, m), r.unit, r.ipn, r.mfr, r.mpn, r.desc, r.refs.join(", ")];
 
   // ---------- checks ----------
   function checks(p) {
@@ -386,6 +505,9 @@
         if ((c.shield.a === "pigtail" || c.shield.b === "pigtail") && !drains.length) out.push({ lvl: "warn", msg: "Cable " + c.ref + ": pigtail shield end, but no drain (BARE) conductor." });
       }
     });
+    p.cables.forEach(c => ["a", "b"].forEach(e => {
+      if (c.shield.type !== "none" && c.shield[e] === "tied" && !tiesOf(p, c.id, e).length) out.push({ lvl: "warn", msg: "Cable " + c.ref + ": shield end " + e.toUpperCase() + " is set to tied, but has no tie." });
+    }));
     if (!p.meta.dwgNo) out.push({ lvl: "warn", msg: "Drawing number is empty." });
     if (num(p.meta.tol) == null) out.push({ lvl: "warn", msg: "General length tolerance is not set." });
     return out;
@@ -452,7 +574,8 @@
 
   Object.assign(CD, {
     FORMAT, VERSION, uid, today, num, str,
-    blankProject, normalize, newConn, setPinCount, reorderPins, removePins, addPins, partFromConn, normPart, connFromPart, newCable, newWire, newGroup, newMark, newCallout, cablePreset, nextWireNo,
+    blankProject, normalize, newConn, setPinCount, reorderPins, removePins, addPins, spaceBoardPins, boardPins,
+    addTie, tiesOf, pruneTies, shieldText, tieTargetText, insertBoard, partFromConn, normPart, connFromPart, newCable, newWire, newGroup, newMark, newCallout, cablePreset, nextWireNo,
     byId, libOf, groupOf, conductors, wireRef, endText, sigOf, isDrain, colorText, gaugeText,
     UNIT, fmtLen, fmtTol, wireLen, WIRE_COLS, wireRows, BOM_COLS, bom, bomCells, checks,
     csvCell, wireCsv, bomCsv, connectCable, example

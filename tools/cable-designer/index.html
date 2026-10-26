@@ -7,7 +7,11 @@
   splices, ground) and custom connectors with pin count, pin numbers and
   signals, gender, face view, MPN / internal PN, contact, seal and
   accessories. Face builder: shell, keyways and freely placed pins (rings,
-  centre pins, grids, contact sizes) to match a maker's drawing; saved
+  centre pins, grids, contact sizes) to match a maker's drawing, with
+  multi-select, rotate by handle or step, mirror, zoom and undo / redo. Shield
+  ties between shield ends, pins, splices and ground. Junction boards: black
+  boxes with through-hole pins on movable edge spots, also inserted into a
+  cable, with an optional board image (load, paste, drop); saved
   connectors go to "My parts" (this browser, .cdparts files to share). Cables and bundles with conductors (gauge, colour, stripe,
   insulation), twisted groups with lay length, foil / braid shields with drain
   and termination per end, length and strip dimensions with tolerances, and
@@ -260,6 +264,13 @@
   .show-ports .port, .port:hover { fill-opacity: 1; stroke-opacity: 1; }
   .port.hot { fill: #D0DD2B; stroke: #5F6A00; fill-opacity: 1; stroke-opacity: 1; }
   .handle { fill: #D0DD2B; stroke: #5F6A00; stroke-width: 1; cursor: grab; }
+  .handle.rs { cursor: nwse-resize; }
+  .sport { fill: #fff; fill-opacity: 0; stroke: #444; stroke-width: .8; stroke-opacity: 0; stroke-dasharray: 1.5 1; cursor: crosshair; }
+  .show-ports .sport, .sport:hover { fill-opacity: 1; stroke-opacity: 1; }
+  .sport.hot { fill: #D0DD2B; stroke: #5F6A00; fill-opacity: 1; stroke-opacity: 1; stroke-dasharray: none; }
+  .bpin { fill: transparent; stroke: none; cursor: move; }
+  .bpin:hover { fill: rgba(208,221,43,.45); stroke: #5F6A00; stroke-width: .8; }
+  #sheetSvg .k-tie { cursor: pointer; }
   .drag-line { stroke: #8A9A00; stroke-width: 1.6; stroke-dasharray: 4 3; fill: none; pointer-events: none; }
 
   .drawer { border-top: 1px solid var(--border); background: var(--surface); display: flex; flex-direction: column; height: 34vh; min-height: 160px; }
@@ -309,6 +320,12 @@
   .cond .sw { width: 12px; height: 12px; border-radius: 3px; box-shadow: 0 0 0 1px var(--border); }
   .cond-row { display: contents; }
   .cond-h { font: 500 9.5px var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--text-faint); }
+  .bimg-thumb { display: block; max-width: 100%; max-height: 160px; border-radius: 8px; border: 1px solid var(--border); background: #fff; object-fit: contain; }
+  .tie-end { display: flex; flex-direction: column; gap: 5px; }
+  .tie-end .lbl { font: 500 10px var(--mono); text-transform: uppercase; letter-spacing: .08em; color: var(--text-faint); }
+  .tie-row { display: flex; align-items: center; justify-content: space-between; gap: 6px; font-size: 12.5px; padding: 3px 4px 3px 9px; border-radius: 7px; background: var(--surface2); border: 1px dashed var(--border); }
+  .bpins select { height: 28px; font-size: 12px; padding: 2px 4px; }
+  .bpins .used-row td { padding: 0 2px 4px; font-size: 11px; }
   .card { border: 1px solid var(--border); border-radius: 10px; padding: 9px; display: flex; flex-direction: column; gap: 7px; background: var(--surface2); }
   .card-h { display: flex; align-items: center; gap: 6px; font: 600 11.5px var(--mono); color: var(--ink-2); }
   .card-h .grow { flex: 1; }
@@ -344,32 +361,68 @@
   .modal.xwide { width: 1180px; }
 
   /* Face builder */
-  .fb { display: grid; grid-template-columns: minmax(0, 1fr) 400px; gap: 16px; min-height: 0; }
-  .fb-view { position: relative; display: flex; flex-direction: column; gap: 6px; }
-  #fbSvg { width: 100%; aspect-ratio: 1 / 1; max-height: 66vh; background: #FFFFFF; border: 1px solid var(--border); border-radius: 12px; touch-action: none; user-select: none; }
-  .fb-tip { font: 400 11px var(--mono); color: var(--text-faint); }
-  .fb-side { display: flex; flex-direction: column; gap: 10px; max-height: 70vh; overflow-y: auto; padding-right: 4px; }
-  .fb-side .sec:first-of-type { border-top: none; padding-top: 0; }
+  .fb { display: grid; grid-template-columns: minmax(0, 1fr) 380px; gap: 16px; height: min(72vh, 780px); min-height: 420px; }
+  .fb-main { display: flex; flex-direction: column; gap: 8px; min-width: 0; min-height: 0; }
+  .fb-bar { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; padding: 4px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface2); }
+  .fb-bar .vsep { width: 1px; height: 20px; background: var(--border); margin: 0 4px; }
+  .fb-bar .spacer { flex: 1; }
+  .fb-bar .tool { width: 30px; height: 30px; }
+  .fb-bar .tool svg { width: 16px; height: 16px; }
+  .fb-bar .btn-xs:disabled { opacity: .4; cursor: default; transform: none; }
+  .fb-step { height: 28px; font-size: 12px; padding: 2px 4px; width: 92px; }
+  .fb-pivot button { height: 26px; padding: 0 8px; }
+  .fb-zoom { all: unset; cursor: pointer; font: 500 11px var(--mono); color: var(--text-dim); min-width: 44px; text-align: center; }
+  .fb-zoom:hover { color: var(--text); }
+  .fb-view { flex: 1; min-height: 0; position: relative; border: 1px solid var(--border); border-radius: 12px; overflow: hidden; background: #FFFFFF; }
+  #fbSvg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; user-select: none; }
+  .fb-status { display: flex; align-items: center; justify-content: space-between; gap: 10px; font: 400 11px var(--mono); color: var(--text-faint); min-height: 28px; }
+  .fb-status .fb-l { display: flex; gap: 14px; align-items: center; }
+  .fb-status .fb-r { display: flex; gap: 10px; align-items: center; }
+  .fb-status select { height: 26px; font: 400 11px var(--mono); padding: 2px 4px; }
+  .fb-xy { color: var(--text-dim); }
+  .fb-side { display: flex; flex-direction: column; gap: 10px; min-height: 0; }
+  .fb-tabs { display: flex; }
+  .fb-tabs button { flex: 1; }
+  .fb-panel { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 11px; padding-right: 4px; }
+  .fb-panel .sec:first-child { border-top: none; padding-top: 0; }
   .fb-row { display: grid; grid-template-columns: 1.6fr 1fr 1fr auto; gap: 6px; align-items: center; }
+  .fb-row-h { font: 500 9.5px var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--text-faint); }
+  .fb-inline { display: flex; gap: 4px; }
+  .fb-inline input { min-width: 0; }
   .fb-tbl { width: 100%; border-collapse: collapse; font-size: 12px; }
-  .fb-tbl th { text-align: left; font: 500 10px var(--mono); color: var(--text-faint); padding: 2px 3px; }
+  .fb-tbl th { text-align: left; font: 500 10px var(--mono); color: var(--text-faint); padding: 2px 3px; position: sticky; top: 0; background: var(--surface); }
   .fb-tbl td { padding: 1px 2px; }
-  .fb-tbl td:first-child { font: 500 10.5px var(--mono); color: var(--text-faint); text-align: right; padding-right: 5px; }
+  .fb-tbl td:first-child { font: 500 10.5px var(--mono); color: var(--text-faint); text-align: right; padding-right: 5px; cursor: pointer; }
   .fb-tbl input { height: 26px; width: 100%; font-size: 12px; padding: 2px 5px; }
   .fb-tbl tr.on td { background: var(--sel); }
-  #fbSvg .fb-grid { stroke: #ECECE6; stroke-width: calc(var(--u) * .12); }
-  #fbSvg .fb-grid.major { stroke: #D9D9D0; }
-  #fbSvg .fb-axis { stroke: #B9B9AE; stroke-width: calc(var(--u) * .15); stroke-dasharray: calc(var(--u) * 1) calc(var(--u) * .8); }
-  #fbSvg .fb-shell { fill: none; stroke: #111; stroke-width: calc(var(--u) * .35); }
-  #fbSvg .fb-k { stroke: #111; stroke-width: calc(var(--u) * .3); fill: #fff; }
+  .fb-status { flex-wrap: wrap; }
+  .fb-status span { white-space: nowrap; }
+  @media (max-width: 1100px) {
+    .fb { grid-template-columns: 1fr; height: auto; }
+    .fb-main { height: 58vh; min-height: 360px; }
+    .fb-panel { overflow: visible; }
+  }
+  #fbSvg * { vector-effect: non-scaling-stroke; }
+  #fbSvg .fb-grid { stroke: #F0F0EA; stroke-width: 1px; }
+  #fbSvg .fb-grid.major { stroke: #DEDED6; }
+  #fbSvg .fb-axis { stroke: #B9B9AE; stroke-width: 1px; stroke-dasharray: 5 4; }
+  #fbSvg .fb-shell { fill: none; stroke: #111; stroke-width: 2px; }
+  #fbSvg .fb-k { stroke: #111; stroke-width: 1.5px; fill: #fff; }
   #fbSvg .fb-k-key { fill: #111; }
-  #fbSvg .fb-pin { fill: #fff; stroke: #111; stroke-width: calc(var(--u) * .3); cursor: grab; }
+  #fbSvg .fb-hit { fill: transparent; cursor: grab; }
+  #fbSvg .fb-pin { fill: #fff; stroke: #111; stroke-width: 1.5px; cursor: grab; }
   #fbSvg .fb-pin.male { fill: #111; }
-  #fbSvg .fb-pin.on { stroke: #9DB000; stroke-width: calc(var(--u) * .8); }
-  #fbSvg .fb-pin.male.on { fill: #3A4100; }
+  #fbSvg .fb-pin.on { fill: #E9F08A; stroke: #6E7B00; stroke-width: 2.5px; }
+  #fbSvg .fb-pin.male.on { fill: #6E7B00; }
   #fbSvg .fb-lbl { fill: #555; font-family: Arial, Helvetica, sans-serif; pointer-events: none; }
+  #fbSvg .fb-lbl.on { fill: #3A4100; font-weight: bold; }
   #fbSvg .fb-lbl.inv { fill: #fff; font-weight: bold; }
-  #fbSvg .fb-box { fill: rgba(208,221,43,.15); stroke: #9DB000; stroke-width: calc(var(--u) * .2); }
+  #fbSvg .fb-box { fill: rgba(208,221,43,.15); stroke: #8A9A00; stroke-width: 1px; }
+  #fbSvg .fb-rring { fill: none; stroke: #8A9A00; stroke-width: 1px; stroke-dasharray: 3 4; pointer-events: none; }
+  #fbSvg .fb-rline, #fbSvg .fb-pivot { stroke: #8A9A00; stroke-width: 1.2px; fill: none; pointer-events: none; }
+  #fbSvg .fb-knob { fill: #D0DD2B; stroke: #5F6A00; stroke-width: 1.5px; cursor: grab; }
+  #fbSvg .fb-knob:hover { fill: #E4EE55; }
+  #fbSvg .fb-angle { fill: #5F6A00; font-family: Arial, Helvetica, sans-serif; font-weight: bold; pointer-events: none; }
   .lib-row { display: flex; align-items: center; }
   .lib-row .lib-item { flex: 1; min-width: 0; }
   .lib-row .lib-item span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -397,7 +450,7 @@
   kbd { font: 500 11px var(--mono); padding: 2px 6px; border: 1px solid var(--border); border-radius: 5px; color: var(--text-dim); background: var(--surface); }
 
   body.drag::after {
-    content: "Drop a .cblproj project to open it"; position: fixed; inset: 12px; z-index: 300;
+    content: "Drop a .cblproj project, or an image onto the selected board"; position: fixed; inset: 12px; z-index: 300;
     display: grid; place-items: center; border: 2px dashed var(--accent-text); border-radius: 16px;
     background: color-mix(in srgb, var(--bg) 82%, transparent); font: 500 14px var(--mono); color: var(--accent-text);
   }
@@ -583,6 +636,7 @@
   <datalist id="dlSpec"></datalist>
   <datalist id="dlAwg"></datalist>
   <input type="file" id="projFile" accept=".cblproj,.json" hidden>
+  <input type="file" id="boardImgFile" accept="image/png,image/jpeg,image/webp,image/gif,image/bmp,image/svg+xml" hidden>
   <input type="file" id="partsFile" accept=".cdparts,.json" hidden>
   <input type="file" id="logoFile" accept="image/png,image/jpeg,image/webp,image/svg+xml" hidden>
   <div id="toasts"></div>

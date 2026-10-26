@@ -8,11 +8,25 @@
   "use strict";
   const CD = root.CD;
   const r2 = v => Math.round(v * 100) / 100;
-  const imgSrc = (images, k) => { const v = images && images[k]; return v ? v.data || v : null; };
+  const imgSrc = (images, k, o) => { if (o && o.src) return o.src; const v = images && images[k]; return v ? v.data || v : null; };
+  const imgFmt = src => /^data:image\/jpeg/.test(src) ? "JPEG" : /^data:image\/webp/.test(src) ? "WEBP" : "PNG";
   const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 
   // ---------- SVG ----------
-  function prim(o, images) {
+  // Screen only: a data image becomes a cached blob URL, so redraws do not re-parse large data.
+  const blobUrls = new Map();
+  function screenSrc(src) {
+    if (!/^data:/.test(src) || typeof Blob === "undefined") return src;
+    let u = blobUrls.get(src);
+    if (!u) {
+      const [head, b64] = src.split(","), bin = atob(b64), a = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) a[i] = bin.charCodeAt(i);
+      u = URL.createObjectURL(new Blob([a], { type: head.slice(5, head.indexOf(";")) }));
+      blobUrls.set(src, u);
+    }
+    return u;
+  }
+  function prim(o, images, screen) {
     const st = (s, lw, dash, f, join) => (f ? ' fill="' + f + '"' : ' fill="none"') +
       (s ? ' stroke="' + s + '" stroke-width="' + r2(lw) + '"' + (dash ? ' stroke-dasharray="' + dash.join(" ") + '"' : "") + (join ? ' stroke-linejoin="round"' : "") : "");
     switch (o.t) {
@@ -26,14 +40,14 @@
       case "circle": return '<circle cx="' + r2(o.cx) + '" cy="' + r2(o.cy) + '" r="' + r2(o.r) + '"' + st(o.s, o.lw, o.dash, o.f) + "/>";
       case "text": return '<text x="' + r2(o.x) + '" y="' + r2(o.y) + '" font-size="' + o.size + '"' + (o.bold ? ' font-weight="bold"' : "") +
         (o.anchor !== "start" ? ' text-anchor="' + o.anchor + '"' : "") + (o.c !== "#111111" ? ' fill="' + o.c + '"' : "") + ">" + esc(o.s) + "</text>";
-      case "img": return imgSrc(images, o.key) ? '<image href="' + imgSrc(images, o.key) + '" x="' + r2(o.x) + '" y="' + r2(o.y) + '" width="' + r2(o.w) + '" height="' + r2(o.h) + '"/>' : "";
+      case "img": { const src = imgSrc(images, o.key, o); return src ? '<image preserveAspectRatio="none" href="' + (screen && o.src ? screenSrc(src) : src) + '" x="' + r2(o.x) + '" y="' + r2(o.y) + '" width="' + r2(o.w) + '" height="' + r2(o.h) + '"/>' : ""; }
     }
     return "";
   }
   function svgInner(sc, images, screen) {
     return sc.groups.map(g => {
-      let body = g.prims.map(o => prim(o, images)).join("");
-      if (screen && g.kind === "wire") body += g.prims.filter(o => o.t === "poly").slice(0, 1).map(o => prim(Object.assign({}, o, { s: "transparent", lw: 9, dash: null }))).join("");
+      let body = g.prims.map(o => prim(o, images, screen)).join("");
+      if (screen && (g.kind === "wire" || g.kind === "tie")) body += g.prims.filter(o => o.t === "poly").slice(0, 1).map(o => prim(Object.assign({}, o, { s: "transparent", lw: 9, dash: null }))).join("");
       return screen ? '<g data-id="' + g.id + '" class="k-' + g.kind + '">' + body + "</g>" : "<g>" + body + "</g>";
     }).join("");
   }
@@ -79,7 +93,7 @@
         doc.text(ansi(o.s), o.x, o.y, { align: o.anchor === "middle" ? "center" : o.anchor === "end" ? "right" : "left", baseline: "alphabetic" });
         return;
       }
-      if (o.t === "img") { if (imgSrc(images, o.key)) doc.addImage(imgSrc(images, o.key), "PNG", o.x, o.y, o.w, o.h); return; }
+      if (o.t === "img") { const src = imgSrc(images, o.key, o); if (src) doc.addImage(src, imgFmt(src), o.x, o.y, o.w, o.h, o.key, "FAST"); return; }
       const stl = style(o);
       if (!stl) return;
       if (o.s) stroke(o);

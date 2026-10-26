@@ -9,7 +9,7 @@
 (function () {
   "use strict";
   const CD = window.CD, OUT = CD.out;
-  const REV = "rev 1.2.0";
+  const REV = "rev 1.5.0";
   const LS_UI = "cableDesigner.ui";
   const $ = id => document.getElementById(id);
   const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -114,7 +114,7 @@
   function drawOverlay() {
     const o = [];
     const g = sel && sc.groups.find(x => x.id === sel);
-    if (g && kindOf(sel) === "x") {
+    if (g && (kindOf(sel) === "x" || kindOf(sel) === "t")) {
       const pl = g.prims.find(q => q.t === "poly");
       if (pl) o.push('<polyline class="ovl-selw" points="' + pl.pts.join(" ") + '"/>');
       const w = wire(idOf(sel)), L = w && w.cable && sc.blocks.cable && sc.blocks.cable[w.cable];
@@ -124,9 +124,17 @@
       const b = g.box;
       o.push('<rect class="ovl-sel" x="' + (b.x - 4) + '" y="' + (b.y - 4) + '" width="' + (b.w + 8) + '" height="' + (b.h + 8) + '" rx="3"/>');
       if (g.leader) o.push('<circle class="handle" data-h="leader" cx="' + g.leader.x + '" cy="' + g.leader.y + '" r="4"/>');
+      const BL = kindOf(sel) === "c" && sc.blocks.conn && sc.blocks.conn[idOf(sel)];
+      if (BL && BL.board) o.push('<rect class="handle rs" data-h="bsize" x="' + (BL.x + BL.w - 4) + '" y="' + (BL.y + BL.h - 4) + '" width="8" height="8"><title>Drag to resize</title></rect>');
     }
     if (sheet === 1) {
+      Object.entries(sc.blocks.conn || {}).forEach(([cid, L]) => {
+        if (!L.board) return;
+        const c = conn(cid);
+        c.pins.forEach((pn, i) => { const q = L.pos(i); o.push('<circle class="bpin" data-bc="' + cid + '" data-bp="' + i + '" cx="' + q.x + '" cy="' + q.y + '" r="4.2"><title>Drag along the edge</title></circle>'); });
+      });
       sc.ports.forEach(pt => o.push('<circle class="port" data-pc="' + pt.c + '" data-pp="' + pt.p + '" cx="' + pt.x + '" cy="' + pt.y + '" r="3.2"/>'));
+      (sc.sports || []).forEach(pt => o.push('<rect class="port sport" data-sc="' + pt.cable + '" data-se="' + pt.end + '" x="' + (pt.x - 3.4) + '" y="' + (pt.y - 3.4) + '" width="6.8" height="6.8" transform="rotate(45 ' + pt.x + " " + pt.y + ')"><title>Shield ' + pt.end.toUpperCase() + ': drag to tie</title></rect>'));
       Object.values(sc.blocks.cable || {}).forEach(L => L.rows.forEach(r => {
         o.push('<circle class="port" data-rw="' + r.w.id + '" data-rend="' + (L.aLeft ? "a" : "b") + '" cx="' + L.x + '" cy="' + r.ly + '" r="3.2"/>');
         o.push('<circle class="port" data-rw="' + r.w.id + '" data-rend="' + (L.aLeft ? "b" : "a") + '" cx="' + (L.x + L.w) + '" cy="' + r.ly + '" r="3.2"/>');
@@ -191,13 +199,17 @@
     const t = e.target;
     const port = t.closest(".port");
     if (port) { startWire(e, port); return; }
-    if (t.closest(".handle")) { startLeader(e); return; }
+    const bp = t.closest(".bpin");
+    if (bp) { select("c:" + bp.dataset.bc); drag = { t: "bpin", c: bp.dataset.bc, i: +bp.dataset.bp, moved: false }; stage.setPointerCapture(e.pointerId); return; }
+    const hd = t.closest(".handle");
+    if (hd && hd.dataset.h === "bsize") { drag = { t: "bsize", c: idOf(sel), moved: false }; stage.setPointerCapture(e.pointerId); return; }
+    if (hd) { startLeader(e); return; }
     const g = t.closest("[data-id]");
     const id = g && g.dataset.id;
     const k = kindOf(id);
-    if (id && ["c", "w", "x", "k", "blk"].includes(k) && sheet === 1) {
+    if (id && ["c", "w", "x", "t", "k", "blk"].includes(k) && sheet === 1) {
       select(id);
-      if (k !== "x") startMove(e, id);
+      if (k !== "x" && k !== "t") startMove(e, id);
       return;
     }
     if (id && k === "blk") { select(id); return; }
@@ -232,7 +244,8 @@
     svg.classList.add("show-ports");
     stage.setPointerCapture(e.pointerId);
   }
-  const portInfo = el => el.dataset.pc ? { t: "pin", c: el.dataset.pc, p: +el.dataset.pp } : el.dataset.rw ? { t: "row", w: el.dataset.rw, end: el.dataset.rend } : null;
+  const portInfo = el => el.dataset.pc ? { t: "pin", c: el.dataset.pc, p: +el.dataset.pp } : el.dataset.rw ? { t: "row", w: el.dataset.rw, end: el.dataset.rend }
+    : el.dataset.sc ? { t: "shield", cable: el.dataset.sc, end: el.dataset.se } : null;
 
   stage.addEventListener("pointermove", e => {
     if (!drag) return;
@@ -247,6 +260,24 @@
       const k = kindOf(drag.id);
       if (k === "blk") p.pos[idOf(drag.id)] = { x: nx, y: ny };
       else { const o = selObj(); if (o) { o.x = nx; o.y = ny; } }
+      requestRender();
+    } else if (drag.t === "bpin" || drag.t === "bsize") {
+      const c = conn(drag.c), L = sc.blocks.conn && sc.blocks.conn[drag.c];
+      if (!c || !c.board || !L) return;
+      const pt = toSheet(e);
+      if (!drag.moved) { pushUndo(); drag.moved = true; }
+      if (drag.t === "bsize") {
+        c.board.w = Math.max(60, snap(pt.x - c.x, e.altKey)); c.board.h = Math.max(40, snap(pt.y - c.y, e.altKey));
+      } else {
+        // nearest edge, then the spot along it (5 pt steps)
+        const x0 = c.x, y0 = c.y, w = c.board.w, h = c.board.h, HDR = 15;
+        const cx = Math.max(x0, Math.min(x0 + w, pt.x)), cy = Math.max(y0 + HDR, Math.min(y0 + h, pt.y));
+        const d = { L: Math.hypot(pt.x - x0, pt.y - cy), R: Math.hypot(pt.x - x0 - w, pt.y - cy), T: Math.hypot(pt.x - cx, pt.y - y0), B: Math.hypot(pt.x - cx, pt.y - y0 - h) };
+        const side = Object.keys(d).sort((a, b) => d[a] - d[b])[0];
+        const len = side === "L" || side === "R" ? h - HDR : w, along = side === "L" || side === "R" ? cy - y0 - HDR : cx - x0;
+        const t = Math.max(0, Math.min(1, (e.altKey ? along : Math.round(along / 5) * 5) / len));
+        c.board.pins[drag.i] = { side, t: Math.round(t * 1000) / 1000 };
+      }
       requestRender();
     } else if (drag.t === "leader") {
       if (!drag.moved) { pushUndo(); drag.moved = true; }
@@ -272,6 +303,7 @@
     if (!ui.ports) svg.classList.remove("show-ports");
     if (d.t === "move" && d.moved) { scheduleSave(); refreshPanels(); render(); }
     if (d.t === "leader" && d.moved) { scheduleSave(); render(); }
+    if ((d.t === "bpin" || d.t === "bsize") && d.moved) { scheduleSave(); render(); renderInspector(); }
     if (d.t === "wire") {
       const tgt = d.hot && portInfo(d.hot);
       if (tgt) makeWire(d.src, tgt); else render();
@@ -282,6 +314,16 @@
   stage.addEventListener("pointercancel", endDrag);
 
   function makeWire(a, b) {
+    if (a.t === "shield" || b.t === "shield") {
+      const s1 = a.t === "shield" ? a : b, other = s1 === a ? b : a;
+      if (other.t === "row") { toast("Tie a shield to another shield, a pin, a splice or ground.", "warn"); render(); return; }
+      pushUndo();
+      const t = CD.addTie(p, { cable: s1.cable, end: s1.end }, other);
+      if (!t) { undo.pop(); paintUndo(); render(); return; }
+      sel = "t:" + t.id;
+      changed(true);
+      return;
+    }
     if (a.t === "row" && b.t === "row") { toast("Drag from a pin to a cable conductor, not conductor to conductor.", "warn"); render(); return; }
     if (a.t === "pin" && b.t === "pin" && a.c === b.c && a.p === b.p) { render(); return; }
     pushUndo();
@@ -336,6 +378,7 @@
       case "k": return callout(a);
       case "pin": { const c = conn(a); return c && c.pins[+b]; }
       case "acc": { const c = conn(a); return c && c.acc[+b]; }
+      case "bpin": { const c = conn(a); return c && c.board && c.board.pins[+b]; }
       case "g": { const c = cable(a); return c && c.groups.find(g => g.id === b); }
       case "m": { const c = cable(a); return c && c.marks.find(m => m.id === b); }
       case "h": return p.history[+a];
@@ -354,8 +397,16 @@
       c.pins = fresh.pins; c.face = fresh.face; c.custom = fresh.custom; c.layout = null;
       if (!lib.gender) c.gender = "none"; else if (c.gender === "none") c.gender = "female";
       p.wires.forEach(w => ["a", "b"].forEach(e => { if (w[e] && w[e].c === c.id && w[e].p >= c.pins.length) w[e] = null; }));
+      c.board = fresh.board;
+      CD.pruneTies(p);
     },
     pins(c, v) { CD.setPinCount(p, c, parseInt(v, 10)); },
+    boardSize(c, v, el) { const k = el.dataset.k.split(".")[1], n = parseFloat(v); if (isFinite(n)) c.board[k] = Math.max(k === "w" ? 60 : 40, Math.round(n)); else c.board[k] = k === "w" ? 150 : 100; },
+    tie(c, v, el) {
+      if (!v) return;
+      const [t, a, b] = v.split(":");
+      CD.addTie(p, { cable: c.id, end: el.dataset.end }, t === "s" ? { t: "shield", cable: a, end: b } : { t: "pin", c: a, p: +b });
+    },
     endc(w, v, el) {
       const e = el.dataset.end;
       if (!v) { w[e] = null; return; }
@@ -429,9 +480,13 @@
   function renderInspector() {
     const body = $("inspBody"), k = kindOf(sel), o = selObj();
     let title = "Drawing", acts = "", html = "";
-    if (k === "c" && o) { title = "Connector <b>" + esc(o.ref) + "</b>"; html = connForm(o); acts = IB("dup", "⧉", "Duplicate (Ctrl+D)") + IB("del", "✕", "Delete (Del)"); }
+    if (k === "c" && o) { title = (o.board ? "Board" : "Connector") + " <b>" + esc(o.ref) + "</b>"; html = connForm(o); acts = IB("dup", "⧉", "Duplicate (Ctrl+D)") + IB("del", "✕", "Delete (Del)"); }
     else if (k === "w" && o) { title = (o.kind === "bundle" ? "Bundle " : "Cable ") + "<b>" + esc(o.ref) + "</b>"; html = cableForm(o); acts = IB("dup", "⧉", "Duplicate (Ctrl+D)") + IB("del", "✕", "Delete (Del)"); }
     else if (k === "x" && o) { title = "Wire <b>" + esc(CD.wireRef(p, o)) + "</b>"; html = wireForm(o); acts = IB("del", "✕", "Delete (Del)"); }
+    else if (k === "t") {
+      const t = (p.ties || []).find(x => x.id === idOf(sel));
+      if (t) { title = "Shield tie"; html = '<div class="stat"><span>From</span><b>' + esc(CD.shieldText(p, t.a.cable, t.a.end)) + "</b><span>To</span><b>" + esc(CD.tieTargetText(p, t.b)) + "</b></div>"; acts = IB("del", "✕", "Delete (Del)"); }
+    }
     else if (k === "k" && o) { title = "Callout"; html = calloutForm(o); acts = IB("dup", "⧉", "Duplicate (Ctrl+D)") + IB("del", "✕", "Delete (Del)"); }
     else if (k === "blk") { title = { wires: "Wire list", bom: "Bill of materials", notes: "Notes" }[idOf(sel)] || "Table"; html = blockForm(idOf(sel)); }
     else html = drawingForm();
@@ -442,7 +497,30 @@
     body.scrollTop = st;
   }
 
+  function boardForm(c) {
+    const o = "c:" + c.id;
+    const used = {};
+    p.wires.forEach(w => ["a", "b"].forEach(e => { if (w[e] && w[e].c === c.id) (used[w[e].p] = used[w[e].p] || []).push(CD.wireRef(p, w)); }));
+    (p.ties || []).forEach(t => { if (t.b.t === "pin" && t.b.c === c.id) (used[t.b.p] = used[t.b.p] || []).push(CD.shieldText(p, t.a.cable, t.a.end)); });
+    const SIDES = [["L", "Left"], ["R", "Right"], ["T", "Top"], ["B", "Bottom"]];
+    let h = '<div class="r2">' + F("Reference", I(o, "ref", c.ref, 'data-re="1"')) + F("Type", libSelect(o, c.lib)) + "</div>";
+    h += F("PCB name", I(o, "desc", c.desc, 'placeholder="e.g. Interface board" data-re="1"'));
+    h += '<div class="r3">' + F("Mfr", I(o, "mfr", c.mfr)) + F("Mfr part no.", I(o, "mpn", c.mpn)) + F("Part no.", I(o, "ipn", c.ipn)) + "</div>";
+    h += '<div class="r2">' + F("Width", I(o, "board.w", c.board.w, 'inputmode="decimal" data-fx="boardSize" data-set="0"')) + F("Height", I(o, "board.h", c.board.h, 'inputmode="decimal" data-fx="boardSize" data-set="0"')) + "</div>";
+    h += sec("Pins (" + c.pins.length + ")", '<table class="pins bpins"><tbody>' + c.pins.map((pn, i) => "<tr><td>" + (i + 1) + "</td><td>" + I("pin:" + c.id + ":" + i, "n", pn.n, 'class="pn"') + "</td><td>" +
+      I("pin:" + c.id + ":" + i, "sig", pn.sig, 'placeholder="Signal"') + "</td><td>" + S("bpin:" + c.id + ":" + i, "side", c.board.pins[i].side, SIDES, 'data-re="1"') + "</td><td>" +
+      IB("bpinDel", "✕", "Remove pin", 'data-id="' + c.id + '" data-i="' + i + '"') + '</td></tr><tr class="used-row"><td></td><td colspan="4" class="used">' + esc((used[i] || []).join(", ")) + "</td></tr>").join("") + "</tbody></table>",
+      B("bpinAdd", "＋ Left", 'data-id="' + c.id + '" data-i="L"') + B("bpinAdd", "＋ Right", 'data-id="' + c.id + '" data-i="R"') + B("bpinSpace", "Space evenly", 'data-id="' + c.id + '"'));
+    const im = c.board.img;
+    h += sec("Image", (im ? '<img class="bimg-thumb" alt="Board image" src="' + im.data + '"><p class="hint">' + im.w + " × " + im.h + " px</p>" : '<p class="hint">Load, paste or drop a picture of the board.</p>') +
+      '<div class="btn-row">' + B("bimgPick", im ? "Replace…" : "Load image…", 'data-id="' + c.id + '"') + (im ? B("bimgFit", "Fit block to image", 'data-id="' + c.id + '"') + B("bimgDel", "Remove", 'data-id="' + c.id + '"', "btn-danger") : "") + "</div>");
+    h += F("Note", T(o, "note", c.note, 'rows="2"'));
+    h += '<div class="btn-row">' + B("partSave", "Save to My parts…", 'data-id="' + c.id + '"') + "</div>";
+    return h;
+  }
+
   function connForm(c) {
+    if (c.board) return boardForm(c);
     const o = "c:" + c.id, lib = CD.libOf(c), node = lib.kind === "splice" || lib.kind === "ground";
     const used = {};
     p.wires.forEach(w => ["a", "b"].forEach(e => { if (w[e] && w[e].c === c.id) (used[w[e].p] = used[w[e].p] || []).push(CD.wireRef(p, w)); }));
@@ -491,7 +569,17 @@
     const sh = c.shield.type !== "none";
     h += sec("Shield", '<div class="r3">' + F("Type", S(o, "shield.type", c.shield.type, CD.SHIELDS, 'data-fx="shieldType" data-re="1"')) +
       F("End A", S(o, "shield.a", c.shield.a, CD.SHIELD_TERMS, sh ? "" : "disabled")) + F("End B", S(o, "shield.b", c.shield.b, CD.SHIELD_TERMS, sh ? "" : "disabled")) + "</div>" +
-      (sh ? '<p class="hint">Pigtail: add a drain (BARE) conductor and wire it to a pin. 360°: drawn to the shell of the connector at that end.</p>' : ""));
+      (sh ? ["a", "b"].map(e => {
+        const ts = CD.tiesOf(p, c.id, e);
+        const other = t => t.a.cable === c.id && t.a.end === e ? CD.tieTargetText(p, t.b) : CD.shieldText(p, t.a.cable, t.a.end);
+        const opts = [["", "Tie end " + e.toUpperCase() + " to…"]]
+          .concat(p.cables.filter(x => x.shield.type !== "none").flatMap(x => ["a", "b"].filter(z => !(x.id === c.id && z === e)).map(z => ["s:" + x.id + ":" + z, x.ref + " shield " + z.toUpperCase()])))
+          .concat(p.conns.flatMap(k => CD.libOf(k).kind === "splice" || CD.libOf(k).kind === "ground" ? [["p:" + k.id + ":0", k.ref]] : k.pins.map((pn, i) => ["p:" + k.id + ":" + i, k.ref + ":" + pn.n + (pn.sig ? "  " + pn.sig : "")])));
+        return '<div class="tie-end"><span class="lbl">End ' + e.toUpperCase() + " ties</span>" +
+          ts.map(t => '<div class="tie-row"><span>' + esc(other(t)) + "</span>" + IB("tieDel", "✕", "Remove tie", 'data-id="' + t.id + '"') + "</div>").join("") +
+          '<select data-o="' + o + '" data-k="tieTo" data-fx="tie" data-set="0" data-end="' + e + '" data-re="1">' + optHtml(opts, "") + "</select></div>";
+      }).join("") : "") +
+      (c.kind !== "bundle" ? '<div class="btn-row">' + B("insertBoard", "Insert junction board", 'data-id="' + c.id + '" title="Cut this cable at a new board"') + "</div>" : ""));
     const rows = list.map((w, i) => {
       const wo = "x:" + w.id, g = CD.groupOf(c, w.id);
       return '<div class="cond-row"><input type="checkbox" data-cs="' + w.id + '"' + (condSel.has(w.id) ? " checked" : "") + ' title="Tick to twist">' +
@@ -628,6 +716,31 @@
     },
     ungroup: d => { const c = cable(d.id); pushUndo(); c.groups = c.groups.filter(g => g.id !== d.i); changed(true); },
     connect: d => connectDialog(cable(d.id)),
+    tieDel: d => { pushUndo(); p.ties = p.ties.filter(t => t.id !== d.id); changed(true); },
+    bpinAdd: d => {
+      const c = conn(d.id); pushUndo();
+      const on = c.board.pins.filter(x => x.side === d.i), maxT = on.length ? Math.max(...on.map(x => x.t)) : 0;
+      CD.addPins(c, [{ side: d.i, t: on.length ? Math.min(0.98, (maxT + 1) / 2) : 0.5 }]);
+      changed(true);
+    },
+    bpinDel: d => { const c = conn(d.id); pushUndo(); CD.removePins(p, c, [+d.i]); changed(true); },
+    bimgPick: d => { imgTarget = d.id; $("boardImgFile").click(); },
+    bimgDel: d => { const c = conn(d.id); pushUndo(); c.board.img = null; changed(true); },
+    bimgFit: d => { const c = conn(d.id), f = CD.boardFit(c); if (!f) return; pushUndo(); c.board.w = f.w; c.board.h = f.h; changed(true); },
+    bpinSpace: d => { const c = conn(d.id); pushUndo(); CD.spaceBoardPins(c); changed(true); },
+    insertBoard: d => {
+      const c = cable(d.id), L = sc.blocks.cable && sc.blocks.cable[c.id];
+      if (!c) return;
+      pushUndo();
+      const r = CD.insertBoard(p, c), cw = L ? L.w : 220;
+      r.board.x = snap(c.x + cw + 70); r.board.y = snap(c.y);
+      r.cable.x = snap(r.board.x + r.board.board.w + 80); r.cable.y = snap(c.y);
+      place("c:" + r.board.id, r.board, { x: r.board.x + r.board.board.w / 2, y: r.board.y + r.board.board.h / 2 });
+      place("w:" + r.cable.id, r.cable, { x: r.board.x + r.board.board.w + 80 + cw / 2, y: r.board.y + 60 });
+      sel = "c:" + r.board.id;
+      changed(true);
+      toast(r.cable.ref + " now runs from " + r.board.ref + " to end B. Set its length.");
+    },
     markAdd: d => { const c = cable(d.id); pushUndo(); c.marks.push(CD.newMark()); changed(true); },
     markDel: d => { const c = cable(d.id); pushUndo(); c.marks = c.marks.filter(m => m.id !== d.i); changed(true); },
     swap: d => { const w = wire(d.id); pushUndo(); const t = w.a; w.a = w.b; w.b = t; changed(true); },
@@ -667,6 +780,40 @@
     if (cb) { if (cb.checked) condSel.add(cb.dataset.cs); else condSel.delete(cb.dataset.cs); }
   });
 
+  // ---------- board images (kept in the drawing as PNG / JPEG data, 1600 px long side at most) ----------
+  let imgTarget = null;
+  async function boardImage(c, blob) {
+    if (!c || !c.board) return;
+    const url = URL.createObjectURL(blob);
+    try {
+      const im = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = () => rej(new Error("not an image")); i.src = url; });
+      const k = Math.min(1, 1600 / Math.max(im.naturalWidth, im.naturalHeight));
+      const cv = document.createElement("canvas");
+      cv.width = Math.max(1, Math.round(im.naturalWidth * k)); cv.height = Math.max(1, Math.round(im.naturalHeight * k));
+      const g = cv.getContext("2d");
+      g.drawImage(im, 0, 0, cv.width, cv.height);
+      // keep PNG when the picture has see-through parts, else JPEG (smaller files)
+      let alpha = false;
+      if (!/jpe?g/i.test(blob.type)) { const d = g.getImageData(0, 0, cv.width, cv.height).data; for (let i = 3; i < d.length; i += 4) if (d[i] < 250) { alpha = true; break; } }
+      const data = alpha ? cv.toDataURL("image/png") : cv.toDataURL("image/jpeg", 0.86);
+      pushUndo();
+      c.board.img = { data, w: cv.width, h: cv.height };
+      const f = CD.boardFit(c);   // grow to show it, never shrink the user's size
+      if (f) { c.board.w = Math.max(c.board.w, Math.min(f.w, 600)); c.board.h = Math.max(c.board.h, Math.min(f.h, 600)); }
+      changed(true);
+      toast("Image added to " + c.ref);
+    } catch (e) { toast("Could not read that image.", "err"); }
+    finally { URL.revokeObjectURL(url); }
+  }
+  $("boardImgFile").addEventListener("change", e => { const f = e.target.files[0]; e.target.value = ""; if (f && imgTarget) boardImage(conn(imgTarget), f); });
+  const selBoard = () => { const o = kindOf(sel) === "c" ? selObj() : null; return o && o.board ? o : null; };
+  document.addEventListener("paste", e => {
+    const t = e.target, b = selBoard();
+    if (!b || /^(INPUT|TEXTAREA)$/.test(t.tagName) || $("overlay").classList.contains("open")) return;
+    const f = [...(e.clipboardData ? e.clipboardData.files : [])].find(x => /^image\//.test(x.type));
+    if (f) { e.preventDefault(); boardImage(b, f); }
+  });
+
   function deleteWire(w) {
     if (!w) return;
     p.wires = p.wires.filter(x => x !== w);
@@ -679,11 +826,14 @@
     pushUndo();
     if (k === "c") {
       p.conns = p.conns.filter(c => c.id !== id);
+      CD.pruneTies(p);
       p.wires.forEach(w => ["a", "b"].forEach(e => { if (w[e] && w[e].c === id) w[e] = null; }));
     } else if (k === "w") {
       p.wires.filter(w => w.cable === id).forEach(deleteWire);
       p.cables = p.cables.filter(c => c.id !== id);
+      CD.pruneTies(p);
     } else if (k === "x") deleteWire(wire(id));
+    else if (k === "t") p.ties = p.ties.filter(t => t.id !== id);
     else if (k === "k") p.callouts = p.callouts.filter(c => c.id !== id);
     sel = null;
     changed(true);
@@ -711,7 +861,7 @@
 
   // ---------- add from library ----------
   // Put a new item in the nearest free space around the view centre.
-  function place(gid, item) {
+  function place(gid, item, near) {
     const s0 = CD.scene(p, { sheet: 1 });
     const g = s0.groups.find(x => x.id === gid);
     if (!g || !g.box) return;
@@ -719,7 +869,7 @@
     const others = s0.groups.filter(x => x.id !== gid && x.box && x.kind !== "wire").map(x => x.box).concat([s0.tb, s0.rev]);
     const inside = (x, y) => x >= fr.L + 8 && y >= fr.T + 8 && x + w <= fr.R - 8 && y + h <= fr.B - 8;
     const overlap = (x, y) => others.reduce((a, b) => a + Math.max(0, Math.min(x + w + M, b.x + b.w) - Math.max(x, b.x - M)) * Math.max(0, Math.min(y + h + M, b.y + b.h) - Math.max(y, b.y - M)), 0);
-    const c = viewCenter(), x0 = c.x - w / 2, y0 = c.y - h / 2;
+    const c = near || viewCenter(), x0 = c.x - w / 2, y0 = c.y - h / 2;
     let best = { x: snap(x0), y: snap(y0), a: Infinity };
     for (let r = 0; r < 60; r++) {
       for (let i = -r; i <= r; i++) {
@@ -738,7 +888,7 @@
   const faces = CD.faceBuilder({
     project: () => p, conn, openModal, toast, esc, pushUndo,
     closeModal: () => closeModal(),
-    setModalClose: f => { modalClose = f; },
+    setModalClose: (f, sticky) => { modalClose = f; modalSticky = !!(f && sticky); },
     cancelEdit: () => { travel(undo, redo); redo.pop(); paintUndo(); },
     changed: insp => changed(insp)
   });
@@ -909,7 +1059,7 @@
   $("addWireBtn").addEventListener("click", () => ACT.wireAdd());
 
   // ---------- modal / toast ----------
-  let modalClose = null, modalRefresh = null;
+  let modalClose = null, modalRefresh = null, modalSticky = false;
   function openModal(title, bodyHtml, buttons, wide) {
     $("modalTitle").textContent = title;
     $("modalBody").innerHTML = bodyHtml;
@@ -952,7 +1102,7 @@
     });
   }
   $("modalX").addEventListener("click", closeModal);
-  $("overlay").addEventListener("mousedown", e => { if (e.target === $("overlay")) closeModal(); });
+  $("overlay").addEventListener("mousedown", e => { if (e.target === $("overlay") && !modalSticky) closeModal(); });
   function toast(msg, kind) {
     const t = document.createElement("div");
     t.className = "toast" + (kind ? " " + kind : ""); t.textContent = msg;
@@ -1209,7 +1359,10 @@
     if (!hasFiles(e)) return;
     e.preventDefault(); dragDepth = 0; document.body.classList.remove("drag");
     const f = [...e.dataTransfer.files].find(x => /\.(cblproj|json)$/i.test(x.name));
-    if (f) openProject(f); else toast("Drop a .cblproj project file.", "warn");
+    const im = [...e.dataTransfer.files].find(x => /^image\//.test(x.type));
+    if (f) openProject(f);
+    else if (im && selBoard()) boardImage(selBoard(), im);
+    else toast(im ? "Select a junction board first, then drop the image." : "Drop a .cblproj project file.", "warn");
   });
   window.addEventListener("beforeunload", e => { if (!storageOk && hasContent()) { e.preventDefault(); e.returnValue = ""; } });
 

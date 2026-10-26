@@ -127,6 +127,20 @@
   }
   function connLayout(p, c) {
     const lib = CD.libOf(c);
+    if (lib.kind === "board") {
+      // Junction board: a black box with through-hole pins on its edges; wires land on each pin's lead.
+      const B = c.board || { w: 150, h: 100, pins: [] }, x = c.x, y = c.y, w = B.w, h = B.h, LEAD = 9;
+      const pos = i => {
+        const q = B.pins[i] || { side: "L", t: 0.5 };
+        const iy = y + HDR + q.t * (h - HDR), ix = x + q.t * w;
+        return q.side === "L" ? { x, y: iy, ox: -1, oy: 0, side: "L" } : q.side === "R" ? { x: x + w, y: iy, ox: 1, oy: 0, side: "R" }
+          : q.side === "T" ? { x: ix, y, ox: 0, oy: -1, side: "T" } : { x: ix, y: y + h, ox: 0, oy: 1, side: "B" };
+      };
+      return {
+        board: true, x, y, w, h, LEAD, pos, box: { x: x - LEAD, y: y - LEAD, w: w + LEAD * 2, h: h + LEAD * 2 },
+        port(i) { const q = pos(i); return { x: q.x + q.ox * LEAD, y: q.y + q.oy * LEAD, d: q.ox, v: q.oy }; }
+      };
+    }
     if (lib.kind === "splice" || lib.kind === "ground") {
       const lw = tw(c.ref, 7, true);
       return { node: lib.kind, x: c.x, y: c.y, box: { x: c.x - 9, y: c.y - 14, w: lw + 22, h: lib.kind === "ground" ? 32 : 24 }, port: (i, dirTo) => ({ x: c.x, y: c.y, d: 0 }) };
@@ -187,15 +201,17 @@
     list.forEach(w2 => { const L2 = w2.a && conns[w2.a.c]; if (L2) { sa += L2.box.x + L2.box.w / 2; n++; } });
     const cx = c.x + w / 2;
     const aLeft = n ? sa / n <= cx : true;
-    return { x: c.x, y: c.y, w, h, info, rows, rowsY, rowsH, cw, textW, head, aLeft, box: { x: c.x, y: c.y, w, h } };
+    const sport = c.shield.type !== "none" && rows.length ? end => { const left = (end === "a") === aLeft; return { x: left ? c.x : c.x + w, y: rowsY - 2, d: left ? -1 : 1 }; } : null;
+    return { x: c.x, y: c.y, w, h, info, rows, rowsY, rowsH, cw, textW, head, aLeft, sport, box: { x: c.x, y: c.y, w, h } };
   }
 
   // ---------- wire drawing ----------
   function bezier(p0, p3, d0, d3) {
-    const dx = Math.max(28, Math.abs(p3.x - p0.x) * 0.45);
-    const c1 = { x: p0.x + d0 * dx, y: p0.y }, c2 = { x: p3.x + d3 * dx, y: p3.y };
-    if (!d0) c1.x = p0.x + (p3.x - p0.x) * 0.3;
-    if (!d3) c2.x = p3.x - (p3.x - p0.x) * 0.3;
+    const dx = Math.max(28, Math.abs(p3.x - p0.x) * 0.45), dy = Math.max(28, Math.abs(p3.y - p0.y) * 0.45);
+    const c1 = p0.v ? { x: p0.x, y: p0.y + p0.v * dy } : { x: p0.x + d0 * dx, y: p0.y };
+    const c2 = p3.v ? { x: p3.x, y: p3.y + p3.v * dy } : { x: p3.x + d3 * dx, y: p3.y };
+    if (!d0 && !p0.v) c1.x = p0.x + (p3.x - p0.x) * 0.3;
+    if (!d3 && !p3.v) c2.x = p3.x - (p3.x - p0.x) * 0.3;
     const pts = [];
     for (let i = 0; i <= 24; i++) {
       const t = i / 24, u = 1 - t;
@@ -396,6 +412,58 @@
     (f.pins || []).forEach(pin);
     pen.text(b.x + b.w / 2, b.y + b.h + 9, c.faceFrom === "rear" ? "WIRE SIDE VIEW" : "MATING FACE VIEW", { size: 4.6, anchor: "middle", c: DIM });
   }
+  // Space a board's pin labels and part-number lines take on each side; the image fits inside it.
+  function boardMargins(c) {
+    const B = c.board, lbl = i => c.pins[i].n + (c.pins[i].sig ? "  " + c.pins[i].sig : "");
+    const side = s => B.pins.map((q, i) => q.side === s ? i : -1).filter(i => i >= 0);
+    const wid = s => side(s).reduce((m, i) => Math.max(m, tw(lbl(i), 6)), 0);
+    const info = [c.mpn ? (c.mfr ? c.mfr + " " : "") + c.mpn : "", c.ipn ? "PN " + c.ipn : ""].filter(Boolean);
+    return {
+      l: side("L").length ? wid("L") + 12 : 6, r: side("R").length ? wid("R") + 12 : 6,
+      t: HDR + (side("T").length ? 14 : 5), b: (side("B").length ? 14 : 5) + (B.img ? info.length * LH : 0), info
+    };
+  }
+  // Block size whose image area matches the image's shape. Keeps the width unless the pins need a
+  // taller block (13 pt per pin on the busier side), then widens instead.
+  function boardFit(c) {
+    const B = c.board;
+    if (!B || !B.img) return null;
+    const m = boardMargins(c), ar = B.img.h / B.img.w;
+    const busy = Math.max(...["L", "R"].map(s => B.pins.filter(q => q.side === s).length), 0);
+    const minH = Math.max(40, HDR + 15 + busy * 13);
+    let w = B.w, h = Math.round(Math.max(10, w - m.l - m.r) * ar + m.t + m.b);
+    if (h < minH) { h = minH; w = Math.round((h - m.t - m.b) / ar + m.l + m.r); }
+    return { w: Math.max(60, Math.ceil(w / 5) * 5), h: Math.ceil(h / 5) * 5 };
+  }
+  function drawBoard(pen, c, L, find) {
+    const x = L.x, y = L.y, w = L.w, h = L.h, img = c.board && c.board.img;
+    pen.rect(x, y, w, h, { f: PAPER, lw: 1.3, r: 3 });
+    pen.rect(x, y, w, HDR, { f: HEAD, s: null, r: 3 });
+    pen.line(x, y + HDR, x + w, y + HDR, { lw: 0.6 });
+    pen.text(x + PAD, y + 10.6, c.ref, { size: 8.5, bold: true });
+    pen.text(x + PAD + tw(c.ref, 8.5, true) + 6, y + 10.6, c.desc || "Junction board", { size: 7, c: c.desc ? INK : DIM });
+    if (find[c.id]) balloon(pen, x + w - 9, y + HDR / 2, find[c.id]);
+    const M = boardMargins(c), info = M.info;
+    if (img) {
+      const aw = w - M.l - M.r, ah = h - M.t - M.b;
+      if (aw > 8 && ah > 8) {
+        const k = Math.min(aw / img.w, ah / img.h), iw = img.w * k, ih = img.h * k;
+        pen.push({ t: "img", key: "board:" + c.id, src: img.data, x: x + M.l + (aw - iw) / 2, y: y + M.t + (ah - ih) / 2, w: iw, h: ih });
+      }
+      info.forEach((s, i) => pen.text(x + w / 2, y + h - 5 - (info.length - 1 - i) * LH, s, { size: 6.3, anchor: "middle", c: DIM }));
+    } else info.forEach((s, i) => pen.text(x + w / 2, y + h / 2 + 3 + (i - (info.length - 1) / 2) * LH, s, { size: 6.3, anchor: "middle", c: DIM }));
+    c.pins.forEach((pn, i) => {
+      const q = L.pos(i), ex = q.x + q.ox * L.LEAD, ey = q.y + q.oy * L.LEAD;
+      pen.line(q.x, q.y, ex, ey, { lw: 0.9 });
+      pen.circle(q.x, q.y, 2.9, { f: PAPER, lw: 0.9 });
+      pen.circle(q.x, q.y, 1.1, { f: INK, s: null });
+      const lbl = pn.n + (pn.sig ? "  " + pn.sig : "");
+      if (q.side === "L") pen.text(q.x + 6, q.y + 2.2, lbl, { size: 6 });
+      else if (q.side === "R") pen.text(q.x - 6, q.y + 2.2, lbl, { size: 6, anchor: "end" });
+      else if (q.side === "T") pen.text(q.x, q.y + HDR + 8, lbl, { size: 5.6, anchor: "middle" });
+      else pen.text(q.x, q.y - 6, lbl, { size: 5.6, anchor: "middle" });
+    });
+  }
   function drawConn(pen, p, c, L, find) {
     const lib = CD.libOf(c);
     pen.begin("c:" + c.id, "conn", { box: L.box });
@@ -405,6 +473,7 @@
       if (find[c.id]) balloon(pen, c.x + tw(c.ref, 7, true) + 16, c.y - 8, find[c.id]);
       return;
     }
+    if (L.board) { drawBoard(pen, c, L, find); return; }
     if (L.node === "ground") {
       pen.line(c.x, c.y, c.x, c.y + 9, { lw: 1 });
       [[14, 9], [9, 12], [4, 15]].forEach(([w, dy]) => pen.line(c.x - w / 2, c.y + dy, c.x + w / 2, c.y + dy, { lw: 1 }));
@@ -616,6 +685,7 @@
       const L = e && connL[e.c];
       if (!L) return null;
       if (L.node) return { x: L.x, y: L.y, d: 0 };
+      if (L.board) return L.port(e.p);
       const right = toward.x > L.box.x + L.box.w / 2;
       return L.port(e.p, right);
     };
@@ -656,6 +726,21 @@
       }
     });
 
+    // shield ties: dashed bond lines from a shield end to a shield end, pin or node
+    out.sports = [];
+    p.cables.forEach(c => { const L = cabL[c.id]; if (L.sport) ["a", "b"].forEach(e => out.sports.push(Object.assign({ cable: c.id, end: e }, L.sport(e)))); });
+    (p.ties || []).forEach(t => {
+      const A = cabL[t.a.cable], pa = A && A.sport && A.sport(t.a.end);
+      let pb = null;
+      if (t.b.t === "shield") { const B = cabL[t.b.cable]; pb = B && B.sport && B.sport(t.b.end); }
+      else pb = portTo({ c: t.b.c, p: t.b.p }, pa || { x: 0 });
+      if (!pa || !pb) return;
+      pen.begin("t:" + t.id, "tie");
+      pen.poly(bezier(pa, pb, pa.d, pb.d), { s: "#333333", lw: 1, dash: [4, 2.5], join: "round" });
+      pen.circle(pa.x, pa.y, 1.7, { f: INK, s: null });
+      pen.circle(pb.x, pb.y, 1.7, { f: INK, s: null });
+    });
+
     p.cables.forEach(c => drawCable(pen, p, c, cabL[c.id], find, connL, m));
     p.conns.forEach(c => drawConn(pen, p, c, connL[c.id], find));
     p.callouts.forEach(k => drawCallout(pen, k));
@@ -664,6 +749,7 @@
     p.conns.forEach(c => {
       const L = connL[c.id];
       if (L.node) { out.ports.push({ c: c.id, p: 0, x: L.x, y: L.y }); return; }
+      if (L.board) { c.pins.forEach((pn, i) => { const q = L.port(i); out.ports.push({ c: c.id, p: i, x: q.x, y: q.y }); }); return; }
       c.pins.forEach((pn, i) => { const a = L.port(i, false), b = L.port(i, true); out.ports.push({ c: c.id, p: i, x: a.x, y: a.y }, { c: c.id, p: i, x: b.x, y: b.y }); });
     });
 
@@ -707,5 +793,5 @@
     return isFinite(x0) ? { x: x0, y: y0, w: x1 - x0, h: y1 - y0 } : null;
   }
 
-  Object.assign(CD, { scene, sheetsOf, contentBox, textWidth: tw, wrapText: wrap, FONT });
+  Object.assign(CD, { boardMargins, boardFit, scene, sheetsOf, contentBox, textWidth: tw, wrapText: wrap, FONT });
 })(typeof window !== "undefined" ? window : globalThis);

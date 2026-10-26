@@ -209,3 +209,102 @@ test("My parts: save, sanitize and place a connector with its face", () => {
   assert.notEqual(n.id, c.id);
   assert.deepEqual(plain(n.layout), plain(c.layout));
 });
+
+test("shield ties: add, no duplicates, wire list rows, pruned with their cable", () => {
+  const p = CD.example();
+  const w1 = p.cables[0];
+  const w2 = CD.cablePreset(p, "stp", 0, 0);
+  assert.ok(CD.addTie(p, { cable: w1.id, end: "b" }, { t: "shield", cable: w2.id, end: "a" }));
+  assert.equal(CD.addTie(p, { cable: w2.id, end: "a" }, { t: "shield", cable: w1.id, end: "b" }), null, "same pair the other way round");
+  assert.equal(w1.shield.b, "tied"); assert.equal(w2.shield.a, "tied");
+  const row = CD.wireRows(p).find(r => r.tie);
+  assert.deepEqual(plain([row.cells[5], row.cells[6], row.cells[8]]), ["W1 shield B", "W2 shield A", "shield tie"]);
+  assert.equal(CD.tiesOf(p, w2.id, "a").length, 1);
+  const back = CD.normalize(JSON.parse(JSON.stringify(p)));
+  assert.equal(back.ties.length, 1);
+  p.cables = p.cables.filter(c => c !== w2); CD.pruneTies(p);
+  assert.equal(p.ties.length, 0);
+  assert.ok(CD.checks(p).some(c => /shield end B is set to tied, but has no tie/.test(c.msg)));
+});
+
+test("ties to a pin follow the pin when pins are removed or reordered", () => {
+  const p = CD.example();
+  const p1 = p.conns[0], w1 = p.cables[0];
+  CD.addTie(p, { cable: w1.id, end: "a" }, { t: "pin", c: p1.id, p: 3 });
+  CD.reorderPins(p, p1, [8, 7, 6, 5, 4, 3, 2, 1, 0]);
+  assert.equal(p.ties[0].b.p, 5);
+  CD.removePins(p, p1, [5]);
+  assert.equal(p.ties.length, 0);
+});
+
+test("junction board: black box with edge pins, wires land on the pin lead", () => {
+  const p = CD.blankProject();
+  const b = CD.newConn(p, "board", 100, 100);
+  assert.equal(b.ref, "A1");
+  assert.deepEqual(plain(b.board.pins.map(x => x.side)), ["L", "L", "R", "R"]);
+  b.desc = "Test board";
+  p.conns.push(b);
+  const s = CD.scene(p, { sheet: 1 });
+  const L = s.blocks.conn[b.id];
+  assert.ok(L.board);
+  assert.deepEqual(plain(L.port(0)), { x: 100 - 9, y: L.pos(0).y, d: -1, v: 0 });
+  b.board.pins[2] = { side: "T", t: 0.5 };
+  assert.equal(CD.scene(p, { sheet: 1 }).blocks.conn[b.id].port(2).v, -1, "top-edge lead points up");
+  assert.ok(s.ports.filter(q => q.c === b.id).length === 4);
+  assert.equal(CD.bom(p).rows[0].desc, "Test board");
+  CD.addPins(b, [{ side: "B", t: 0.25 }]);
+  assert.equal(b.pins.length, 5); assert.equal(b.board.pins[4].side, "B");
+});
+
+test("insert a junction board into a shielded cable", () => {
+  const p = CD.example();
+  const w1 = p.cables[0], p2 = p.conns[1];
+  const r = CD.insertBoard(p, w1);
+  const cond = CD.conductors(p, w1), cond2 = CD.conductors(p, r.cable);
+  assert.equal(r.board.pins.length, 10, "4 conductors + SH1 on the left, 4 + SH2 on the right");
+  assert.ok(cond.every(w => w.b && w.b.c === r.board.id));
+  assert.ok(cond2.filter(w => !CD.isDrain(w)).every(w => w.a.c === r.board.id && w.b.c === p2.id));
+  assert.equal(r.cable.len, ""); assert.equal(r.cable.groups.length, 2);
+  assert.equal(p.ties.length, 2);
+  assert.ok(p.ties.every(t => t.b.t === "pin" && t.b.c === r.board.id));
+  assert.equal(r.cable.shield.b, "float"); assert.equal(w1.shield.b, "tied"); assert.equal(r.cable.shield.a, "tied");
+});
+
+test("BOM: a cable with no length adds nothing and shows TBD", () => {
+  const p = CD.example();
+  const r = CD.insertBoard(p, p.cables[0]);
+  const row = CD.bom(p).rows.find(x => x.mpn === "EX-CBL-2P24S");
+  assert.equal(row.qty, 36); assert.ok(row.tbd);
+  assert.equal(CD.bomCells(row, p.meta)[1], "36.00 + TBD");
+  r.cable.len = "12";
+  assert.equal(CD.bom(p).rows.find(x => x.mpn === "EX-CBL-2P24S").qty, 48);
+});
+
+test("board image: kept when valid, fitted between the pin labels, block can fit its shape", () => {
+  const p = CD.blankProject();
+  const b = CD.newConn(p, "board", 100, 100);
+  b.pins.forEach((x, i) => { x.sig = "SIGNAL_" + i; });
+  p.conns.push(b);
+  const png = "data:image/png;base64,iVBORw0KGgo=";
+  b.board.img = { data: png, w: 400, h: 200 };
+  const back = CD.normalize(JSON.parse(JSON.stringify(p)));
+  assert.equal(back.conns[0].board.img.data, png);
+  const bad = JSON.parse(JSON.stringify(p));
+  bad.conns[0].board.img.data = "javascript:alert(1)";
+  assert.equal(CD.normalize(bad).conns[0].board.img, null, "only PNG / JPEG data is kept");
+  const s = CD.scene(p, { sheet: 1 });
+  const im = s.groups.find(g => g.id === "c:" + b.id).prims.find(o => o.t === "img");
+  const M = CD.boardMargins(b);
+  assert.equal(im.src, png);
+  assert.ok(im.x >= 100 + M.l - 1e-6 && im.x + im.w <= 100 + b.board.w - M.r + 1e-6, "inside the label margins");
+  assert.ok(Math.abs(im.w / im.h - 2) < 1e-9, "keeps its shape");
+  const fit = CD.boardFit(b);
+  Object.assign(b.board, fit);
+  const im2 = CD.scene(p, { sheet: 1 }).groups.find(g => g.id === "c:" + b.id).prims.find(o => o.t === "img");
+  const aw = b.board.w - M.l - M.r, ah = b.board.h - M.t - M.b;
+  assert.ok(Math.abs(im2.w - aw) < 6 || Math.abs(im2.h - ah) < 6, "fills the space once fitted");
+  for (let i = 0; i < 10; i++) CD.addPins(b, [{ side: "L", t: 0.5 }]);
+  assert.ok(CD.boardFit(b).h >= 15 + 15 + 12 * 13, "never too short for its pins");
+  const part = CD.normPart(JSON.parse(JSON.stringify(CD.partFromConn(b, "Board with picture"))));
+  assert.equal(part.board.img.data, png, "My parts keep the image");
+});
