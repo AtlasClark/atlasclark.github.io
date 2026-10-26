@@ -124,13 +124,21 @@ async function withLock(fileName, fn) {
       await w.write(token + "\r\n");
       await w.close();
       const back = await (await fh.getFile()).text();
-      if (back.indexOf(token) === 0) break;          /* ours */
+      if (back.indexOf(token) === 0) {                 /* ours, and still ours a moment later */
+        await sleep(25);
+        if ((await (await fh.getFile()).text()).indexOf(token) === 0) break;
+      }
     } catch { /* lost the race; retry */ }
     await sleep(C.LOCK_WAIT_MS); tries++;
   }
   if (tries >= C.LOCK_RETRIES) { note("lock busy: " + fileName); return false; }
   try { await fn(); }
-  finally { try { await dir.removeEntry(lockName); } catch { } }
+  finally {
+    try {                                              /* only our own lock: another page may hold it now */
+      const fh = await dir.getFileHandle(lockName);
+      if ((await (await fh.getFile()).text()).indexOf(token) === 0) await dir.removeEntry(lockName);
+    } catch { }
+  }
   return true;
 }
 
@@ -140,9 +148,10 @@ export function participantFileName(name) { return safeFileName(name) + ".json";
 
 /* ---- serialisers --------------------------------------------------------- */
 const q = s => JSON.stringify(String(s === undefined || s === null ? "" : s).replace(/[\r\n]/g, " "));
+const fin = v => { const n = Number(v); return isFinite(n) ? n : 0; };   /* NaN would make a file no page can read */
 function mapJson(map) {
   const out = [];
-  if (map) for (const k in map) if (has(map, k)) out.push(q(k) + ": " + Number(map[k]));
+  if (map) for (const k in map) if (has(map, k)) out.push(q(k) + ": " + fin(map[k]));
   return out.join(", ");
 }
 function awayJson(list) {
@@ -194,7 +203,7 @@ export function toJson(p) {
   out.push('\n  "entries": [');
   p.entries.forEach((e, i) => {
     out.push((i ? "," : "") + '\n    {"eid": ' + q(e.eid) + ', "ts": ' + q(e.ts) +
-             ', "date": ' + q(e.date) + ', "oz": ' + Number(e.oz) +
+             ', "date": ' + q(e.date) + ', "oz": ' + fin(e.oz) +
              ', "by": ' + q(e.by || "") + (e.sid ? ', "sid": ' + q(e.sid) : "") + '}');
   });
   out.push('\n  ]\n}\n');
@@ -222,7 +231,7 @@ export function mergeAway(mem, disk) {
   const by = {}, order = [];
   for (const list of [disk || [], mem || []]) {
     for (const a of list) {
-      if (!a || !a[0]) continue;
+      if (!a || !a[0] || (a[1] && a[1] < a[0])) continue;      /* came back the day it began: no period */
       const cur = by[a[0]];
       if (!cur) { by[a[0]] = [a[0], a[1] || ""]; order.push(a[0]); continue; }
       if (!cur[1] && a[1]) cur[1] = a[1];
@@ -262,11 +271,15 @@ function mergeWithDisk(p, disk, removedIds, removedPets, revivedPets, clearRoll)
   out.rerollDay = [p.rerollDay || "", (disk && disk.rerollDay) || ""].sort().pop();
   for (const k of extraFields(p)) out[k] = p[k];
   if (disk) for (const k of extraFields(disk)) if (!(k in out)) out[k] = disk[k];
-  if (disk && disk.graveDay > out.graveDay) out.graveDay = disk.graveDay;
+  /* a drowning on disk today wins, unless this write brings a pet back */
+  if (disk && disk.graveDay > out.graveDay && !(revivedPets && revivedPets.length)) { out.graveDay = disk.graveDay; out.deadKind = n1(disk.deadKind); }
   /* A roll recorded on disk today wins, unless this write is taking it back. */
   if (!clearRoll && disk && disk.petRollDay > out.petRollDay) {
     out.petRollDay = disk.petRollDay;
     out.equippedPet = Number(disk.equippedPet) || 0;
+    for (const f of ["rollKind", "lastRoll", "prevRoll"]) out[f] = n1(disk[f]);
+    out.rollWasNew = !!disk.rollWasNew;
+    if (disk.rollLog && has(disk.rollLog, disk.petRollDay)) out.rollLog[disk.petRollDay] = disk.rollLog[disk.petRollDay];
   }
   for (const e of p.entries) {
     if (!e.eid) e.eid = deriveEid(e, seen);
@@ -292,7 +305,10 @@ export async function saveParticipant(p, removedIds, removedPets, revivedPets, c
   try {
     return await withLock(name, async () => {
       let disk = null;
-      try { if (await fileOrNull(name)) disk = JSON.parse(await readText(name)); } catch { disk = null; }
+      try { disk = JSON.parse(await readText(name)); }
+      catch (e) {                                       /* missing is new; anything else must not be written over */
+        if (!e || e.name !== "NotFoundError") throw new Error("could not read it (" + (e && e.message || e) + "), so nothing was written");
+      }
       const merged = mergeWithDisk(p, disk, removedIds, removedPets, revivedPets, clearRoll);
       await writeText(name, toJson(merged));
       p.entries = merged.entries;
@@ -305,6 +321,7 @@ export async function saveParticipant(p, removedIds, removedPets, revivedPets, c
       p.rollLog = merged.rollLog;
       p.graveLog = merged.graveLog;
       p.rerollDay = merged.rerollDay;
+      for (const f of ["petRollDay", "equippedPet", "rollKind", "rollWasNew", "lastRoll", "prevRoll", "graveDay", "deadKind"]) p[f] = merged[f];
       dataChanged();
     });
   } catch (e) {
@@ -315,15 +332,29 @@ export async function saveParticipant(p, removedIds, removedPets, revivedPets, c
 }
 
 /* ---- settings ----------------------------------------------------------- */
+/* A folder with no settings file uses the defaults. A file that can't be read right now
+   (a share hiccup, or caught mid-write) keeps the last good settings and sets
+   S.settingsOk false, which stops goal stamping until it reads again: stamping with
+   default settings would write wrong goals into every file. */
 export async function loadSettings() {
+  if (!dir) { S.settings = defaultSettings(); return; }
+  const keep = why => {
+    S.settingsOk = false;
+    if (!S.settings) S.settings = defaultSettings();
+    note("settings not read (" + why + "); kept the last good ones");
+  };
+  let raw, o;
+  try { raw = await readText(C.SETTINGS_FILE); }
+  catch (e) {
+    if (e && e.name === "NotFoundError") { S.settings = defaultSettings(); S.settingsOk = true; return; }
+    keep(e && e.message || e); return;
+  }
+  try { o = JSON.parse(raw); } catch (e) { keep(raw ? "not valid JSON" : "empty"); return; }
+  if (!o || typeof o !== "object") { keep("not a settings object"); return; }
   S.settings = defaultSettings();
-  if (!dir) return;
+  S.settingsOk = true;
   try {
-    if (!(await fileOrNull(C.SETTINGS_FILE))) return;
-    const raw = await readText(C.SETTINGS_FILE);
-    if (!raw) return;
-    const o = JSON.parse(raw), s = S.settings;
-    if (!o) return;
+    const s = S.settings;
     if (isFinite(Number(o.dailyGoalOz)) && Number(o.dailyGoalOz) > 0) s.dailyGoalOz = Number(o.dailyGoalOz);
     if (o.goalSetAt) s.goalSetAt = String(o.goalSetAt);
     if (isFinite(Number(o.annualGoalOz)) && Number(o.annualGoalOz) > 0) s.annualGoalOz = Number(o.annualGoalOz);

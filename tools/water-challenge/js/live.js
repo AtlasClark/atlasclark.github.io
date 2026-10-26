@@ -27,7 +27,7 @@ async function tick() {
   const evs = await store.readLive(since, seen);
   for (const ev of evs) {
     seen.add(store.liveFileId(ev.id));
-    since = Math.max(since, ev.at - C.LIVE_SHOW_MS);
+    since = Date.now() - C.LIVE_KEEP_MS;              /* this PC's clock; seen stops repeats */
     const fn = handlers[ev.type || "drop"];
     if (fn) { try { fn(ev, Date.now() - ev.at); } catch { } }
   }

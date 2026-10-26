@@ -15,7 +15,7 @@ const lookOf = st => st.look || {};
 
 export const anim = {};
 const reduceMotion = typeof window !== "undefined" && window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)");
-export const dims = { card: 0, cols: 0, gw: 132, gh: 246, W: 124, H: 239, head: 34 };
+export const dims = { card: 0, cols: 0, gw: 132, gh: 246, W: 124, H: 239, head: 34, pad: 0 };
 export const stats = { errors: 0, lastError: "", fps: 0 };
 
 let active = true;              /* false while another tab is showing */
@@ -95,6 +95,9 @@ export function applyLayout(lay) {
   dims.H = dims.gh - 7;
   /* Room above the rim for the tallest pet at the top of a jump from a full glass. */
   dims.head = Math.ceil(petR() * (C.TALLEST_PET_R + C.BREACH_R)) + 6;
+  /* Room either side of the pet layer, so an effect, glow, hat or a turned pet that
+     reaches past the rim is drawn whole above it instead of cut at the canvas edge. */
+  dims.pad = Math.ceil(petR() * 1.3);
   for (const k in anim) seedBubbles(anim[k]);
   return true;
 }
@@ -131,21 +134,27 @@ export function animState(name) {
   return anim[name];
 }
 
+/* The bitmap is rounded to whole device pixels and drawn at exactly that scale (at
+   125% or 150% screen scaling w x dpr is often fractional). */
 function sizeCanvas(cv, w, h) {
   const dpr = Math.min(window.devicePixelRatio || 1, 3);
-  cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr);
+  cv.width = Math.max(1, Math.round(w * dpr)); cv.height = Math.max(1, Math.round(h * dpr));
   cv.style.width = w + "px"; cv.style.height = h + "px";
   const ctx = cv.getContext("2d");
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx._sx = cv.width / w; ctx._sy = cv.height / h;
+  ctx.setTransform(ctx._sx, 0, 0, ctx._sy, 0, 0);
   return ctx;
 }
+/* Back to the canvas's own scale (also undoes anything a failed frame left behind). */
+const reset = ctx => ctx.setTransform(ctx._sx || 1, 0, 0, ctx._sy || 1, 0, 0);
 
 export function bindCanvases(name, glassCanvas, petCanvas, gw, gh) {
   const st = animState(name);
   st.ctx = glassCanvas ? sizeCanvas(glassCanvas, dims.W, dims.H) : null;
-  st.dctx = petCanvas ? sizeCanvas(petCanvas, gw, gh + dims.head) : null;
+  st.dctx = petCanvas ? sizeCanvas(petCanvas, gw + 2 * dims.pad, gh + dims.head) : null;
+  if (petCanvas) petCanvas.style.left = -dims.pad + "px";
   st.dcv = petCanvas || null;
-  st.dW = gw; st.dH = gh + dims.head;
+  st.dW = gw + 2 * dims.pad; st.dH = gh + dims.head;
 }
 
 export function unbindAll() { for (const k in anim) { anim[k].ctx = null; anim[k].dctx = null; anim[k].dcv = null; } }
@@ -308,11 +317,13 @@ function waveAt(st, x) {
 function buildWave(st, W, step) {
   let i = 0;
   for (let x = 0; x <= W; x += step) waveBuf[i++] = waveAt(st, x);
+  if ((i - 1) * step < W) waveBuf[i++] = waveAt(st, W);           /* a last point on the wall, no flat stub */
   waveN = i;
 }
 
 function drawGlass(st) {
   const ctx = st.ctx, W = dims.W, H = dims.H;
+  reset(ctx);
   ctx.clearRect(0, 0, W, H);
   const lvl = Math.min(Math.max(st.level, 0), 1);
   if (lvl <= 0.002) return;
@@ -413,7 +424,15 @@ function rgba(hex, a) {
    its front lands first and its tail follows it down at the end. */
 function drawPour(ctx, st, top, offX, offY) {
   const p = st.pour;
-  if (!p) return;
+  if (p) drawStream(ctx, st, p, top, offX, offY);
+  ctx.fillStyle = "rgba(255,255,255,0.85)";
+  for (const d of st.drops) {                                       /* until they land, after the stream ends too */
+    ctx.beginPath();
+    ctx.arc(offX + d.x, offY + top + d.y, d.r, 0, 6.2832);
+    ctx.fill();
+  }
+}
+function drawStream(ctx, st, p, top, offX, offY) {
   const ease = v => 1 - (1 - v) * (1 - v);
   const sx = offX + p.x, surf = offY + top + waveAt(st, p.x);
   const yEnd = surf * Math.min(1, ease(Math.min(1, p.t / C.POUR_LAND)));
@@ -449,16 +468,11 @@ function drawPour(ctx, st, top, offX, offY) {
       ctx.fill();
     }
   }
-  ctx.fillStyle = "rgba(255,255,255,0.85)";
-  for (const d of st.drops) {
-    ctx.beginPath();
-    ctx.arc(offX + d.x, offY + top + d.y, d.r, 0, 6.2832);
-    ctx.fill();
-  }
 }
 
 function drawPetLayer(st) {
-  const ctx = st.dctx, W = dims.W, H = dims.H, offX = 4, offY = dims.head + 3;
+  const ctx = st.dctx, W = dims.W, H = dims.H, offX = 4 + dims.pad, offY = dims.head + 3;
+  reset(ctx);
   ctx.clearRect(0, 0, st.dW, st.dH);
   const top = surfaceY(st), decor = lookOf(st).decor;
   if (decor) {                                                      /* the cup's decoration, behind the pet */
@@ -466,6 +480,12 @@ function drawPetLayer(st) {
     drawDecor(ctx, decor, { x: offX, y: offY, W, H }, surf, clock());
   }
   drawPour(ctx, st, top, offX, offY);
+  /* Above the rim anything may overhang the glass; below it, only the inside shows. */
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(0, 0, st.dW, offY);
+  ctx.rect(offX, offY, W, H);
+  ctx.clip();
   const r = petR();
   if (st.duckState === 4) drawHeadstone(ctx, W / 2 + offX, H - 4 + offY, r, st.critterHue);
   else if (st.duckState === 1 && !st.visit) drawFloating(ctx, st, st, W, H, top, offX, offY, r);
@@ -476,6 +496,7 @@ function drawPetLayer(st) {
   }
   const g = st.guest && anim[st.guest], v = g && g.visit;
   if (v && v.stage === "there") drawFloating(ctx, st, v.sw, W, H, top, offX, offY, r);
+  ctx.restore();
   if (st.duckState || st.guest || decor) tintUnderwater(ctx, st, W, H, top, offX, offY);
 }
 
@@ -521,11 +542,12 @@ function drawFloating(ctx, water, pet, W, H, top, offX, offY, r) {
   }
   const look = lookOf(pet), t = clock(), px = dx + offX, py = dy + offY;
   const spot = look.effect ? fxSpot(petDefs[pet.critterKind || 0]) : null;
-  const fx = spot && px + spot[0] * r * (Math.abs(flip) < 0.04 ? 0.04 : flip), fy = spot && py + spot[1] * r;   /* follows the pet's facing */
+  const fs = Math.abs(flip) < 0.04 ? (flip < 0 ? -0.04 : 0.04) : flip;
+  const fx = spot && px + spot[0] * r * fs, fy = spot && py + spot[1] * r;   /* follows the pet's facing */
   if (look.effect) drawEffect(ctx, look.effect, fx, fy, r, t, pet.critterHue || 0, "back");
   ctx.save();
   ctx.translate(px, py);
-  ctx.scale(Math.abs(flip) < 0.04 ? (flip < 0 ? -0.04 : 0.04) : flip, 1);   /* mid-turn: edge on */
+  ctx.scale(fs, 1);                                                   /* mid-turn: edge on */
   drawCritter(ctx, 0, 0, r, ang, pet.duckCrown, false, pet.critterKind || 0, pet.critterHue || 0, pet.duckJester, look.finish, pet.duckMedal);
   ctx.restore();
   if (look.effect) drawEffect(ctx, look.effect, fx, fy, r, t, pet.critterHue || 0, "front");
@@ -593,6 +615,7 @@ export function stepState(st, f) {
     if (st.duckT >= 1) { st.duckState = 3; st.duckT = 0; }
   }
   if (p) stepPour(st, p, dt);
+  stepDrops(st, dt);
   stepMotion(st, f);
   const waterH = depthAt(st.level);
   for (const b of st.bubbles) { b.y += b.v * f; if (b.y > waterH - 3 || waterH < 10) resetBubble(b); }
@@ -614,11 +637,10 @@ function stepPour(st, p, dt) {
     }
   }
   if (p.t >= 1) st.pour = null;
-  /* droplets thrown up at the impact, in px from the surface */
-  st.drops = st.drops.filter(d => {
-    d.x += d.vx * dt; d.y += d.vy * dt; d.vy += 420 * dt;
-    return d.y < 0;
-  });
+}
+/* Droplets thrown up at the impact, in px from the surface: once a frame, until they land. */
+function stepDrops(st, dt) {
+  if (st.drops.length) st.drops = st.drops.filter(d => { d.x += d.vx * dt; d.y += d.vy * dt; d.vy += 420 * dt; return d.y < 0; });
 }
 
 /* Facing, hops, dives and the drop-in for a floating pet. st is the pet (its motion,
@@ -626,7 +648,6 @@ function stepPour(st, p, dt) {
 export function stepMotion(st, f, water = st) {
   const m = st.m, dt = f / 30, r = petR(), play = st.play || 1;
   m.t += dt;
-  if (water === st && !st.pour && st.drops.length) st.drops = st.drops.filter(d => { d.x += d.vx * dt; d.y += d.vy * dt; d.vy += 420 * dt; return d.y < 0; });
   if (st.duckState !== 1 || !motionOn()) { m.dive = -1; m.hop = -1; m.drop = -1; m.leap = -1; return; }
 
   if (m.drop >= 0) {
@@ -776,7 +797,7 @@ export function stepVisits(f) {
     const h = anim[v.host];
     /* a glass left the screen, or the pet changed or is going under: home at once */
     if (!h || !h.dcv || !st.dcv || st.duckState !== 1 || st.critterKind !== v.sw.critterKind || !motionOn()) { endVisit(name); continue; }
-    Object.assign(v.sw, { critterHue: st.critterHue, duckCrown: st.duckCrown, duckJester: st.duckJester, duckMedal: st.duckMedal });
+    Object.assign(v.sw, { critterHue: st.critterHue, duckCrown: st.duckCrown, duckJester: st.duckJester, duckMedal: st.duckMedal, look: st.look });
     v.sw.phase = h.phase + v.sw.off;
     if (v.stage !== "there") {
       v.t += dt / C.VISIT_JUMP_SECS;
@@ -817,7 +838,8 @@ function drawFlights() {
     flightCtx = sizeCanvas(flightCv, w, hgt); flightCv._w = w; flightCv._h = hgt;
     flightCv.style.top = -pad + "px";
   }
-  const ctx = flightCtx, g = flightCv.getBoundingClientRect(), offX = 4, offY = dims.head + 3;
+  const ctx = flightCtx, g = flightCv.getBoundingClientRect(), offX = 4 + dims.pad, offY = dims.head + 3;
+  reset(ctx);
   ctx.clearRect(0, 0, w, hgt);
   for (const name of flying) {
     const st = anim[name], v = st.visit, h = anim[v.host];

@@ -106,7 +106,13 @@ async function refresh() {
   await reconcile();
   lastSig = await store.folderSignature();
   ui.lastSync = clockStamp();
-  render();
+  safeRender();
+}
+
+/* A drawing bug is logged, not taken for a lost folder (the poll's catch would show
+   the reconnect gate and stop polling). */
+function safeRender() {
+  try { render(); } catch (e) { store.diagNote("render failed: " + (e && e.message || e)); }
 }
 
 /* After a local change: settle pet events, then repaint. */
@@ -114,7 +120,7 @@ async function settle() {
   await reconcile();
   lastSig = await store.folderSignature();
   ui.lastSync = clockStamp();
-  render();
+  safeRender();
 }
 
 /* A live event means the files just changed: read them now instead of waiting. */
@@ -139,7 +145,7 @@ async function poll() {
     await store.serial(async () => {
       const sig = await store.folderSignature();
       if (sig !== lastSig) await refresh();
-      else { await reconcile(); ui.lastSync = clockStamp(); render(); }
+      else { await reconcile(); ui.lastSync = clockStamp(); safeRender(); }
     });
     showBanner("");
   } catch (e) {
@@ -187,6 +193,7 @@ function showGate(mode, err) {
 }
 
 async function connect(h) {
+  if (h !== store.dir) { backedUp = ""; lastSig = ""; petSig = ""; }   /* another folder: back it up, read it, take its art */
   store.setDir(h);
   if (window.FileSystemHandle && h instanceof window.FileSystemHandle) {
     try { await store.kvSet("dir", h); } catch (e) { store.diagNote("could not remember folder: " + e.message); }
@@ -539,7 +546,9 @@ function wire() {
   $("spClose").onclick = closeSettings;
   for (const d of document.querySelectorAll("#settingsPanel .sp-card")) d.addEventListener("toggle", rememberCards);
   $("applySettings").onclick = applySettings;
-  $("settingsPanel").addEventListener("keydown", e => { if (e.key === "Enter" && e.target.tagName === "INPUT") applySettings(); });
+  $("settingsPanel").addEventListener("keydown", e => {             /* Enter saves Challenge and Goals, not the other cards */
+    if (e.key === "Enter" && e.target.tagName === "INPUT" && e.target.closest('[data-card=challenge],[data-card=goals]')) applySettings();
+  });
   $("pname").addEventListener("keydown", e => { if (e.key === "Enter") addParticipant(); });
   $("addP").onclick = addParticipant;
   $("quickPour").onclick = () => { if (S.mine) addWater(S.mine, ui.amount); };
@@ -603,7 +612,10 @@ function wire() {
     $(id).addEventListener("click", e => { if (e.target.id === id || e.target.closest(".report-x")) closeOverlays(); });
   }
   document.addEventListener("keydown", e => {
-    if (e.key === "Escape") { closeOverlays(); closeSettings(); if (ui.armed) { ui.armed = ""; renderActivityNow(); } }
+    if (e.key === "Escape") {
+      if (!$("unlock").hidden) $("ulCard").click();               /* the unlock card closes like a click */
+      closeOverlays(); closeSettings(); if (ui.armed) { ui.armed = ""; renderActivityNow(); }
+    }
   });
   document.addEventListener("click", e => {
     if (!$("settingsPanel").hidden && !e.target.closest("#settingsPanel") && !e.target.closest("#cog")) closeSettings();
@@ -619,6 +631,12 @@ function wire() {
     if (ui.connected) { clearTimeout(pollTimer); poll(); }
   });
   $("updateBtn").onclick = () => { $("updateBtn").disabled = true; freshReload(); };
+  /* moved to a screen with other scaling, or zoomed: canvases are rebuilt at the new pixel ratio */
+  const watchDpr = () => {
+    if (!window.matchMedia) return;
+    window.matchMedia("(resolution: " + window.devicePixelRatio + "dppx)").addEventListener("change", () => { forceRebuild(); render(); watchDpr(); }, { once: true });
+  };
+  watchDpr();
 }
 
 /* ---- bottle sync ----------------------------------------------------------- */
@@ -650,7 +668,7 @@ async function syncBottle() {
     const sips = await fetchSips();
     let res = null;
     await store.serial(async () => {
-      const p = findParticipant(mine.name), snap = p.entries.slice();
+      const p = findParticipant(mine.name), snap = p.entries.map(e => ({ ...e }));   /* applySips grows entries in place */
       res = applySips(p, sips, todayKey());
       if (!res.added && !res.grown && !res.removed.length) return;
       if (!(await store.saveParticipant(p, res.removed))) { p.entries = snap; res.busy = true; return; }

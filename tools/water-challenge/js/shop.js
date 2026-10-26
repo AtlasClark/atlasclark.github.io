@@ -38,6 +38,16 @@ function spend(p, kind, cost, extra) {
   return s;
 }
 
+/* A shop save that failed (the file stayed busy) takes its changes back out of memory,
+   so a later save can't write a spend or a pet the player was told did not happen. */
+const copy = p => structuredClone(p);
+async function saveOrUndo(p, before, ...args) {
+  if (await saveParticipant(p, ...args)) return true;
+  for (const k of Object.keys(p)) delete p[k];
+  Object.assign(p, before);
+  return false;
+}
+
 /* Wear a new pet, unless the dragon is on: it is lost the moment it comes off. */
 function wear(p, k) { if (petKindFor(p) !== C.MYSTERY_KIND) p.equippedPet = k; }
 const newHue = k => k === C.JOKE_KIND ? 28 : Math.floor(Math.random() * 360);
@@ -63,7 +73,7 @@ export function rerollBlock(p) {
    seed with the same odds as any day. Returns { from, res } or null. */
 export async function reroll(p) {
   if (rerollBlock(p)) return null;
-  const key = todayKey(), from = Number(p.rollKind), fromFresh = !!p.rollWasNew, drop = [];
+  const before = copy(p), key = todayKey(), from = Number(p.rollKind), fromFresh = !!p.rollWasNew, drop = [];
   if (p.rollWasNew && has(p.pets, from)) {
     delete p.pets[String(from)];
     drop.push(String(from));
@@ -75,7 +85,7 @@ export async function reroll(p) {
   const res = applyRoll(p, dayRng(p.name, key + "#reroll"), key);
   spend(p, "reroll", C.REROLL_COST, { pet: res.kind, from, fromFresh, fresh: !!res.fresh });
   const removed = drop.filter(k => !has(p.pets, k));             /* it may have come up again */
-  if (!(await saveParticipant(p, null, removed, null, true))) return null;
+  if (!(await saveOrUndo(p, before, null, removed, null, true))) return null;
   return { from, res };
 }
 
@@ -119,26 +129,26 @@ export function plinkoDrop(p, rnd = Math.random) {
    nothing left to give (every species of that rarity buried) costs nothing. */
 export async function plinkoPlay(p) {
   if (plinkoBlock(p)) return null;
-  const d = plinkoDrop(p);
-  if (d.chest) return chestPlay(p, d);
+  const before = copy(p), d = plinkoDrop(p);
+  if (d.chest) return chestPlay(p, d, Math.random, before);
   const empty = d.kind < 0, fresh = !empty && !has(p.pets, d.kind), was = petKindFor(p);
   const revived = fresh && isGrave(p, d.kind);
   const hue = empty ? 0 : has(p.pets, d.kind) ? Number(p.pets[String(d.kind)]) : revived ? Number(p.graves[String(d.kind)]) : newHue(d.kind);
   if (fresh) { give(p, d.kind, hue); wear(p, d.kind); }
   const homunculus = fresh && grantHomunculus(p);
   const s = spend(p, "plinko", empty ? 0 : C.PLINKO_COST, { pet: d.kind, bin: d.bin, slot: d.slot, fresh, revived, was });
-  if (!(await saveParticipant(p, null, null, revived ? [String(d.kind)] : null))) return null;
+  if (!(await saveOrUndo(p, before, null, null, revived ? [String(d.kind)] : null))) return null;
   return { id: s.id, at: Date.now(), name: p.name, color: p.color, kind: d.kind, bin: d.bin, hue, fresh, empty, revived,
            homunculus, was, slot: d.slot, path: d.path };
 }
 
 /* The centre cup: the token goes into the chest; if the chest held anything, a
    CHEST_CHANCE roll wins all of it, this token included. */
-async function chestPlay(p, d, rnd = Math.random) {
+async function chestPlay(p, d, rnd = Math.random, prior = copy(p)) {
   const before = chestTotal(), add = C.PLINKO_COST;
   const won = before > 0 && rnd() < C.CHEST_CHANCE ? before + add : 0;
   const s = spend(p, "plinko", C.PLINKO_COST, { pet: C.PET_NO_PET, bin: C.CHEST, slot: d.slot, chest: { add, won } });
-  if (!(await saveParticipant(p, null))) return null;
+  if (!(await saveOrUndo(p, prior, null))) return null;
   return { id: s.id, at: Date.now(), name: p.name, color: p.color, kind: C.PET_NO_PET, bin: C.CHEST, chest: { add, won },
            pot: before + add - won, slot: d.slot, path: d.path };
 }
@@ -182,8 +192,9 @@ export function fuseBlock(p, t) {
 /* SHARD_FUSE shards of rarity t become 1 of t + 1. Returns the new rarity or null. */
 export async function fuse(p, t) {
   if (fuseBlock(p, t)) return null;
+  const before = copy(p);
   spend(p, "fuse", C.SHARD_FUSE, { tier: t });
-  return (await saveParticipant(p, null)) ? t + 1 : null;
+  return (await saveOrUndo(p, before, null)) ? t + 1 : null;
 }
 
 export function pickBlock(p, k) {
@@ -197,12 +208,12 @@ export function pickBlock(p, k) {
 /* One shard of its rarity brings in a pet not alive; a buried one keeps its colour. */
 export async function pickPet(p, k) {
   if (pickBlock(p, k)) return null;
-  const revived = isGrave(p, k), hue = revived ? Number(p.graves[String(k)]) : newHue(k);
+  const before = copy(p), revived = isGrave(p, k), hue = revived ? Number(p.graves[String(k)]) : newHue(k);
   give(p, k, hue);
   wear(p, k);
   const homunculus = grantHomunculus(p);
   spend(p, "shard", 1, { pet: k, tier: petBinIndex(k), revived });
-  if (!(await saveParticipant(p, null, null, revived ? [String(k)] : null))) return null;
+  if (!(await saveOrUndo(p, before, null, null, revived ? [String(k)] : null))) return null;
   return { kind: k, hue, homunculus, revived };
 }
 
@@ -267,10 +278,10 @@ export function cosmeticBlock(p, id) {
 /* Bought items go straight on. */
 export async function buyCosmetic(p, id) {
   if (cosmeticBlock(p, id)) return null;
-  const it = COSMETICS[id];
+  const it = COSMETICS[id], before = copy(p);
   spend(p, "cosmetic", it.price, { item: id });
   p.look = Object.assign({}, p.look, { [it.slot]: it.key });
-  if (!(await saveParticipant(p, null))) return null;
+  if (!(await saveOrUndo(p, before, null))) return null;
   return it;
 }
 
@@ -278,10 +289,10 @@ export async function buyCosmetic(p, id) {
 export async function wearCosmetic(p, id, on) {
   const it = COSMETICS[id];
   if (!it || (on && !ownsCosmetic(p, id))) return false;
-  const look = Object.assign({}, p.look);
+  const before = copy(p), look = Object.assign({}, p.look);
   if (on) look[it.slot] = it.key; else if (look[it.slot] === it.key) delete look[it.slot];
   p.look = look;
-  return saveParticipant(p, null);
+  return saveOrUndo(p, before, null);
 }
 
 /* What p's glass shows: worn and owned only. */
@@ -300,9 +311,9 @@ export function paintBlock(p, k) {
 }
 export async function paintPet(p, k, hue) {
   if (paintBlock(p, k)) return null;
-  const h = ((Math.round(Number(hue)) % 360) + 360) % 360;
+  const before = copy(p), h = ((Math.round(Number(hue)) % 360) + 360) % 360;
   spend(p, "paint", PAINT_COST, { pet: k, hue: h });
-  if (!(await saveParticipant(p, null))) return null;
+  if (!(await saveOrUndo(p, before, null))) return null;
   return h;
 }
 

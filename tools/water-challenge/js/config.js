@@ -1,8 +1,8 @@
 /* Water Challenge (web) - constants: rules, tunables and the on-disk contract
    (FORMAT_REV, UTF-16 LE + BOM JSON, unknown fields kept). */
 
-export const REV         = "rev 1.32.0";
-export const APP_VERSION = "web 1.32.0";   /* stamped as writerVersion */
+export const REV         = "rev 1.32.2";
+export const APP_VERSION = "web 1.32.2";   /* stamped as writerVersion */
 /* Every file is written at FORMAT_REV. A file stamped higher came from a newer
    build, and the page asks for a reload. */
 export const FORMAT_REV    = 22;
@@ -192,7 +192,7 @@ export const BOTTLE_SIP_LIMIT  = 500;
 export const BOTTLE_TIMEOUT_MS = 20000;
 
 /* ---- locks (sidecar .lock files shared by every page on the folder) ---- */
-export const LOCK_RETRIES  = 12;
+export const LOCK_RETRIES  = 24;
 export const LOCK_WAIT_MS  = 70;
 export const LOCK_STALE_MS = 15000;
 

@@ -32,7 +32,7 @@ export const ui = { tab: "today", amount: C.DEFAULT_AMOUNT, connected: false, la
 
 /* ---- DOM helpers -------------------------------------------------------- */
 const htmlCache = {};
-function setHtml(id, html) {
+export function setHtml(id, html) {
   if (htmlCache[id] === html) return false;
   const el = $(id);
   if (!el) return false;

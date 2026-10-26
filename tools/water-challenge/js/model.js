@@ -120,6 +120,7 @@ function datesFor(p) {
 }
 
 export function forceLegacyStamps(map) {
+  if (S.settingsOk === false) return;                /* settings not read: don't stamp from defaults */
   const L = legacyFlat();
   if (!L.until || !map) return;
   for (const k in map) if (has(map, k) && k <= L.until) map[k] = L.goal;
@@ -127,6 +128,7 @@ export function forceLegacyStamps(map) {
 
 /* Fills in any unstamped finished day. Returns true when something changed. */
 export function stampDayGoals(p) {
+  if (S.settingsOk === false) return false;          /* settings not read: don't stamp from defaults */
   const L = legacyFlat();
   let changed = false;
   if (!p.dayGoals) p.dayGoals = {};

@@ -252,9 +252,10 @@ export function bodySpan(def, fresh) {
 /* How far down the water a drawing sits, as the Studio shows it in a full glass
    (waterline 0, floor line at narrowCup().floor): null when it crosses the waterline
    (it floats there), else 0 (top touching the surface) to 1 (bottom on the floor). */
+let floorR = 0;                                    /* narrowCup().floor, worked out once */
 export function depthShare(span) {
   if (span.top < 0) return null;
-  const travel = C.narrowCup().floor - (span.bottom - span.top);
+  const travel = (floorR || (floorR = C.narrowCup().floor)) - (span.bottom - span.top);
   return travel > 0 ? Math.min(1, span.top / travel) : 1;
 }
 

@@ -89,9 +89,13 @@ export class PlinkoBoard {
     return { x: this.slotX(ball.ev.slot), y: y0 + (y1 - y0) * u * u, row: rows, done: u >= 1 };
   }
 
+  /* Read from the theme's CSS once per theme, not every frame. */
   colors() {
+    const key = (document.documentElement.dataset.theme || "") + "|" + (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches);
+    if (this._ck === key && this._c) return this._c;
+    this._ck = key;
     const cs = getComputedStyle(this.cv);
-    return { r: [0, 1, 2, 3, 4].map(i => cs.getPropertyValue("--r" + i).trim() || "#cfe0ec"),
+    return this._c = { r: [0, 1, 2, 3, 4].map(i => cs.getPropertyValue("--r" + i).trim() || "#cfe0ec"),
              chest: cs.getPropertyValue("--gold-ink").trim() || "#e0a82e",
              peg: cs.getPropertyValue("--faint").trim() || "#7793a8",
              ink: cs.getPropertyValue("--ink-2").trim() || "#264f6d",

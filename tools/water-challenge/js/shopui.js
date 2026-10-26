@@ -11,7 +11,7 @@ import { onLive, emit } from "./live.js";
 import { petLabel, petGridOrder, rarityLabel, petBinIndex, isGrave, announce, penOf, pen2Open, penAlive } from "./pets.js";
 import { PlinkoBoard } from "./plinko.js";
 import { $, esc, has, todayKey, prettyTime, localStamp, bus, aAn } from "./util.js";
-import { setMsg, ensureIcons, ui, render } from "./ui.js";
+import { setMsg, ensureIcons, ui, render, setHtml } from "./ui.js";
 import { initStyle, renderStyle } from "./styleui.js";
 
 let hooks = null;            /* { settle, guard, askConfirm, pollSoon } from app.js */
@@ -51,6 +51,10 @@ export function initShop(h) {
   });
 }
 
+const binName = b => (C.PET_BINS[b] || { name: "?" }).name;      /* a drop from a newer page may name a slot this one lacks */
+/* A refresh while a dialog was open has replaced the person: act on the current copy. */
+const fresh = p => findParticipant(p.name) || p;
+
 /* A shard of rarity t, drawn in that rarity's colour. */
 export const shardIcon = t => '<svg class="shardico t' + t + '" viewBox="0 0 10 13" aria-hidden="true"><path d="M5 .6 9.4 4.8 5 12.4 .6 4.8Z"/></svg>';
 const tierName = t => C.PET_BINS[t].name;
@@ -67,42 +71,41 @@ export function renderShop() {
   if (!board) board = new PlinkoBoard($("plinkoCanvas"), landed);
   else if (Math.abs(board.w - Math.min(460, $("plinkoWrap").clientWidth)) > 4) board.resize($("plinkoWrap").clientWidth);
   const p = shopFor();
-  $("shopWho").innerHTML = S.participants.map(x =>
+  setHtml("shopWho", S.participants.map(x =>
     '<button type="button" class="who-chip' + (x === p ? " on" : "") + '" style="--pc:' + x.color + '"' +
     (x === p ? '' : ' disabled title="Only ' + esc(x.name) + '&rsquo;s own browser can spend these"') + '>' +
-    '<i class="dot" style="background:' + x.color + '"></i>' + esc(x.name) + '<b>' + shownBalance(x) + '</b></button>').join("");
+    '<i class="dot" style="background:' + x.color + '"></i>' + esc(x.name) + '<b>' + shownBalance(x) + '</b></button>').join(""));
   $("shopGrid").hidden = !p;
   renderStyle();
   if (!p) {
-    $("shopBalance").innerHTML = S.participants.length
+    setHtml("shopBalance", S.participants.length
       ? 'Set <b>your glass</b> to shop: tokens are spent only from your own. <button type="button" class="btn primary small" data-act="whoami">Pick your glass</button>'
-      : "Nobody on the roster yet.";
+      : "Nobody on the roster yet.");
     return;
   }
   const bonus = capBonus(p), bal = shownBalance(p), fromChest = chestWinnings(p) - (balance(p) - bal);
-  $("shopBalance").innerHTML = '<span class="coin"></span><b>' + bal + '</b> token' + (bal === 1 ? '' : 's') +
+  setHtml("shopBalance", '<span class="coin"></span><b>' + bal + '</b> token' + (bal === 1 ? '' : 's') +
     ' <span class="dim">&middot; ' + tokensEarned(p) + ' for goal days' + (bonus ? ' + ' + bonus + ' cap bonus' : '') +
-    (fromChest ? ' + ' + fromChest + ' from the chest' : '') + ' &middot; ' + spentTotal(p) + ' spent</span>';
+    (fromChest ? ' + ' + fromChest + ' from the chest' : '') + ' &middot; ' + spentTotal(p) + ' spent</span>');
   const pot = shownChest();
-  $("chestPot").innerHTML = '<span class="chest-star">&#9733;</span> Community Chest: <b>' + pot + '</b> token' + (pot === 1 ? '' : 's') +
-    ' <span class="dim">&middot; ' + (pot ? Math.round(C.CHEST_CHANCE * 100) + '% chance to win it all from the centre cup' : 'empty: the next centre landing starts it') + '</span>';
+  setHtml("chestPot", '<span class="chest-star">&#9733;</span> Community Chest: <b>' + pot + '</b> token' + (pot === 1 ? '' : 's') +
+    ' <span class="dim">&middot; ' + (pot ? Math.round(C.CHEST_CHANCE * 100) + '% chance to win it all from the centre cup' : 'empty: the next centre landing starts it') + '</span>');
 
   const pb = plinkoBlock(p);
   $("plinkoDrop").disabled = !!pb;
-  $("plinkoDrop").innerHTML = 'Drop a token for ' + esc(p.name);
+  setHtml("plinkoDrop", 'Drop a token for ' + esc(p.name));
   $("plinkoNote").textContent = pb || "";
   $("plinkoDrop").style.setProperty("--pc", p.color);
 
   const rb = rerollBlock(p), k = Number(p.rollKind), rolledToday = p.petRollDay === todayKey() && k >= 0, held = rollHoldLeft(p);
-  $("rerollBox").innerHTML =
-    (rolledToday
+  setHtml("rerollBox", (rolledToday
       ? '<div class="reroll-now">' + (penOf(k) > 0 && !held ? '<i class="pi pi-' + k + '"></i>' : '') +
         '<div><span class="dim">Today\'s roll</span><br>' + (held ? '<b>?</b>' : '<b>' + esc(petLabel(k)) + '</b> <span class="rar">' + esc(rarityLabel(k)) + '</span>') +
         (p.rerollDay === todayKey() ? ' <span class="pill">rerolled</span>' : '') + '</div></div>'
       : '') +
     '<button type="button" id="rerollBtn" class="btn primary"' + (rb ? ' disabled' : '') + '>Reroll &middot; ' + C.REROLL_COST + ' token</button>' +
     (rb ? '<p class="hint">' + esc(rb) + '</p>' : '<p class="hint">Normal odds. Replaces today\'s pet' +
-          (rolledToday && !p.rollWasNew && tierOf(k) >= 0 ? ' and its shard' : '') + '.</p>');
+          (rolledToday && !p.rollWasNew && tierOf(k) >= 0 ? ' and its shard' : '') + '.</p>'));
 
   /* A win still falling on the board is shown as it was before the drop. */
   const hidden = hiddenPets(p);
@@ -110,18 +113,18 @@ export function renderShop() {
   if (anyPending()) holdTimer = setTimeout(render, HOLD_MS);
   /* shards: a count per rarity with its combine button, then the pets they bring in */
   const sh = shownShards(p), top = C.PET_BINS.length - 1;
-  $("shardBar").innerHTML = C.PET_BINS.map((b, t) =>
+  setHtml("shardBar", C.PET_BINS.map((b, t) =>
     '<div class="shard-tier r' + t + '">' + shardIcon(t) + '<b>' + sh[t] + '</b><span class="sn">' + esc(b.name) + '</span>' +
     (t < top ? '<button type="button" class="btn small" data-fuse="' + t + '"' + (sh[t] < C.SHARD_FUSE ? ' disabled' : '') +
                ' title="Combine ' + C.SHARD_FUSE + ' ' + esc(b.name) + ' shards into 1 ' + esc(tierName(t + 1)) + ' shard">' +
                C.SHARD_FUSE + ' &rarr; 1 ' + shardIcon(t + 1) + '</button>'
-             : '<span class="dim sx">top</span>') + '</div>').join("");
+             : '<span class="dim sx">top</span>') + '</div>').join(""));
   const h = [];
   /* both pens once the second is open, one tab each */
   const twoPens = pen2Open(p), pen = twoPens ? (ui.shopPen || 2) : 1;
   $("buyPens").hidden = !twoPens;
-  if (twoPens) $("buyPens").innerHTML = [1, 2].map(x => '<button type="button" class="pen-tab' + (x === pen ? ' on' : '') + '" data-pen="' + x + '">' +
-    (x === 1 ? 'First pen' : 'Second pen') + ' <b>' + penAlive(p, x) + '</b></button>').join("");
+  if (twoPens) setHtml("buyPens", [1, 2].map(x => '<button type="button" class="pen-tab' + (x === pen ? ' on' : '') + '" data-pen="' + x + '">' +
+    (x === 1 ? 'First pen' : 'Second pen') + ' <b>' + penAlive(p, x) + '</b></button>').join(""));
   for (const kind of petGridOrder(pen)) {
     const held = hidden.has(kind), owned = has(p.pets, kind) && !held, buried = isGrave(p, kind) || (held && hidden.get(kind));
     const t = petBinIndex(kind), why = sh[t] < 1 ? "Needs " + aAn(tierName(t)) + " shard." : held ? "" : pickBlock(p, kind);
@@ -134,21 +137,21 @@ export function renderShop() {
            '<span class="bn">' + (owned || buried ? esc(C.PET_NAMES[kind]) : "???") + '</span>' +
            '<span class="bp">' + (owned ? "owned" : shardIcon(t) + '1' + (buried ? ' <small>revive</small>' : '')) + '</span></button>');
   }
-  $("buyGrid").innerHTML = h.join("");
+  setHtml("buyGrid", h.join(""));
   renderFeed();
 }
 
 function renderFeed() {
-  $("plinkoFeed").innerHTML = feed.length
+  setHtml("plinkoFeed", feed.length
     ? feed.slice(0, 12).map(f => '<li><span class="t">' + esc(prettyTime(f.ts)) + '</span><i class="dot" style="background:' + f.color + '"></i><strong>' +
         esc(f.name) + '</strong> &rarr; ' +
         (f.chest ? '<span class="rar chest">&#9733; Chest</span> ' +
                    (f.chest.won ? '<span class="pill good">won ' + f.chest.won + ' tokens</span>' : '<span class="dim">+1 token</span>')
-         : '<span class="rar r' + f.bin + '">' + esc(C.PET_BINS[f.bin].name) + '</span> ' +
+         : '<span class="rar r' + Number(f.bin) + '">' + esc(binName(f.bin)) + '</span> ' +
            (f.kind < 0 ? '<span class="dim">nothing left there, token returned</span>'
                        : esc(petLabel(f.kind)) + (f.revived ? ' <span class="pill good">back from the grave</span>'
                                                  : f.fresh ? ' <span class="pill good">new</span>' : ' <span class="dim">+1 shard</span>'))) + '</li>').join("")
-    : '<li class="dim">No drops yet.</li>';
+    : '<li class="dim">No drops yet.</li>');
 }
 
 function addFeed(ev) {
@@ -167,10 +170,10 @@ function landed(ev) {
   } else if (ev.chest) {
     if (ev.mine) setMsg("Into the Community Chest. It holds " + shownChest() + ".", true);
   } else if (ev.mine && ev.kind < 0) {
-    setMsg("Nothing left in " + C.PET_BINS[ev.bin].name + ". Token returned.", false);
+    setMsg("Nothing left in " + binName(ev.bin) + ". Token returned.", false);
   } else if (ev.mine) {
-    setMsg(ev.name + " won " + (ev.fresh ? "the " : "another ") + petLabel(ev.kind) + " (" + C.PET_BINS[ev.bin].name + ") on Plinko" +
-           (ev.revived ? ", back from the grave!" : ev.fresh ? "!" : ": +1 " + C.PET_BINS[ev.bin].name + " shard."), true);
+    setMsg(ev.name + " won " + (ev.fresh ? "the " : "another ") + petLabel(ev.kind) + " (" + binName(ev.bin) + ") on Plinko" +
+           (ev.revived ? ", back from the grave!" : ev.fresh ? "!" : ": +1 " + binName(ev.bin) + " shard."), true);
     if (ev.homunculus) setMsg(ev.name + " has all " + C.PET_COUNT + " alive. The pen made something new.", true);
   }
 }
@@ -183,7 +186,7 @@ async function dropToken() {
   $("plinkoDrop").disabled = true;
   let res = null;
   await store.serial(async () => {
-    res = await plinkoPlay(p);
+    res = await plinkoPlay(fresh(p));
     if (!res) return;
     /* the ball is in the air before anything redraws, so the win stays hidden until it lands */
     const label = res.chest ? (res.chest.won ? "\u2605 +" + res.chest.won + " tokens!" : "\u2605 +1 to the chest")
@@ -206,9 +209,11 @@ async function doReroll() {
                   : t >= 0 ? "; the " + tierName(t) + " shard from it goes back" : "") + ".", "Reroll");
   if (!ok) return;
   await store.serial(async () => {
-    const r = await reroll(p);
+    const q = fresh(p);
+    if (rerollBlock(q)) { setMsg(rerollBlock(q), false); return; }
+    const r = await reroll(q);
     if (!r) { setMsg("Reroll failed.", false); return; }
-    announce(p, r.res, " rerolled and");
+    announce(q, r.res, " rerolled and");
     await hooks.settle();
   });
   renderShop();
@@ -224,12 +229,14 @@ async function doPick(kind) {
     (store.petKindFor(p) === C.MYSTERY_KIND ? "" : " " + p.name + " will wear it."), "Use shard");
   if (!ok) return;
   await store.serial(async () => {
-    const r = await pickPet(p, kind);
+    const q = fresh(p);
+    if (pickBlock(q, kind)) { setMsg(pickBlock(q, kind), false); return; }
+    const r = await pickPet(q, kind);
     if (!r) { setMsg("That didn't save.", false); return; }
     setMsg(p.name + " used " + aAn(tn) + " shard on the " + petLabel(kind) + (r.revived ? ", back from the grave." : "."), true);
     const shown = r.homunculus ? C.HOMUNCULUS_KIND : kind;
     bus.unlock({ name: p.name, kind: shown, hue: r.homunculus ? 210 : r.hue, fresh: true,
-                 equipped: store.petKindFor(p) === shown, bought: true, title: p.name + " used " + aAn(tn) + " shard" });
+                 equipped: store.petKindFor(q) === shown, bought: true, title: p.name + " used " + aAn(tn) + " shard" });
     await hooks.settle();
   });
   renderShop();
@@ -243,7 +250,9 @@ async function doFuse(t) {
     "They become 1 " + tierName(t + 1) + " shard. This can't be split back.", "Combine");
   if (!ok) return;
   await store.serial(async () => {
-    const r = await fuse(p, t);
+    const q = fresh(p);
+    if (fuseBlock(q, t)) { setMsg(fuseBlock(q, t), false); return; }
+    const r = await fuse(q, t);
     if (r === null) { setMsg("That didn't save.", false); return; }
     setMsg(p.name + " combined " + C.SHARD_FUSE + " " + tierName(t) + " shards into 1 " + tierName(r) + " shard.", true);
     await hooks.settle();

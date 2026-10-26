@@ -41,3 +41,6 @@ Cable_Designer/
 *.cdparts
 *.cable.svg
 *.cable.png
+
+# Pet Studio save lock (left behind only if a save is cut off)
+tools/water-challenge/pets/*.lock

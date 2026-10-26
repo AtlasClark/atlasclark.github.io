@@ -3,7 +3,7 @@
    buy / wear / take-off. Data rules live in shop.js, drawing in cosmetics.js. */
 
 import * as C from "./config.js";
-import { S } from "./model.js";
+import { S, findParticipant } from "./model.js";
 import * as store from "./store.js";
 import { SLOTS, COSMETICS, itemsIn, PAINT_COST, drawDecor, drawEffect } from "./cosmetics.js";
 import { defs, fxSpot, anchorY, zoneOf } from "./petdefs.js";
@@ -11,7 +11,7 @@ import { ownsCosmetic, cosmeticBlock, buyCosmetic, wearCosmetic, lookOf, paintBl
 import { hueOf, petLabel } from "./pets.js";
 import { drawCritter } from "./art.js";
 import { $, esc, todayKey } from "./util.js";
-import { setMsg, ui } from "./ui.js";
+import { setMsg, ui, setHtml } from "./ui.js";
 
 let hooks = null, owner = null, running = false;
 const TABS = [{ key: "colour", name: "Colour", note: "Recolour any pet you have alive. Each recolour costs " + PAINT_COST + " shell" + (PAINT_COST === 1 ? "" : "s") + "." }, ...SLOTS];
@@ -56,59 +56,59 @@ export function renderStyle() {
   const tab = TABS.find(t => t.key === ui.styleTab) || TABS[1], look = lookOf(p);
   /* the shell purse: balance, the run of days in a row, and what tomorrow brings */
   const run = shellRun(p), today = pouredOn(p), bal = shellBalance(p);
-  $("styleBal").innerHTML = '<span class="shellico"></span><b>' + bal + '</b> shell' + (bal === 1 ? '' : 's') +
+  setHtml("styleBal", '<span class="shellico"></span><b>' + bal + '</b> shell' + (bal === 1 ? '' : 's') +
     ' <span class="dim">&middot; ' + shellsEarned(p) + ' earned</span><span class="run" title="' + run + ' day' + (run === 1 ? '' : 's') + ' in a row">' +
     [1, 2, 3, 4, 5].map(i => '<i' + (i <= Math.min(run, C.SHELL_MAX) ? ' class="on"' : '') + '></i>').join("") + '</span>' +
     '<br><span class="dim">' + (today ? 'Poured today (+' + shellAward(run) + '). Pour tomorrow for +' + shellAward(run + 1) + '.'
                                       : 'Your first pour each day earns shells: +' + shellAward(run + 1) + ' today' +
-                                        (run ? ' (' + (run + 1) + ' days in a row)' : '') + ', up to +' + C.SHELL_MAX + ' a day.') + '</span>';
-  $("styleTabs").innerHTML = TABS.map(t => {
+                                        (run ? ' (' + (run + 1) + ' days in a row)' : '') + ', up to +' + C.SHELL_MAX + ' a day.') + '</span>');
+  setHtml("styleTabs", TABS.map(t => {
     const n = t.key === "colour" ? 0 : itemsIn(t.key).filter(i => ownsCosmetic(p, i.id)).length;
     return '<button type="button" class="pen-tab' + (t.key === tab.key ? ' on' : '') + '" data-tab="' + t.key + '">' + esc(t.name) +
            (n ? ' <b>' + n + '</b>' : '') + '</button>';
-  }).join("");
+  }).join(""));
   $("styleNote").textContent = tab.note;
 
   if (tab.key === "colour") {
-    $("styleItems").innerHTML = "";
+    setHtml("styleItems", "");
     const alive = Object.keys(p.pets).map(Number).filter(x => x < C.PET_MAX && x !== C.MYSTERY_KIND).sort((a, b) => a - b);
     let k = petFor(p);
     if (!alive.includes(k)) k = alive.length ? alive[0] : -1;
     ui.stylePet = k;
-    if (k < 0) { $("styleAct").innerHTML = '<p class="hint">No pet alive to recolour yet.</p>'; startRoom(); return; }
+    if (k < 0) { setHtml("styleAct", '<p class="hint">No pet alive to recolour yet.</p>'); startRoom(); return; }
     if (ui.styleHue === null || ui.styleHue === undefined || ui.stylePetShown !== k) { ui.styleHue = hueOf(p, k); ui.stylePetShown = k; }
+    if (document.activeElement && document.activeElement.id === "styleHue") { startRoom(); return; }   /* mid-drag: leave the slider be */
     const why = paintBlock(p, k);
-    $("styleAct").innerHTML =
-      '<label class="field-label" for="stylePet">Pet</label><select id="stylePet" class="txt">' +
+    setHtml("styleAct", '<label class="field-label" for="stylePet">Pet</label><select id="stylePet" class="txt">' +
       alive.map(x => '<option value="' + x + '"' + (x === k ? ' selected' : '') + '>' + esc(petLabel(x)) + '</option>').join("") + '</select>' +
       '<label class="field-label" for="styleHue">New colour</label>' +
       '<div class="style-hue"><input id="styleHue" type="range" min="0" max="359" value="' + Math.round(ui.styleHue) + '">' +
       '<span id="styleHueVal" class="style-swatch" style="background:hsl(' + Math.round(ui.styleHue) + ',62%,58%)"></span></div>' +
       '<button type="button" class="btn primary" data-do="paint"' + (why ? ' disabled' : '') + '>Recolour the ' + esc(petLabel(k)) +
-      ' &middot; ' + SHELL + PAINT_COST + '</button>' + (why ? '<p class="hint">' + esc(why) + '</p>' : '');
+      ' &middot; ' + SHELL + PAINT_COST + '</button>' + (why ? '<p class="hint">' + esc(why) + '</p>' : ''));
     startRoom();
     return;
   }
 
   const items = itemsIn(tab.key);
-  $("styleItems").innerHTML = items.map(it => {
+  setHtml("styleItems", items.map(it => {
     const owned = ownsCosmetic(p, it.id), worn = look[it.slot] === it.key, sel = ui.styleTry === it.id;
     return '<button type="button" class="style-item' + (sel ? ' on' : '') + (owned ? ' owned' : '') + (worn ? ' worn' : '') + '" data-item="' + it.id + '" title="' + esc(it.blurb) + '">' +
            '<span class="sn">' + esc(it.name) + '</span><span class="sp">' +
            (worn ? 'wearing' : owned ? 'owned' : SHELL + it.price) + '</span></button>';
-  }).join("");
+  }).join(""));
   const it = COSMETICS[ui.styleTry];
   if (!it || it.slot !== tab.key) {
     const on = look[tab.key] && COSMETICS[tab.key + ":" + look[tab.key]];
-    $("styleAct").innerHTML = '<p class="hint">' + (on ? 'Wearing <b>' + esc(on.name) + '</b>. ' : '') + 'Pick one to try it on in the glass.</p>' +
-      (on ? '<button type="button" class="btn muted" data-do="off" data-item="' + on.id + '">Take off ' + esc(on.name) + '</button>' : '');
+    setHtml("styleAct", '<p class="hint">' + (on ? 'Wearing <b>' + esc(on.name) + '</b>. ' : '') + 'Pick one to try it on in the glass.</p>' +
+      (on ? '<button type="button" class="btn muted" data-do="off" data-item="' + on.id + '">Take off ' + esc(on.name) + '</button>' : ''));
   } else {
     const owned = ownsCosmetic(p, it.id), worn = look[it.slot] === it.key, why = owned ? "" : cosmeticBlock(p, it.id);
-    $("styleAct").innerHTML = '<p class="style-name"><b>' + esc(it.name) + '</b> <span class="dim">' + esc(it.blurb) + '</span></p>' +
+    setHtml("styleAct", '<p class="style-name"><b>' + esc(it.name) + '</b> <span class="dim">' + esc(it.blurb) + '</span></p>' +
       (worn ? '<button type="button" class="btn muted" data-do="off" data-item="' + it.id + '">Take it off</button>'
        : owned ? '<button type="button" class="btn primary" data-do="wear" data-item="' + it.id + '">Wear it</button>'
        : '<button type="button" class="btn primary" data-do="buy" data-item="' + it.id + '"' + (why ? ' disabled' : '') + '>Buy &middot; ' + SHELL + it.price + '</button>' +
-         (why ? '<p class="hint">' + esc(why) + '</p>' : '<p class="hint">Yours for good; it goes on straight away.</p>'));
+         (why ? '<p class="hint">' + esc(why) + '</p>' : '<p class="hint">Yours for good; it goes on straight away.</p>')));
   }
   startRoom();
 }
@@ -127,11 +127,12 @@ async function act(what, id) {
     if (!ok) return;
   }
   await store.serial(async () => {
+    const q = findParticipant(p.name) || p;          /* a refresh during the dialog replaced the person */
     let ok;
-    if (what === "buy") ok = await buyCosmetic(p, id);
-    else if (what === "wear") ok = await wearCosmetic(p, id, true);
-    else if (what === "off") ok = await wearCosmetic(p, id, false);
-    else if (what === "paint") ok = (await paintPet(p, petFor(p), ui.styleHue)) !== null;
+    if (what === "buy") ok = await buyCosmetic(q, id);
+    else if (what === "wear") ok = await wearCosmetic(q, id, true);
+    else if (what === "off") ok = await wearCosmetic(q, id, false);
+    else if (what === "paint") ok = (await paintPet(q, petFor(q), ui.styleHue)) !== null;
     if (!ok) { setMsg("That didn't save. Try again.", false); return; }
     if (what === "buy") { setMsg(p.name + " bought " + it.name + ".", true); ui.styleTry = null; }
     if (what === "paint") setMsg(p.name + " recoloured the " + petLabel(petFor(p)) + ".", true);

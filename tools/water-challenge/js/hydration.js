@@ -17,7 +17,7 @@ export function isHydrationDay(key = todayKey()) {
 export function teamSplash(key = todayKey()) {
   let total = 0, goal = 0;
   for (const p of S.participants) {
-    if (isAway(p, key)) continue;
+    if (isAway(p, key) || (p.created && p.created > key)) continue;    /* not playing yet that day */
     total += totalOn(p, key);
     goal += personalGoal(p, key);
   }

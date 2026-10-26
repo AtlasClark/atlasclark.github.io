@@ -519,6 +519,9 @@ li.pour.armed .undo-x { opacity: 1; background: #c4434f; color: #fff; }
 .gate-actions { display: flex; gap: 10px; flex-wrap: wrap; margin: 16px 0 10px; }
 .gate-warn { color: var(--warn-ink); background: var(--warn-bg); border: 1px solid var(--warn-line); padding: 8px 12px; border-radius: 10px; font-size: 13px; }
 .gate-box details { margin-top: 10px; font-size: 12px; color: var(--faint); }
+.gate-box .gate-setup { color: var(--muted); font-size: 13px; }
+.gate-setup summary { cursor: pointer; color: var(--accent-ink, var(--accent)); font-weight: 600; }
+.gate-setup ol { margin: 8px 0 0; padding-left: 20px; line-height: 1.5; }
 
 .dlg { border: 1px solid var(--line-2); border-radius: 18px; padding: 22px 24px; background: var(--solid); color: var(--ink); width: min(420px, calc(100vw - 32px)); }
 .dlg::backdrop { background: var(--scrim); }
@@ -747,6 +750,7 @@ li.pour.armed .undo-x { opacity: 1; background: #c4434f; color: #fff; }
 .statusbar .rev { font-family: var(--mono); font-weight: 700; color: var(--accent-ink); }
 .sb-link { border: 0; background: none; padding: 0; color: var(--muted); font-weight: 700; text-decoration: underline dotted; text-underline-offset: 3px; }
 .sb-link:hover { color: var(--ink); }
+#sbFolder, #sbMe { max-width: 28vw; overflow: hidden; text-overflow: ellipsis; }
 .sb-sep { color: var(--fainter); }
 .sb-grow { flex: 1; }
 
