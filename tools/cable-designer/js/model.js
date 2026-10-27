@@ -26,7 +26,7 @@
   const blankProject = () => ({
     format: FORMAT, v: VERSION, meta: blankMeta(),
     pos: { wires: null, bom: null, notes: null },
-    history: [], notes: [], conns: [], cables: [], wires: [], callouts: [], ties: []
+    history: [], notes: [], conns: [], cables: [], wires: [], callouts: [], ties: [], tables: []
   });
 
   const REF_PREFIX = { conn: "P", term: "E", flying: "FL", splice: "SP", ground: "GND", board: "A" };
@@ -239,6 +239,33 @@
   }
   const newGroup = (wires, o) => Object.assign({ id: uid(), wires: wires.slice(), lay: "", shield: "none" }, o);
   const newMark = o => Object.assign({ id: uid(), kind: "label", end: "both", text: "", mfr: "", mpn: "", ipn: "", desc: "", qty: "", len: "" }, o);
+  // Custom table: free text in a grid, on sheet 1 at x, y or flowed onto sheet 2.
+  const newTable = (x, y, o) => Object.assign({
+    id: uid(), title: "Table", cols: [{ h: "Column 1", align: "left" }, { h: "Column 2", align: "left" }, { h: "Column 3", align: "left" }],
+    rows: [["", "", ""], ["", "", ""]], size: "s", sheet: 1, x: Math.round(x || 0), y: Math.round(y || 0)
+  }, o);
+  function normTable(t) {
+    const cols = (Array.isArray(t.cols) ? t.cols : []).slice(0, 30).map(c => ({ h: str(c && c.h).slice(0, 200), align: ["left", "center", "right"].includes(c && c.align) ? c.align : "left" }));
+    if (!cols.length) cols.push({ h: "", align: "left" });
+    const rows = (Array.isArray(t.rows) ? t.rows : []).slice(0, 500).map(r => cols.map((c, i) => str(Array.isArray(r) ? r[i] : "").slice(0, 2000)));
+    return { id: str(t.id) || uid(), title: str(t.title).slice(0, 200), cols, rows, size: t.size === "m" ? "m" : "s", sheet: t.sheet === 2 ? 2 : 1, x: num(t.x) || 0, y: num(t.y) || 0 };
+  }
+  // Text pasted from a spreadsheet (tabs) or CSV: rows of cells. Quotes as in CSV.
+  function parseGrid(text) {
+    const tab = /\t/.test(text), rows = [];
+    let row = [], cell = "", q = false;
+    const s = String(text).replace(/\r\n?/g, "\n");
+    for (let i = 0; i < s.length; i++) {
+      const ch = s[i];
+      if (q) { if (ch === '"') { if (s[i + 1] === '"') { cell += '"'; i++; } else q = false; } else cell += ch; continue; }
+      if (ch === '"' && cell === "") q = true;
+      else if (ch === (tab ? "\t" : ",")) { row.push(cell); cell = ""; }
+      else if (ch === "\n") { row.push(cell); rows.push(row); row = []; cell = ""; }
+      else cell += ch;
+    }
+    if (cell !== "" || row.length) { row.push(cell); rows.push(row); }
+    return rows.filter(r => r.some(c => c.trim() !== ""));
+  }
   const newCallout = (x, y, o) => Object.assign({ id: uid(), kind: "text", text: "", x: Math.round(x), y: Math.round(y), lx: null, ly: null }, o);
 
   // Cable presets. Colours: DIN 47100 order; Ethernet uses T568B.
@@ -324,6 +351,7 @@
       b: t.b.t === "shield" ? { t: "shield", cable: str(t.b.cable), end: ends.includes(t.b.end) ? t.b.end : "a" } : { t: "pin", c: str(t.b.c), p: Number.isInteger(t.b.p) ? t.b.p : -1 }
     }));
     pruneTies(p);
+    p.tables = arr(d.tables).slice(0, 50).map(normTable);
     p.cables.forEach(c => { c.groups = c.groups.filter(g => (g.wires = g.wires.filter(id => p.wires.some(w => w.id === id && w.cable === c.id))).length > 1); });
     return p;
   }
@@ -575,7 +603,7 @@
   Object.assign(CD, {
     FORMAT, VERSION, uid, today, num, str,
     blankProject, normalize, newConn, setPinCount, reorderPins, removePins, addPins, spaceBoardPins, boardPins,
-    addTie, tiesOf, pruneTies, shieldText, tieTargetText, insertBoard, partFromConn, normPart, connFromPart, newCable, newWire, newGroup, newMark, newCallout, cablePreset, nextWireNo,
+    addTie, tiesOf, pruneTies, newTable, normTable, parseGrid, shieldText, tieTargetText, insertBoard, partFromConn, normPart, connFromPart, newCable, newWire, newGroup, newMark, newCallout, cablePreset, nextWireNo,
     byId, libOf, groupOf, conductors, wireRef, endText, sigOf, isDrain, colorText, gaugeText,
     UNIT, fmtLen, fmtTol, wireLen, WIRE_COLS, wireRows, BOM_COLS, bom, bomCells, checks,
     csvCell, wireCsv, bomCsv, connectCable, example

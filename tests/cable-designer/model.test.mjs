@@ -308,3 +308,29 @@ test("board image: kept when valid, fitted between the pin labels, block can fit
   const part = CD.normPart(JSON.parse(JSON.stringify(CD.partFromConn(b, "Board with picture"))));
   assert.equal(part.board.img.data, png, "My parts keep the image");
 });
+
+test("custom tables: paste parsing, saved shape, sheet 1 at its spot or flowed onto sheet 2", () => {
+  assert.deepEqual(plain(CD.parseGrid("Step\tCheck\n1\tContinuity\n2\t\"Hi-pot, 500 V\"\n")), [["Step", "Check"], ["1", "Continuity"], ["2", "Hi-pot, 500 V"]]);
+  assert.deepEqual(plain(CD.parseGrid('a,"b ""x""",c\r\n1,2,3')), [["a", 'b "x"', "c"], ["1", "2", "3"]]);
+  const p = CD.example();
+  const t = CD.newTable(300, 450, { title: "Test record", cols: [{ h: "Step", align: "center" }, { h: "Check", align: "left" }], rows: [["1", "Continuity"], ["2", "Insulation"]] });
+  p.tables.push(t);
+  const back = CD.normalize(JSON.parse(JSON.stringify(p)));
+  assert.deepEqual(plain(back.tables[0].rows), [["1", "Continuity"], ["2", "Insulation"]]);
+  assert.equal(back.tables[0].cols[0].align, "center");
+  const ragged = CD.normalize({ tables: [{ cols: [{ h: "A" }, { h: "B" }], rows: [["x"], ["y", "z", "extra"]], sheet: 9 }] }).tables[0];
+  assert.deepEqual(plain(ragged.rows), [["x", ""], ["y", "z"]]); assert.equal(ragged.sheet, 1);
+  const s1 = CD.scene(p, { sheet: 1 });
+  const g = s1.groups.find(x => x.id === "tbl:" + t.id);
+  assert.equal(g.box.x, 300); assert.equal(g.box.y, 450);
+  assert.ok(g.prims.some(o => o.t === "text" && o.s === "TEST RECORD"));
+  assert.ok(g.prims.some(o => o.t === "text" && o.s === "Insulation"));
+  assert.equal(CD.sheetsOf(p), 1);
+  t.sheet = 2;
+  assert.equal(CD.sheetsOf(p), 2);
+  assert.ok(!CD.scene(p, { sheet: 1 }).groups.some(x => x.id === "tbl:" + t.id));
+  const s2 = CD.scene(p, { sheet: 2 });
+  assert.ok(s2.groups.some(x => x.id === "tbl:" + t.id));
+  assert.ok(!s2.groups.some(x => x.id === "blk:wires"), "wire list stays on sheet 1");
+  assert.ok(CD.scene(p, { sheet: 1 }).groups.some(x => x.id === "blk:wires"));
+});

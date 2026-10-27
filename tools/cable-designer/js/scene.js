@@ -69,7 +69,9 @@
   // cols: [{h, min, max, align}]; rows: arrays of strings. Returns {w, h}.
   function table(pen, x, y, title, cols, rows, opt) {
     opt = opt || {};
-    const S = opt.size || 5.8, HS = 5.2, LH = S + 1.6, PADX = 3;
+    const S = opt.size || 5.8, HS = Math.max(5.2, S - 0.6), LH = S + 1.6, PADX = 3;
+    const ax = (c, cx, w) => c.align === "right" ? cx + w - PADX : c.align === "center" ? cx + w / 2 : cx + PADX;
+    const an = c => c.align === "right" ? "end" : c.align === "center" ? "middle" : "start";
     const widths = cols.map((c, i) => {
       let w = tw(c.h.toUpperCase(), HS, true);
       rows.forEach(r => { w = Math.max(w, tw(r[i], S)); });
@@ -89,14 +91,14 @@
     pen.rect(x, cy, W, HH, { s: null, f: HEAD });
     let cx = x;
     cols.forEach((c, i) => {
-      pen.text(c.align === "right" ? cx + widths[i] - PADX : cx + PADX, cy + 7, c.h.toUpperCase(), { size: HS, bold: true, anchor: c.align === "right" ? "end" : "start" });
+      pen.text(ax(c, cx, widths[i]), cy + 7, c.h.toUpperCase(), { size: HS, bold: true, anchor: an(c) });
       cx += widths[i];
     });
     cy += HH; pen.line(x, cy, x + W, cy, { lw: 0.6 });
     cells.forEach((r, ri) => {
       cx = x;
       r.forEach((lines, i) => {
-        lines.forEach((l, k) => pen.text(cols[i].align === "right" ? cx + widths[i] - PADX : cx + PADX, cy + 2 + S + k * LH, l, { size: S, anchor: cols[i].align === "right" ? "end" : "start", bold: !!cols[i].bold }));
+        lines.forEach((l, k) => pen.text(ax(cols[i], cx, widths[i]), cy + 2 + S + k * LH, l, { size: S, anchor: an(cols[i]), bold: !!cols[i].bold }));
         cx += widths[i];
       });
       cy += rh[ri];
@@ -633,7 +635,15 @@
   }
 
   // ---------- scene ----------
-  function sheetsOf(p) { return p.meta.tables === "2" && (p.meta.showWires || p.meta.showBom) ? 2 : 1; }
+  function sheetsOf(p) { return (p.meta.tables === "2" && (p.meta.showWires || p.meta.showBom)) || (p.tables || []).some(t => t.sheet === 2) ? 2 : 1; }
+  const customCols = t => t.cols.map(c => ({ h: c.h, align: c.align, max: 220, min: 24 }));
+  const customRows = t => t.rows.length ? t.rows : [t.cols.map(() => "")];
+  function drawCustomTable(pen, t, x, y) {
+    pen.begin("tbl:" + t.id, "table");
+    const d = table(pen, x, y, t.title ? t.title.toUpperCase() : "", customCols(t), customRows(t), { size: t.size === "m" ? 7 : 5.8 });
+    pen.g.box = { x, y, w: d.w, h: d.h };
+    return d;
+  }
 
   function scene(p, opt) {
     opt = opt || {};
@@ -654,20 +664,24 @@
     const bomTbl = () => { const r = B.rows.map(x => CD.bomCells(x, m)); return dropEmptyCols(BOM_TCOLS, r.length ? r : [BOM_TCOLS.map(() => "")]); };
 
     if (sheet === 2) {
-      let x = fr.L + 12, y = fr.T + 12;
-      if (m.showWires) {
-        const t = wireTbl();
-        pen.begin("blk:wires", "table");
-        const d = table(pen, x, y, "WIRE LIST", t.cols, t.rows);
-        pen.g.box = { x, y, w: d.w, h: d.h };
-        if (x + d.w + 20 < tb.x - 0 && m.showBom) { x = x + d.w + 20; } else y += d.h + 16;
+      // flow the tables left to right, then down
+      let x = fr.L + 12, y = fr.T + 12, rowH = 0;
+      const flow = (w, h, draw) => {
+        if (x > fr.L + 12 && x + w > fr.R - 12) { x = fr.L + 12; y += rowH + 16; rowH = 0; }
+        draw(x, y); x += w + 20; rowH = Math.max(rowH, h);
+      };
+      if (m.tables === "2" && m.showWires) {
+        const t = wireTbl(), d = measureTable("WIRE LIST", t.cols, t.rows);
+        flow(d.w, d.h, (xx, yy) => { pen.begin("blk:wires", "table"); table(pen, xx, yy, "WIRE LIST", t.cols, t.rows); pen.g.box = { x: xx, y: yy, w: d.w, h: d.h }; });
       }
-      if (m.showBom) {
-        const t = bomTbl();
-        pen.begin("blk:bom", "table");
-        const d = table(pen, x, y, "BILL OF MATERIALS", t.cols, t.rows);
-        pen.g.box = { x, y, w: d.w, h: d.h };
+      if (m.tables === "2" && m.showBom) {
+        const t = bomTbl(), d = measureTable("BILL OF MATERIALS", t.cols, t.rows);
+        flow(d.w, d.h, (xx, yy) => { pen.begin("blk:bom", "table"); table(pen, xx, yy, "BILL OF MATERIALS", t.cols, t.rows); pen.g.box = { x: xx, y: yy, w: d.w, h: d.h }; });
       }
+      (p.tables || []).filter(t => t.sheet === 2).forEach(t => {
+        const d = measureTable(t.title ? t.title.toUpperCase() : "", customCols(t), customRows(t), { size: t.size === "m" ? 7 : 5.8 });
+        flow(d.w, d.h, (xx, yy) => drawCustomTable(pen, t, xx, yy));
+      });
       return out;
     }
 
@@ -744,6 +758,7 @@
     p.cables.forEach(c => drawCable(pen, p, c, cabL[c.id], find, connL, m));
     p.conns.forEach(c => drawConn(pen, p, c, connL[c.id], find));
     p.callouts.forEach(k => drawCallout(pen, k));
+    (p.tables || []).filter(t => t.sheet !== 2).forEach(t => drawCustomTable(pen, t, t.x, t.y));
 
     // ports for wiring by drag (screen only)
     p.conns.forEach(c => {
@@ -763,7 +778,7 @@
       lines.forEach((l, i) => { pen.text(pos.x + 14, pos.y + 18 + i * 8.2, l.n, { size: 6.4, anchor: "end" }); pen.text(pos.x + 18, pos.y + 18 + i * 8.2, l.l, { size: 6.4 }); });
       pen.g.box = { x: pos.x - 4, y: pos.y - 2, w: 368, h: h + 2 };
     }
-    if (sheets === 1) {
+    if (m.tables !== "2") {
       if (m.showBom) {
         const t = bomTbl(), d = measureTable("BILL OF MATERIALS", t.cols, t.rows);
         const pos = p.pos.bom || { x: fr.R - d.w, y: tb.y - d.h - 10 };

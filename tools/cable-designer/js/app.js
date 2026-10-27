@@ -9,7 +9,7 @@
 (function () {
   "use strict";
   const CD = window.CD, OUT = CD.out;
-  const REV = "rev 1.5.0";
+  const REV = "rev 1.6.0";
   const LS_UI = "cableDesigner.ui";
   const $ = id => document.getElementById(id);
   const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -50,14 +50,14 @@
   const images = { logo: null };   // title-block logo: loaded by the user, kept in this browser only
   const condSel = new Set();  // conductors ticked for "Twist selected"
   let storageOk = true;
-  const hasContent = () => !!(p.conns.length || p.cables.length || p.wires.length || p.callouts.length || p.meta.dwgNo || p.meta.title);
+  const hasContent = () => !!(p.conns.length || p.cables.length || p.wires.length || p.callouts.length || (p.tables || []).length || p.meta.dwgNo || p.meta.title);
 
   const kindOf = id => id ? id.slice(0, id.indexOf(":")) : null;
   const idOf = id => id ? id.slice(id.indexOf(":") + 1) : null;
-  const conn = id => CD.byId(p.conns, id), cable = id => CD.byId(p.cables, id), wire = id => CD.byId(p.wires, id), callout = id => CD.byId(p.callouts, id);
+  const conn = id => CD.byId(p.conns, id), cable = id => CD.byId(p.cables, id), wire = id => CD.byId(p.wires, id), callout = id => CD.byId(p.callouts, id), ctable = id => CD.byId(p.tables, id);
   function selObj() {
     const k = kindOf(sel), id = idOf(sel);
-    return k === "c" ? conn(id) : k === "w" ? cable(id) : k === "x" ? wire(id) : k === "k" ? callout(id) : null;
+    return k === "c" ? conn(id) : k === "w" ? cable(id) : k === "x" ? wire(id) : k === "k" ? callout(id) : k === "tbl" ? ctable(id) : null;
   }
 
   // ---------- undo ----------
@@ -207,12 +207,12 @@
     const g = t.closest("[data-id]");
     const id = g && g.dataset.id;
     const k = kindOf(id);
-    if (id && ["c", "w", "x", "t", "k", "blk"].includes(k) && sheet === 1) {
+    if (id && ["c", "w", "x", "t", "k", "tbl", "blk"].includes(k) && sheet === 1) {
       select(id);
       if (k !== "x" && k !== "t") startMove(e, id);
       return;
     }
-    if (id && k === "blk") { select(id); return; }
+    if (id && (k === "blk" || k === "tbl")) { select(id); return; }
     select(null);
     startPan(e);
   });
@@ -376,6 +376,7 @@
       case "w": return cable(a);
       case "x": return wire(a);
       case "k": return callout(a);
+      case "tb": return ctable(a);
       case "pin": { const c = conn(a); return c && c.pins[+b]; }
       case "acc": { const c = conn(a); return c && c.acc[+b]; }
       case "bpin": { const c = conn(a); return c && c.board && c.board.pins[+b]; }
@@ -402,6 +403,7 @@
     },
     pins(c, v) { CD.setPinCount(p, c, parseInt(v, 10)); },
     boardSize(c, v, el) { const k = el.dataset.k.split(".")[1], n = parseFloat(v); if (isFinite(n)) c.board[k] = Math.max(k === "w" ? 60 : 40, Math.round(n)); else c.board[k] = k === "w" ? 150 : 100; },
+    tblSheet(t, v) { t.sheet = v === "2" ? 2 : 1; sheet = t.sheet; paintSheets(); requestAnimationFrame(fit); },
     tie(c, v, el) {
       if (!v) return;
       const [t, a, b] = v.split(":");
@@ -487,6 +489,7 @@
       const t = (p.ties || []).find(x => x.id === idOf(sel));
       if (t) { title = "Shield tie"; html = '<div class="stat"><span>From</span><b>' + esc(CD.shieldText(p, t.a.cable, t.a.end)) + "</b><span>To</span><b>" + esc(CD.tieTargetText(p, t.b)) + "</b></div>"; acts = IB("del", "✕", "Delete (Del)"); }
     }
+    else if (k === "tbl" && o) { title = "Table"; html = tableForm(o); acts = IB("dup", "⧉", "Duplicate (Ctrl+D)") + IB("del", "✕", "Delete (Del)"); }
     else if (k === "k" && o) { title = "Callout"; html = calloutForm(o); acts = IB("dup", "⧉", "Duplicate (Ctrl+D)") + IB("del", "✕", "Delete (Del)"); }
     else if (k === "blk") { title = { wires: "Wire list", bom: "Bill of materials", notes: "Notes" }[idOf(sel)] || "Table"; html = blockForm(idOf(sel)); }
     else html = drawingForm();
@@ -630,6 +633,36 @@
     return h;
   }
 
+  function tableForm(t) {
+    const o = "tb:" + t.id, nC = t.cols.length;
+    let h = F("Title", I(o, "title", t.title, 'placeholder="No title" data-re="1"'));
+    h += '<div class="r2">' + F("Text size", S(o, "size", t.size, [["s", "Small"], ["m", "Medium"]])) +
+      F("Sheet", S(o, "sheet", String(t.sheet), [["1", "Sheet 1, where you put it"], ["2", "Sheet 2 (continuation)"]], 'data-fx="tblSheet" data-set="0" data-re="1"')) + "</div>";
+    const head = '<tr><th></th>' + t.cols.map((c, j) => "<th>" + I(o, "cols." + j + ".h", c.h, 'class="tg-h" placeholder="Column ' + (j + 1) + '"') +
+      '<div class="tg-colbar">' + S(o, "cols." + j + ".align", c.align, [["left", "⇤"], ["center", "↔"], ["right", "⇥"]], 'title="Align"') +
+      IB("tblColDel", "✕", "Remove column", 'data-id="' + t.id + '" data-i="' + j + '"' + (nC > 1 ? "" : " disabled")) + "</div></th>").join("") + "<th></th></tr>";
+    const body = t.rows.map((r, i) => '<tr><td class="tg-n">' + (i + 1) + "</td>" + r.map((v, j) => "<td>" + I(o, "rows." + i + "." + j, v) + "</td>").join("") +
+      '<td class="tg-act">' + IB("tblRowUp", "▲", "Move up", 'data-id="' + t.id + '" data-i="' + i + '"' + (i ? "" : " disabled")) + IB("tblRowDel", "✕", "Remove row", 'data-id="' + t.id + '" data-i="' + i + '"') + "</td></tr>").join("");
+    h += sec("Cells", '<div class="tg-wrap"><table class="tg">' + head + body + "</table></div>",
+      B("tblRowAdd", "＋ Row", 'data-id="' + t.id + '"') + B("tblColAdd", "＋ Column", 'data-id="' + t.id + '"') + B("tblPaste", "Paste…", 'data-id="' + t.id + '" title="From Excel or a CSV"'));
+    return h;
+  }
+  function pasteTable(t) {
+    openModal("Paste into " + (t.title || "table"), '<p>Copy cells in Excel (or CSV text) and paste them here.</p><textarea id="tblText" rows="10" style="width:100%;font-family:var(--mono)"></textarea>' +
+      '<label class="chk"><input type="checkbox" id="tblHead" checked>First row is the column headings</label>', [
+      { label: "Cancel", onClick: closeModal },
+      { label: "Replace table", cls: "btn-primary", onClick: () => {
+        const g = CD.parseGrid($("tblText").value);
+        if (!g.length) { toast("Nothing to paste.", "warn"); return; }
+        pushUndo();
+        const n = Math.min(30, Math.max(...g.map(r => r.length)));
+        const head = $("tblHead").checked ? g.shift() : null;
+        t.cols = Array.from({ length: n }, (x, j) => ({ h: head ? head[j] || "" : "Column " + (j + 1), align: "left" }));
+        t.rows = g.slice(0, 500).map(r => Array.from({ length: n }, (x, j) => r[j] || ""));
+        closeModal(); changed(true);
+      } }]);
+  }
+
   function calloutForm(k) {
     const o = "k:" + k.id;
     let h = F("Kind", S(o, "kind", k.kind, [["text", "Text note"], ["flag", "Flag note (triangle)"], ["balloon", "Balloon (find number)"]], 'data-re="1"'));
@@ -716,6 +749,12 @@
     },
     ungroup: d => { const c = cable(d.id); pushUndo(); c.groups = c.groups.filter(g => g.id !== d.i); changed(true); },
     connect: d => connectDialog(cable(d.id)),
+    tblRowAdd: d => { const t = ctable(d.id); pushUndo(); t.rows.push(t.cols.map(() => "")); changed(true); },
+    tblRowDel: d => { const t = ctable(d.id); pushUndo(); t.rows.splice(+d.i, 1); changed(true); },
+    tblRowUp: d => { const t = ctable(d.id), i = +d.i; if (i < 1) return; pushUndo(); [t.rows[i - 1], t.rows[i]] = [t.rows[i], t.rows[i - 1]]; changed(true); },
+    tblColAdd: d => { const t = ctable(d.id); if (t.cols.length >= 30) return; pushUndo(); t.cols.push({ h: "Column " + (t.cols.length + 1), align: "left" }); t.rows.forEach(r => r.push("")); changed(true); },
+    tblColDel: d => { const t = ctable(d.id); if (t.cols.length < 2) return; pushUndo(); const j = +d.i; t.cols.splice(j, 1); t.rows.forEach(r => r.splice(j, 1)); changed(true); },
+    tblPaste: d => pasteTable(ctable(d.id)),
     tieDel: d => { pushUndo(); p.ties = p.ties.filter(t => t.id !== d.id); changed(true); },
     bpinAdd: d => {
       const c = conn(d.id); pushUndo();
@@ -835,6 +874,7 @@
     } else if (k === "x") deleteWire(wire(id));
     else if (k === "t") p.ties = p.ties.filter(t => t.id !== id);
     else if (k === "k") p.callouts = p.callouts.filter(c => c.id !== id);
+    else if (k === "tbl") p.tables = p.tables.filter(t => t.id !== id);
     sel = null;
     changed(true);
   }
@@ -855,6 +895,7 @@
       copy.marks = o.marks.map(m => CD.newMark(Object.assign({}, m, { id: CD.uid() })));
       p.cables.push(copy);
     } else if (k === "k") p.callouts.push(copy);
+    else if (k === "tbl") p.tables.push(copy);
     sel = k + ":" + copy.id;
     changed(true);
   }
@@ -975,6 +1016,15 @@
     sel = "w:" + c.id;
     changed(true);
   }
+  function addTable() {
+    sheet = 1;
+    pushUndo();
+    const t = CD.newTable(0, 0);
+    p.tables.push(t);
+    place("tbl:" + t.id, t);
+    sel = "tbl:" + t.id;
+    changed(true);
+  }
   function addCallout(kind) {
     sheet = 1;
     pushUndo();
@@ -993,7 +1043,7 @@
       item('data-cab="stp"', "Shielded twisted pair", "Foil shield, drain wire") + item('data-cab="pairs"', "Multi-pair shielded…", "Twisted pairs, overall foil, drain") +
       item('data-cab="eth"', "4 pair data (T568B)", "Pairs twisted; Connect ends lands each on its T568B pin") + item('data-cab="bundle"', "Twisted pair, no jacket") + "</details>";
     groups.forEach((g, i) => { h += "<details" + (i === 0 ? " open" : "") + "><summary>" + esc(g.name) + "<span>" + g.items.length + "</span></summary>" + g.items.map(l => item('data-lib="' + l.key + '"', l.name)).join("") + "</details>"; });
-    h += '<details><summary>Annotations<span>3</span></summary>' + item('data-call="text"', "Text note") + item('data-call="flag"', "Flag note △") + item('data-call="balloon"', "Balloon ◯") + "</details>";
+    h += '<details><summary>Annotations<span>4</span></summary>' + item('data-call="text"', "Text note") + item('data-call="flag"', "Flag note △") + item('data-call="balloon"', "Balloon ◯") + item('data-call="table"', "Table ▦") + "</details>";
     $("lib").insertAdjacentHTML("beforeend", h);
     $("lib").addEventListener("click", e => {
       const b = e.target.closest(".lib-item");
@@ -1001,6 +1051,7 @@
       if (b.dataset.part) addPart(b.dataset.part);
       else if (b.dataset.lib) addConn(b.dataset.lib);
       else if (b.dataset.cab) addCable(b.dataset.cab);
+      else if (b.dataset.call === "table") addTable();
       else if (b.dataset.call) addCallout(b.dataset.call);
     });
   }
@@ -1013,6 +1064,7 @@
     if (p.cables.length) h += '<li class="sub">Cables</li>' + p.cables.map(c => li("w:" + c.id, c.ref, c.desc || (c.kind === "bundle" ? "Bundle" : "Cable"))).join("");
     const loose = p.wires.filter(w => !w.cable);
     if (loose.length) h += '<li class="sub">Loose wires</li>' + loose.map(w => li("x:" + w.id, CD.wireRef(p, w), [CD.endText(p, w.a) || "—", CD.endText(p, w.b) || "—"].join(" → "))).join("");
+    if ((p.tables || []).length) h += '<li class="sub">Tables</li>' + p.tables.map(t => li("tbl:" + t.id, "▦", (t.title || "Table") + (t.sheet === 2 ? " (sheet 2)" : ""))).join("");
     if (p.callouts.length) h += '<li class="sub">Callouts</li>' + p.callouts.map(k => li("k:" + k.id, k.kind === "text" ? "Note" : k.kind === "flag" ? "△ " + k.text : "◯ " + k.text, k.kind === "text" ? k.text : "")).join("");
     $("outline").innerHTML = h || '<li class="empty-note">Nothing on the sheet yet.</li>';
     $("outlineCount").textContent = (p.conns.length + p.cables.length) ? String(p.conns.length + p.cables.length + loose.length + p.callouts.length) : "";
@@ -1020,7 +1072,8 @@
   $("outline").addEventListener("click", e => {
     const li = e.target.closest("[data-sel]");
     if (!li) return;
-    if (sheet !== 1) { sheet = 1; render(); paintSheets(); }
+    const tt = kindOf(li.dataset.sel) === "tbl" && ctable(idOf(li.dataset.sel)), want = tt && tt.sheet === 2 ? 2 : 1;
+    if (sheet !== want) { sheet = want; render(); paintSheets(); }
     select(li.dataset.sel); reveal(li.dataset.sel);
   });
 
