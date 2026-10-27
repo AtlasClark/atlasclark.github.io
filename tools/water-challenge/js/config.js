@@ -1,8 +1,8 @@
 /* Water Challenge (web) - constants: rules, tunables and the on-disk contract
    (FORMAT_REV, UTF-16 LE + BOM JSON, unknown fields kept). */
 
-export const REV         = "rev 1.36.1";
-export const APP_VERSION = "web 1.36.1";   /* stamped as writerVersion */
+export const REV         = "rev 1.37.0";
+export const APP_VERSION = "web 1.37.0";   /* stamped as writerVersion */
 /* Every file is written at FORMAT_REV. A file stamped higher came from a newer
    build, and the page asks for a reload. */
 export const FORMAT_REV    = 22;
@@ -16,10 +16,12 @@ export const KNOWN_FIELDS = ["name", "color", "goal", "dayGoals", "away", "creat
    One token is worth one daily roll, so a pet's price is 1 / (chance of rolling
    that exact species): Common 8 share 62.5%, Uncommon 7 share 20.8%, and so on. */
 /* Shards: a repeat (a pet rolled or won on Plinko that is already alive) gives a shard
-   of its rarity. SHARD_FUSE of one rarity combine into 1 of the next; 1 shard brings in
-   any pet of its rarity that is not alive (a buried one comes back). Shards replace
-   buying pets with tokens. Rolls and Plinko pick from the whole rarity, owned or not. */
+   of its rarity. SHARD_FUSE of one rarity combine into 1 of the next; SHARD_COST shards
+   of its rarity bring in any pet that is not alive (a buried one comes back), by pen
+   (rev 1.37.0: first pen 1, second 2, third 3). Shards replace buying pets with tokens.
+   Rolls and Plinko pick from the whole rarity, owned or not. */
 export const SHARD_FUSE   = 3;
+export const SHARD_COST   = [null, 1, 2, 3];
 export const SHARD_KINDS  = ["shard", "fuse"];
 /* Passing the cap drowns a pet and pays this many tokens, for days from CAP_BONUS_SINCE.
    Computed from each day's total, like goal-day tokens, so an undo takes it back. */

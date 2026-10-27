@@ -484,7 +484,7 @@ function renderPets() {
   h.push('<div class="pet-legend">');
   const odds = rollOdds();
   C.PET_BINS.forEach((b, i) => h.push('<span><i class="pl r' + i + '"></i>' + esc(b.name) + ' &middot; ' + odds.bins[i].toFixed(1) + '%</span>'));
-  h.push('<span><i class="pl grave"></i>Buried &middot; bring it back with a shard or win it on Plinko</span>');
+  h.push('<span><i class="pl grave"></i>Buried &middot; bring it back with shards or win it on Plinko</span>');
   h.push('<span class="pl-note">Reach your goal to roll. Click a pet to wear it; click again to take it off.</span></div>');
   h.push('<div class="pet-cards">');
   for (const p of S.participants) {
@@ -691,6 +691,8 @@ function plinkoLine(p, drops, key, when) {
          (bits.length ? ': ' + bits.join(' &middot; ') : '');
 }
 const tierLabel = t => (C.PET_BINS[Number(t)] || { name: "?" }).name;
+/* What a "shard" spend paid: "a Rare shard", "2 Rare shards". */
+const shardWords = s => { const n = Number(s.cost) || 1; return n === 1 ? aAn(tierLabel(s.tier)) + " shard" : n + " " + tierLabel(s.tier) + " shards"; };
 function spendLine(p, s, when) {
   const k = Number(s.pet), name = '<strong>' + esc(p.name) + '</strong> ';
   if (s.kind === "buy") return '<span class="tag">shop</span>' + when + name + 'bought the ' + esc(petLabel(k)) +
@@ -700,7 +702,7 @@ function spendLine(p, s, when) {
   if (s.kind === "plinko") return '<span class="tag">plinko</span>' + when + name + (k < 0 ? 'landed on an empty rarity' :
                                   'won ' + (s.fresh ? "the " : "another ") + esc(petLabel(k)) + (s.revived ? ' back from the grave' : '') +
                                   ' <span class="rar">' + esc(rarityLabel(k)) + '</span>' + (s.fresh ? '' : ' <span class="dim">+1 shard</span>'));
-  if (s.kind === "shard") return '<span class="tag">shards</span>' + when + name + 'used ' + esc(aAn(tierLabel(s.tier))) + ' shard on the ' +
+  if (s.kind === "shard") return '<span class="tag">shards</span>' + when + name + 'used ' + esc(shardWords(s)) + ' on the ' +
                                  esc(petLabel(k)) + (s.revived ? ' (back from the grave)' : '');
   if (s.kind === "fuse") return '<span class="tag">shards</span>' + when + name + 'combined ' + C.SHARD_FUSE + ' ' + esc(tierLabel(s.tier)) +
                                 ' shards into 1 ' + esc(tierLabel(Number(s.tier) + 1));
@@ -787,7 +789,7 @@ function recapHtml() {
     if (g !== null) ev.push(line('<i class="pi pi-grave"></i>', 'drowned the ' + esc(petLabel(g))));
     for (const s of d.rerolls) ev.push('<li class="rc-shop">' + spendLine(p, s, "") + '</li>');
     for (const s of d.buys) ev.push(line(icon(Number(s.pet)), 'bought the ' + esc(petLabel(Number(s.pet))) + (s.revived ? ' back from the grave' : '')));
-    for (const s of d.picks) ev.push(line(icon(Number(s.pet)), 'used ' + esc(aAn(tierLabel(s.tier))) + ' shard on the ' + esc(petLabel(Number(s.pet))) +
+    for (const s of d.picks) ev.push(line(icon(Number(s.pet)), 'used ' + esc(shardWords(s)) + ' on the ' + esc(petLabel(Number(s.pet))) +
                                           (s.revived ? ' (back from the grave)' : '')));
     if (d.fresh.length) ev.push(line(icon(d.fresh[0]), 'won ' + names(d.fresh) + ' on Plinko'));
     if (d.revived.length) ev.push(line(icon(d.revived[0]), 'won ' + names(d.revived) + ' back from the grave on Plinko'));

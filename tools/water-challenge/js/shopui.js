@@ -5,7 +5,7 @@ import * as C from "./config.js";
 import { S, findParticipant, activeParticipants, tokensEarned, capBonus } from "./model.js";
 import * as store from "./store.js";
 import { balance, spentTotal, rerollBlock, reroll, plinkoBlock, plinkoPlay, plinkoOdds, chestOdds, chestWinnings,
-         fuseBlock, fuse, pickBlock, pickPet, tierOf } from "./shop.js";
+         fuseBlock, fuse, pickBlock, pickPet, shardCost, shardsText, tierOf } from "./shop.js";
 import { landed as landedIds, setFlying, HOLD_MS, hiddenPets, shownBalance, shownChest, anyPending, rollHoldLeft, shownShards } from "./reveal.js";
 import { onLive, emit } from "./live.js";
 import { petLabel, petGridOrder, rarityLabel, petBinIndex, isGrave, announce, penOf, pensOf, penAlive } from "./pets.js";
@@ -127,15 +127,15 @@ export function renderShop() {
     C.PEN_LABELS[x] + ' <b>' + penAlive(p, x) + '</b></button>').join(""));
   for (const kind of petGridOrder(pen)) {
     const held = hidden.has(kind), owned = has(p.pets, kind) && !held, buried = isGrave(p, kind) || (held && hidden.get(kind));
-    const t = petBinIndex(kind), why = sh[t] < 1 ? "Needs " + aAn(tierName(t)) + " shard." : held ? "" : pickBlock(p, kind);
+    const t = petBinIndex(kind), cost = shardCost(kind), why = sh[t] < cost ? "Needs " + shardsText(cost, t) + "." : held ? "" : pickBlock(p, kind);
     const state = owned ? "owned" : why ? "short" : "can";
     h.push('<button type="button" class="buy-cell r' + t + ' ' + state + (buried ? ' buried' : '') + '"' +
            (state === "can" ? ' data-buy="' + kind + '"' : ' disabled') +
            ' title="' + esc(owned || buried ? C.PET_NAMES[kind] : "???") + ' &middot; ' + esc(rarityLabel(kind)) +
-           (buried ? ' &middot; buried: a shard brings it back' : '') + (why && !owned ? ' &middot; ' + esc(why) : '') + '">' +
+           (buried ? ' &middot; buried: shards bring it back' : '') + (why && !owned ? ' &middot; ' + esc(why) : '') + '">' +
            '<i class="pi pi-' + (buried ? "grave" : kind) + '"></i>' +
            '<span class="bn">' + (owned || buried ? esc(C.PET_NAMES[kind]) : "???") + '</span>' +
-           '<span class="bp">' + (owned ? "owned" : shardIcon(t) + '1' + (buried ? ' <small>revive</small>' : '')) + '</span></button>');
+           '<span class="bp">' + (owned ? "owned" : shardIcon(t) + cost + (buried ? ' <small>revive</small>' : '')) + '</span></button>');
   }
   setHtml("buyGrid", h.join(""));
   renderFeed();
@@ -223,20 +223,20 @@ async function doPick(kind) {
   if (!hooks.guard()) return;
   const p = shopFor();
   if (!p || pickBlock(p, kind)) return;
-  const tn = tierName(petBinIndex(kind));
+  const t = petBinIndex(kind), cost = shardCost(kind), price = shardsText(cost, t);
   const ok = await hooks.askConfirm("Bring in the " + petLabel(kind) + " for " + p.name + "?",
-    "1 " + tn + " shard." + (isGrave(p, kind) ? " It comes back from the grave." : "") +
-    (store.petKindFor(p) === C.MYSTERY_KIND ? "" : " " + p.name + " will wear it."), "Use shard");
+    price.charAt(0).toUpperCase() + price.slice(1) + "." + (isGrave(p, kind) ? " It comes back from the grave." : "") +
+    (store.petKindFor(p) === C.MYSTERY_KIND ? "" : " " + p.name + " will wear it."), cost === 1 ? "Use shard" : "Use shards");
   if (!ok) return;
   await store.serial(async () => {
     const q = fresh(p);
     if (pickBlock(q, kind)) { setMsg(pickBlock(q, kind), false); return; }
     const r = await pickPet(q, kind);
     if (!r) { setMsg("That didn't save.", false); return; }
-    setMsg(p.name + " used " + aAn(tn) + " shard on the " + petLabel(kind) + (r.revived ? ", back from the grave." : "."), true);
+    setMsg(p.name + " used " + price + " on the " + petLabel(kind) + (r.revived ? ", back from the grave." : "."), true);
     const shown = r.homunculus ? C.HOMUNCULUS_KIND : kind;
     bus.unlock({ name: p.name, kind: shown, hue: r.homunculus ? 210 : r.hue, fresh: true,
-                 equipped: store.petKindFor(q) === shown, bought: true, title: p.name + " used " + aAn(tn) + " shard" });
+                 equipped: store.petKindFor(q) === shown, bought: true, title: p.name + " used " + price });
     await hooks.settle();
   });
   renderShop();

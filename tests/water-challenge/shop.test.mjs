@@ -475,6 +475,21 @@ test("third pen: opens for good once all 50 of the first two pens are alive; rol
   assert.notEqual(shop.pickBlock(p, C.PEN3_FIRST + 1), "Opens with the third pen.", "no longer locked: a shard can bring one in");
 });
 
+test("shard prices by pen (rev 1.37.0): first pen 1, second 2, third 3; older spends count 1", () => {
+  const p = { name: "x", pets: {}, graves: {}, pen2: "2026-01-01", pen3: "2026-02-01", rollLog: {}, spends: [] };
+  for (let i = 0; i < 6; i++) p.rollLog["2000-01-0" + (i + 1)] = { k: 0, n: 0 };            /* six Common shards */
+  const t = web.pets.petBinIndex(1);
+  assert.deepEqual([1, C.PEN2_FIRST + 1, C.PEN3_FIRST + 1].map(shop.shardCost), [1, 2, 3]);
+  assert.equal(shop.pickBlock(p, C.PEN3_FIRST + 1), "", "6 Common shards buy a third-pen Common");
+  p.spends.push({ id: "a", at: "2026-03-01T10:00:00", kind: "shard", cost: 3, pet: C.PEN3_FIRST + 1, tier: t });
+  p.spends.push({ id: "b", at: "2026-03-01T10:01:00", kind: "shard", cost: 2, pet: C.PEN2_FIRST + 1, tier: t });
+  assert.equal(shop.shards(p)[t], 1, "3 + 2 spent, 1 left");
+  assert.equal(shop.pickBlock(p, C.PEN2_FIRST + 2), "Needs 2 Common shards.");
+  assert.equal(shop.pickBlock(p, 2), "", "a first-pen pet still costs 1");
+  p.spends.push({ id: "c", at: "2026-03-01T10:02:00", kind: "shard", pet: 1, tier: t });      /* written before costs varied */
+  assert.equal(shop.shards(p)[t], 0, "a spend without a cost counts 1");
+});
+
 test("cosmetics: buy once, wear and take off, recolour; the look only shows what is owned", { skip: skipReason }, async () => {
   const { rich, mem } = await fresh();
   const cos = await import(pathToFileURL(path.join(JS, "cosmetics.js")));

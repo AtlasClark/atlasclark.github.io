@@ -196,7 +196,7 @@ export function shards(p, skip = {}) {
       const u = tierOf(Number(s.pet));
       if (u >= 0) n[u]++;
     } else if (s.kind === "fuse" && t >= 0 && t < n.length - 1) { n[t] -= C.SHARD_FUSE; n[t + 1]++; }
-    else if (s.kind === "shard" && t >= 0 && t < n.length) n[t]--;
+    else if (s.kind === "shard" && t >= 0 && t < n.length) n[t] -= Number(s.cost) || 1;   /* 1 before rev 1.37.0 */
   }
   return n;
 }
@@ -214,23 +214,27 @@ export async function fuse(p, t) {
   return (await saveOrUndo(p, before, null)) ? t + 1 : null;
 }
 
+/* Shards of its rarity a pet costs to bring in: more for the later pens. */
+export const shardCost = k => C.SHARD_COST[penOf(k)] || 1;
+/* "a Rare shard" / "2 Rare shards" */
+export const shardsText = (n, tier) => (n === 1 ? aAn(C.PET_BINS[tier].name) + " shard" : n + " " + C.PET_BINS[tier].name + " shards");
 export function pickBlock(p, k) {
   if (penOf(k) === 0) return "Not in the pen.";
   if (penOf(k) === 2 && !pen2Open(p)) return "Opens with the second pen.";
   if (penOf(k) === 3 && !pen3Open(p)) return "Opens with the third pen.";
   if (has(p.pets, k)) return "Already alive.";
   const t = petBinIndex(k);
-  if (shards(p)[t] < 1) return "Needs " + aAn(C.PET_BINS[t].name) + " shard.";
+  if (shards(p)[t] < shardCost(k)) return "Needs " + shardsText(shardCost(k), t) + ".";
   return "";
 }
-/* One shard of its rarity brings in a pet not alive; a buried one keeps its colour. */
+/* shardCost shards of its rarity bring in a pet not alive; a buried one keeps its colour. */
 export async function pickPet(p, k) {
   if (pickBlock(p, k)) return null;
   const before = copy(p), revived = isGrave(p, k), hue = revived ? Number(p.graves[String(k)]) : newHue(k);
   give(p, k, hue);
   wear(p, k);
   const homunculus = grantHomunculus(p);
-  spend(p, "shard", 1, { pet: k, tier: petBinIndex(k), revived });
+  spend(p, "shard", shardCost(k), { pet: k, tier: petBinIndex(k), revived });
   if (!(await saveOrUndo(p, before, null, null, revived ? [String(k)] : null))) return null;
   return { kind: k, hue, homunculus, revived };
 }
