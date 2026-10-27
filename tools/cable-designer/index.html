@@ -181,7 +181,7 @@
   .menu hr { border: none; border-top: 1px dashed var(--border); margin: 5px 4px; }
 
   /* ===== Layout ===== */
-  main { flex: 1; min-height: 0; display: grid; grid-template-columns: 250px minmax(0, 1fr) 350px; }
+  main { flex: 1; min-height: 0; display: grid; grid-template-columns: 250px minmax(0, 1fr) var(--insp-w, 350px); }
   .panel { min-height: 0; display: flex; flex-direction: column; background: var(--surface); }
   .grp-lbl { font: 500 10.5px var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--text-faint); }
 
@@ -294,16 +294,23 @@
   .grid .w-col { width: 82px; }
 
   /* Inspector */
-  .insp { border-left: 1px solid var(--border); overflow-y: auto; }
+  .insp { border-left: 1px solid var(--border); overflow: hidden; position: relative; min-width: 0; }
+  .insp > .insp-body { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; }
+  .insp-grip { position: absolute; left: 0; top: 0; bottom: 0; width: 7px; cursor: col-resize; z-index: 5; touch-action: none; }
+  .insp-grip:hover, .insp-grip:focus-visible, body.resizing .insp-grip { background: color-mix(in srgb, var(--accent-text) 35%, transparent); outline: none; }
+  body.resizing { cursor: col-resize; user-select: none; }
+  .insp-body > * { min-width: 0; }
+  .tie-end select { width: 100%; }
   .insp-head { display: flex; align-items: center; justify-content: space-between; padding: 14px 16px 8px; gap: 8px; position: sticky; top: 0; background: var(--surface); z-index: 2; }
   .insp-head .grp-lbl b { color: var(--accent-text); font-weight: 600; }
   .insp-body { padding: 4px 16px 24px; display: flex; flex-direction: column; gap: 11px; }
   .field { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
   .field > label, .field > .lbl { font: 500 10px var(--mono); text-transform: uppercase; letter-spacing: .08em; color: var(--text-faint); }
   .field input:not([type="checkbox"]), .field select, .field textarea { width: 100%; }
-  .r2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-  .r3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
-  .r21 { display: grid; grid-template-columns: 2fr 1fr; gap: 8px; }
+  .r2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .r3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+  .r21 { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: 8px; }
+  .insp .r3 { grid-template-columns: repeat(auto-fit, minmax(92px, 1fr)); }
   .sec { border-top: 1px dashed var(--border); padding-top: 11px; display: flex; flex-direction: column; gap: 9px; }
   .sec-h { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
   .sec-h .grp-lbl { color: var(--accent-text); }
@@ -316,10 +323,19 @@
   .pins input { height: 28px; font-size: 12.5px; padding: 4px 7px; width: 100%; }
   .pins .pn { width: 60px; font-family: var(--mono); }
   .pins .used { color: var(--accent-text); }
-  .cond { display: grid; grid-template-columns: 16px 50px 1fr 1fr 1fr auto; gap: 4px; align-items: center; }
-  .cond input, .cond select { height: 28px; font-size: 12px; padding: 3px 5px; }
-  .cond .sw { width: 12px; height: 12px; border-radius: 3px; box-shadow: 0 0 0 1px var(--border); }
-  .cond-row { display: contents; }
+  .cond { display: flex; flex-direction: column; gap: 6px; }
+  .cond-row { display: grid; grid-template-columns: 16px minmax(0, 1.25fr) minmax(0, 1fr) auto; grid-template-areas: "chk id size acts" ". col col2 col2"; gap: 4px 6px; align-items: center; padding-bottom: 6px; border-bottom: 1px dashed var(--border); }
+  .cond-row:last-child { border-bottom: none; padding-bottom: 0; }
+  .cond-head { grid-template-areas: ". h1 h2 . " ". h3 h4 h4"; border-bottom: none; padding-bottom: 0; gap: 0 6px; }
+  .cond-head .h1 { grid-area: h1; } .cond-head .h2 { grid-area: h2; } .cond-head .h3 { grid-area: h3; } .cond-head .h4 { grid-area: h4; }
+  .cond-row > input[type="checkbox"] { grid-area: chk; }
+  .cond-row > input[data-k="ref"] { grid-area: id; }
+  .cond-row > input[data-k="gauge"] { grid-area: size; }
+  .cond-acts { grid-area: acts; display: flex; }
+  .cond-col { grid-area: col; display: flex; gap: 5px; align-items: center; min-width: 0; }
+  .cond-stripe { grid-area: col2; }
+  .cond input:not([type="checkbox"]), .cond select { height: 28px; font-size: 12px; padding: 3px 6px; width: 100%; min-width: 0; }
+  .cond .sw { width: 12px; height: 12px; border-radius: 3px; box-shadow: 0 0 0 1px var(--border); flex-shrink: 0; }
   .cond-h { font: 500 9.5px var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--text-faint); }
   .bimg-thumb { display: block; max-width: 100%; max-height: 160px; border-radius: 8px; border: 1px solid var(--border); background: #fff; object-fit: contain; }
   .tg-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 8px; }
@@ -493,7 +509,7 @@
   .statusbar .warn { color: var(--yellow); }
 
   @media (max-width: 1200px) {
-    main { grid-template-columns: 220px minmax(0, 1fr) 310px; }
+    main { grid-template-columns: 220px minmax(0, 1fr) var(--insp-w, 310px); }
   }
   @media (max-width: 860px) {
     body { overflow: auto; height: auto; }
@@ -501,6 +517,7 @@
     .side { border-right: none; border-bottom: 1px solid var(--border); max-height: 260px; }
     .stage { min-height: 62vh; }
     .insp { border-left: none; border-top: 1px solid var(--border); }
+    .insp-grip { display: none; }
     .topbar { padding: 8px 16px; }
     .doc-id { order: 3; flex-basis: 100%; }
     .statusbar { padding: 0 16px; }
@@ -616,7 +633,8 @@
       </div>
     </section>
 
-    <aside class="panel insp" aria-label="Properties">
+    <aside class="panel insp" id="inspPanel" aria-label="Properties">
+      <div class="insp-grip" id="inspGrip" role="separator" aria-orientation="vertical" aria-label="Resize the properties panel" tabindex="0" title="Drag to resize · double-click to reset"></div>
       <div class="insp-head">
         <span class="grp-lbl" id="inspTitle">Drawing</span>
         <div class="btn-row" id="inspActs"></div>

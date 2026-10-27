@@ -9,7 +9,7 @@
 (function () {
   "use strict";
   const CD = window.CD, OUT = CD.out;
-  const REV = "rev 1.6.0";
+  const REV = "rev 1.6.2";
   const LS_UI = "cableDesigner.ui";
   const $ = id => document.getElementById(id);
   const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -495,9 +495,19 @@
     else html = drawingForm();
     $("inspTitle").innerHTML = title;
     $("inspActs").innerHTML = acts;
+    // A redraw while typing (fields with data-re) must not drop focus: put it back with the cursor.
+    const a = document.activeElement;
+    const keep = a && body.contains(a) && a.dataset && a.dataset.k ? { o: a.dataset.o, k: a.dataset.k, s: a.selectionStart, e: a.selectionEnd } : null;
     const st = body.scrollTop;
     body.innerHTML = html;
     body.scrollTop = st;
+    if (keep) {
+      const el = [...body.querySelectorAll("[data-k]")].find(x => x.dataset.o === keep.o && x.dataset.k === keep.k);
+      if (el) {
+        el.focus({ preventScroll: true });
+        try { if (keep.s != null) el.setSelectionRange(keep.s, keep.e); } catch (e) { /* selects and number fields have no cursor */ }
+      }
+    }
   }
 
   function boardForm(c) {
@@ -507,7 +517,7 @@
     (p.ties || []).forEach(t => { if (t.b.t === "pin" && t.b.c === c.id) (used[t.b.p] = used[t.b.p] || []).push(CD.shieldText(p, t.a.cable, t.a.end)); });
     const SIDES = [["L", "Left"], ["R", "Right"], ["T", "Top"], ["B", "Bottom"]];
     let h = '<div class="r2">' + F("Reference", I(o, "ref", c.ref, 'data-re="1"')) + F("Type", libSelect(o, c.lib)) + "</div>";
-    h += F("PCB name", I(o, "desc", c.desc, 'placeholder="e.g. Interface board" data-re="1"'));
+    h += F("PCB name", I(o, "desc", c.desc, 'placeholder="e.g. Interface board"'));
     h += '<div class="r3">' + F("Mfr", I(o, "mfr", c.mfr)) + F("Mfr part no.", I(o, "mpn", c.mpn)) + F("Part no.", I(o, "ipn", c.ipn)) + "</div>";
     h += '<div class="r2">' + F("Width", I(o, "board.w", c.board.w, 'inputmode="decimal" data-fx="boardSize" data-set="0"')) + F("Height", I(o, "board.h", c.board.h, 'inputmode="decimal" data-fx="boardSize" data-set="0"')) + "</div>";
     h += sec("Pins (" + c.pins.length + ")", '<table class="pins bpins"><tbody>' + c.pins.map((pn, i) => "<tr><td>" + (i + 1) + "</td><td>" + I("pin:" + c.id + ":" + i, "n", pn.n, 'class="pn"') + "</td><td>" +
@@ -585,14 +595,14 @@
       (c.kind !== "bundle" ? '<div class="btn-row">' + B("insertBoard", "Insert junction board", 'data-id="' + c.id + '" title="Cut this cable at a new board"') + "</div>" : ""));
     const rows = list.map((w, i) => {
       const wo = "x:" + w.id, g = CD.groupOf(c, w.id);
-      return '<div class="cond-row"><input type="checkbox" data-cs="' + w.id + '"' + (condSel.has(w.id) ? " checked" : "") + ' title="Tick to twist">' +
-        I(wo, "ref", w.ref, 'placeholder="' + esc(c.ref + "-" + (i + 1)) + '" title="Wire ID"') +
-        I(wo, "gauge", w.gauge, 'list="dlAwg" title="Size (' + (w.gu === "mm2" ? "mm²" : "AWG") + ')"') +
-        '<div style="display:flex;gap:4px;align-items:center">' + swatch(w.color) + S(wo, "color", w.color, COLOR_OPTS, 'data-re="1" style="flex:1"') + "</div>" +
-        S(wo, "stripe", w.stripe, STRIPE_OPTS, 'data-re="1"') +
-        '<div style="display:flex">' + IB("condUp", "▲", "Move up", 'data-id="' + w.id + '"' + (i ? "" : " disabled")) + IB("wsel", "↗", "Open wire" + (g ? " (in TW" + (c.groups.indexOf(g) + 1) + ")" : ""), 'data-id="' + w.id + '"') + IB("condDel", "✕", "Remove conductor", 'data-id="' + w.id + '"') + "</div></div>";
+      return '<div class="cond-row"><input type="checkbox" data-cs="' + w.id + '"' + (condSel.has(w.id) ? " checked" : "") + ' title="Tick to twist" aria-label="Tick to twist">' +
+        I(wo, "ref", w.ref, 'placeholder="' + esc(c.ref + "-" + (i + 1)) + '" title="Wire ID" aria-label="Wire ID"') +
+        I(wo, "gauge", w.gauge, 'list="dlAwg" placeholder="Size" title="Size (' + (w.gu === "mm2" ? "mm²" : "AWG") + ')" aria-label="Size"') +
+        '<div class="cond-acts">' + IB("condUp", "▲", "Move up", 'data-id="' + w.id + '"' + (i ? "" : " disabled")) + IB("wsel", "↗", "Open wire" + (g ? " (in TW" + (c.groups.indexOf(g) + 1) + ")" : ""), 'data-id="' + w.id + '"') + IB("condDel", "✕", "Remove conductor", 'data-id="' + w.id + '"') + "</div>" +
+        '<div class="cond-col">' + swatch(w.color) + S(wo, "color", w.color, COLOR_OPTS, 'data-re="1" aria-label="Colour"') + "</div>" +
+        S(wo, "stripe", w.stripe, STRIPE_OPTS, 'data-re="1" class="cond-stripe" aria-label="Stripe"') + "</div>";
     }).join("");
-    h += sec("Conductors (" + list.length + ")", (list.length ? '<div class="cond"><span></span><span class="cond-h">ID</span><span class="cond-h">Size</span><span class="cond-h">Colour</span><span class="cond-h">Stripe</span><span></span>' + rows + "</div>" : '<p class="hint">No conductors yet.</p>') +
+    h += sec("Conductors (" + list.length + ")", (list.length ? '<div class="cond"><div class="cond-row cond-head"><span class="cond-h h1">ID</span><span class="cond-h h2">Size</span><span class="cond-h h3">Colour</span><span class="cond-h h4">Stripe</span></div>' + rows + "</div>" : '<p class="hint">No conductors yet.</p>') +
       '<div class="btn-row">' + B("condAdd", "＋ Conductor", 'data-id="' + c.id + '"') + B("drainAdd", "＋ Drain", 'data-id="' + c.id + '"') + B("twist", "Twist ticked", 'data-id="' + c.id + '"') + B("connect", "Connect ends…", 'data-id="' + c.id + '"') + "</div>");
     h += sec("Twisted groups", c.groups.map((g, gi) => {
       const go = "g:" + c.id + ":" + g.id;
@@ -1418,6 +1428,32 @@
     else toast(im ? "Select a junction board first, then drop the image." : "Drop a .cblproj project file.", "warn");
   });
   window.addEventListener("beforeunload", e => { if (!storageOk && hasContent()) { e.preventDefault(); e.returnValue = ""; } });
+
+  // ---------- side panel width (drag its left edge) ----------
+  const INSP_MIN = 300, INSP_MAX = 720;
+  function setInspW(w, save) {
+    w = Math.round(Math.max(INSP_MIN, Math.min(INSP_MAX, w)));
+    document.documentElement.style.setProperty("--insp-w", w + "px");
+    if (save) { ui.inspW = w; saveUi(); }
+  }
+  (() => {
+    const grip = $("inspGrip");
+    let start = null;
+    grip.addEventListener("pointerdown", e => {
+      start = { x: e.clientX, w: $("inspPanel").getBoundingClientRect().width };
+      grip.setPointerCapture(e.pointerId); document.body.classList.add("resizing");
+    });
+    grip.addEventListener("pointermove", e => { if (start) setInspW(start.w + start.x - e.clientX); });
+    const end = () => { if (!start) return; start = null; document.body.classList.remove("resizing"); setInspW($("inspPanel").getBoundingClientRect().width, true); setViewBox(); };
+    grip.addEventListener("pointerup", end); grip.addEventListener("pointercancel", end);
+    grip.addEventListener("dblclick", () => { setInspW(350, true); setViewBox(); });
+    grip.addEventListener("keydown", e => {
+      if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+      e.preventDefault();
+      setInspW($("inspPanel").getBoundingClientRect().width + (e.key === "ArrowLeft" ? 20 : -20), true); setViewBox();
+    });
+    if (ui.inspW) setInspW(ui.inspW);
+  })();
 
   // ---------- theme ----------
   function applyTheme() {
