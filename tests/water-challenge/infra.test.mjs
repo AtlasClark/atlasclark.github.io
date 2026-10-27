@@ -54,3 +54,13 @@ test("update check: SITE_FILES lists every file the page is made of", () => {
   assert.deepEqual(m[1].match(/"[^"]+"/g).map(s => s.slice(1, -1)), C.SITE_FILES, "guard.js reads the same list");
   assert.ok(html.indexOf('src="js/guard.js"') < html.indexOf('src="js/app.js"'), "the guard loads before the modules");
 });
+
+test("backup: taken in the evening (rev 1.37.1): from BACKUP_HOUR it is today's, before then it is last evening's", () => {
+  const at = (h, m) => new Date(2026, 9, 27, h, m);
+  assert.equal(web.C.BACKUP_HOUR, 18);
+  assert.equal(web.store.backupSlot(at(17, 59)), "2026-10-26", "before 18:00: last evening's (a morning page catches up a missed one)");
+  assert.equal(web.store.backupSlot(at(18, 0)), "2026-10-27", "from 18:00: this evening's");
+  assert.equal(web.store.backupSlot(at(23, 59)), "2026-10-27");
+  assert.equal(web.store.backupSlot(new Date(2026, 9, 28, 0, 5)), "2026-10-27", "just after midnight: still the evening before");
+});
+

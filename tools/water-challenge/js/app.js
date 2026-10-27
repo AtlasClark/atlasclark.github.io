@@ -75,7 +75,7 @@ async function reconcile() {
   await reconcilePets();
 }
 
-let backedUp = "";               /* the day this page last made sure a backup exists */
+let backedUp = "";               /* the evening this page last made sure a backup exists */
 
 /* A _pets.json in the data folder replaces the site's pet art for that folder. */
 let petSig = "";
@@ -93,16 +93,22 @@ async function syncFolderPets() {
   forceRebuild();
 }
 
+/* The evening backup (store.backupSlot): checked on every load and every poll, so a page
+   left open past BACKUP_HOUR takes it even when nothing has changed. */
+async function maybeBackup() {
+  const slot = store.backupSlot();
+  if (backedUp === slot) return;
+  try { await store.backupIfDue(slot); backedUp = slot; }
+  catch (e) { store.diagNote("backup failed: " + (e.message || e)); }
+}
+
 async function refresh() {
   await store.loadSettings();
   S.participants = await store.loadAll();
   try { await store.noteHtaWriters(); } catch (e) { store.diagNote("HTA log: " + (e.message || e)); }
   dataChanged();
   await syncFolderPets();
-  if (backedUp !== todayKey()) {   /* before anything is written today */
-    try { await store.backupIfDue(todayKey()); backedUp = todayKey(); }
-    catch (e) { store.diagNote("backup failed: " + (e.message || e)); }
-  }
+  await maybeBackup();
   await reconcile();
   lastSig = await store.folderSignature();
   ui.lastSync = clockStamp();
@@ -145,7 +151,7 @@ async function poll() {
     await store.serial(async () => {
       const sig = await store.folderSignature();
       if (sig !== lastSig) await refresh();
-      else { await reconcile(); ui.lastSync = clockStamp(); safeRender(); }
+      else { await maybeBackup(); await reconcile(); ui.lastSync = clockStamp(); safeRender(); }
     });
     showBanner("");
   } catch (e) {

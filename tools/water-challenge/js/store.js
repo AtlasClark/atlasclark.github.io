@@ -12,7 +12,7 @@ import * as C from "./config.js";
 import { S, dataChanged, currentGoalFor, currentGoal, currentAnnualGoal, currentIdleMax,
          goalTunables, legacyFlat, challengeStart, forceLegacyStamps, personalGoal,
          defaultSettings } from "./model.js";
-import { todayKey, localStamp, parseKey, has, shiftKey } from "./util.js";
+import { todayKey, dateKey, localStamp, parseKey, has, shiftKey } from "./util.js";
 
 export let dir = null;          /* FileSystemDirectoryHandle of the data folder */
 export const diag = { trail: [], lastError: "", permission: "", writes: 0, lockSteals: 0, lastBackup: "" };
@@ -517,6 +517,9 @@ export async function moveToRemoved(name) {
 /* Copies every .json in the data folder, byte for byte, into _backup/<key>/, then
    writes _done. A day already marked done is skipped, so only the first page of the
    day does the work. Returns the number of files copied, or 0 when skipped. */
+/* The evening a backup belongs to: today from BACKUP_HOUR on, else yesterday. */
+export const backupSlot = (now = new Date()) => now.getHours() >= C.BACKUP_HOUR ? dateKey(now) : shiftKey(dateKey(now), -1);
+
 export async function backupIfDue(key) {
   if (!dir) return 0;
   const root = await dir.getDirectoryHandle(C.BACKUP_SUBDIR, { create: true });

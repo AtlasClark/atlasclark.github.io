@@ -1,8 +1,8 @@
 /* Water Challenge (web) - constants: rules, tunables and the on-disk contract
    (FORMAT_REV, UTF-16 LE + BOM JSON, unknown fields kept). */
 
-export const REV         = "rev 1.37.0";
-export const APP_VERSION = "web 1.37.0";   /* stamped as writerVersion */
+export const REV         = "rev 1.37.1";
+export const APP_VERSION = "web 1.37.1";   /* stamped as writerVersion */
 /* Every file is written at FORMAT_REV. A file stamped higher came from a newer
    build, and the page asks for a reload. */
 export const FORMAT_REV    = 22;
@@ -63,6 +63,10 @@ export const FOLDER_PETS_FILE = "_pets.json";
    before anything is written that day. Older days are cleared after this many. */
 export const BACKUP_SUBDIR    = "_backup";
 export const BACKUP_KEEP_DAYS = 14;
+/* The daily backup is taken in the evening (rev 1.37.1, user choice): by the first page open
+   at or after BACKUP_HOUR, or, when none was open then, by the first page the next morning
+   (filed under the evening it belongs to, before anything is written that day). */
+export const BACKUP_HOUR      = 18;
 
 /* ---- updates ----
    Every file the page is made of. When a new version is out, these are re-fetched

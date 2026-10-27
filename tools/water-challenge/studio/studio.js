@@ -14,7 +14,7 @@ import { Editor, TOOL_HINTS } from "./editor.js";
 import { Preview } from "./preview.js";
 import * as G from "./geom.js";
 
-const REV = "studio 1.18.1";
+const REV = "studio 1.19.0";
 const PETS_URL = "../pets/pets.json";
 const $ = id => document.getElementById(id);
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -33,7 +33,7 @@ const W = {
   target: null,           /* { file, data }: what Save writes in dirHandle */
   base: {},               /* item -> its drawing in the file as last read or written (canon JSON) */
   baseSig: null,          /* that file's lastModified:size, to spot someone else's save */
-  touched: new Set(),     /* items changed here since then */
+  touched: new Set(),     /* items drawn or changed here since then (never set by a bulk load) */
   tryOn: 0,               /* the pet shown under a hat while it is edited */
   openGroups: new Set()   /* groups shown open in the shapes list (folded by default) */
 };
@@ -64,14 +64,6 @@ const ITEMS = () => [...Array(C.PET_MAX).keys(), ...HAT_KEYS];
 function baseName(k) { return isHat(k) ? HAT_NAMES[k] : C.PET_BASE_NAMES[k]; }
 function itemName(k) { return isHat(k) ? HAT_NAMES[k] : C.PET_NAMES[k]; }
 function hatDef(h) { return { name: "", crown: [0, 0], pal: h.pal, swim: h.shapes, portrait: null }; }
-/* Items whose drawing here differs from the file's (after Open or a restored draft). */
-function markTouched() {
-  W.touched.clear();
-  for (const k of ITEMS()) {
-    const p = W.pets[k], mine = p && p.edited && p.def.swim.length ? canon(k, p.def) : undefined;
-    if (mine !== W.base[k]) W.touched.add(k);
-  }
-}
 function resetItems() {
   for (const k of ITEMS()) W.pets[k] = { def: G.clone(W.builtin[k]), edited: false };
 }
@@ -433,7 +425,6 @@ async function pickSaveFolder() {
      item not drawn here, and Save keeps what is drawn here (asking when both changed). A
      missing file is just empty, not "they took everything out". */
   W.base = {}; W.baseSig = "picked";
-  W.touched = new Set(ITEMS().filter(k => W.pets[k] && W.pets[k].edited));
   renderSaveState();
   watchFile().catch(() => { });                                       /* take in its art now, not in 4 s */
   return true;
@@ -478,29 +469,45 @@ function petsJson() {
 
 async function saveToRepo() {
   try {
+    saving = true;                                        /* the folder check waits: this save sorts the file out itself */
     if (!W.dirHandle && !(await pickSaveFolder())) return;
     if (await W.dirHandle.requestPermission({ mode: "readwrite" }) !== "granted") { toast("Permission refused. Nothing saved."); return; }
     W.target = await targetOf(W.dirHandle);
     saving = true;
-    /* someone else saved since this studio last read the file: take their changes first,
-       and ask about items changed on both sides (before the lock, so a slow answer holds nobody up) */
-    const st = await fileState();
-    if (st && st.sig !== W.baseSig) {
-      const r = await pullTheirs(st);
-      if (r.conflicts.length && !confirm("Someone else also saved " + list3(r.conflicts) + " since you opened " + W.target.file + ".\n\n" +
-                                         "OK keeps your version of " + (r.conflicts.length === 1 ? "it" : "them") + ". Cancel takes theirs.")) {
-        for (const k of r.conflicts) { takeTheirs(k, r.theirs[k]); W.touched.delete(k); }
+    /* Before writing, every item that differs from the folder's file is sorted out
+       (sortOut). Only what was drawn here goes over the folder's drawings; anything else
+       this studio holds (a file opened with Open..., an old draft, the site's art) is
+       never written over someone's drawing without asking, and the safe answer keeps
+       theirs. Asked before the lock, so a slow answer holds nobody up. */
+    const pre = await readTheirs();
+    if (pre) {
+      const s = sortOut(pre.items), redraw = [...s.synced];
+      for (const k of s.synced) takeTheirs(k, pre.items[k]);
+      if (s.stale.length) {
+        const gone = s.stale.filter(k => mineOf(k) === undefined), other = s.stale.filter(k => mineOf(k) !== undefined);
+        const keep = confirm("This studio holds older or different copies of items you did not edit here " +
+          "(from Open..., an earlier draft or the site's art). Saving them would " +
+          [other.length ? "replace " + list3(other) : "", gone.length ? "remove " + list3(gone) : ""].filter(Boolean).join(" and ") +
+          " in " + W.target.file + ".\n\nOK keeps the folder's drawings (recommended). Cancel replaces them with this studio's copies.");
+        for (const k of s.stale) { if (keep) { takeTheirs(k, pre.items[k]); redraw.push(k); } else W.touched.add(k); }
       }
-      if (r.changed.length || r.conflicts.length) { syncDefs(); renderAll(); for (const k of [...r.changed, ...r.conflicts]) drawThumb(k); }
+      if (s.conflicts.length && !confirm("Someone else also saved " + list3(s.conflicts) + " since you opened " + W.target.file + ".\n\n" +
+                                         "OK keeps your version of " + (s.conflicts.length === 1 ? "it" : "them") + ". Cancel takes theirs.")) {
+        for (const k of s.conflicts) { takeTheirs(k, pre.items[k]); W.touched.delete(k); redraw.push(k); }
+      }
+      W.base = pre.items; W.baseSig = pre.sig;
+      if (redraw.length) { syncDefs(); renderAll(); for (const k of redraw) drawThumb(k); }
     }
     /* One studio writes at a time (a lock file beside it). Inside the lock the file is read
-       again: a save that landed since is taken in (items changed here stay as drawn here). */
+       again: a save that landed meanwhile is taken in for every item not drawn here. */
     let text = "", count = 0;
     await withSaveLock(async () => {
-      const again = await fileState();
+      const again = await readTheirs();
       if (again && again.sig !== W.baseSig) {
-        const r = await pullTheirs(again);
-        if (r.changed.length || r.conflicts.length) { syncDefs(); renderAll(); for (const k of [...r.changed, ...r.conflicts]) drawThumb(k); }
+        const s = sortOut(again.items), took = [...s.synced, ...s.stale];
+        for (const k of took) takeTheirs(k, again.items[k]);
+        W.base = again.items; W.baseSig = again.sig;
+        if (took.length) { syncDefs(); renderAll(); for (const k of took) drawThumb(k); }
       }
       ({ text, count } = petsJson());
       const fh = await W.dirHandle.getFileHandle(W.target.file, { create: true }), w = await fh.createWritable();
@@ -577,6 +584,39 @@ async function fileState() {
   try { const f = await (await W.dirHandle.getFileHandle(W.target.file)).getFile(); return { sig: f.lastModified + ":" + f.size, f }; }
   catch { return { sig: "none", f: null }; }
 }
+/* The folder's file now: { sig, items } (items {} when there is none yet), or null with no
+   folder. A file that is there but can't be read stops the save: never write over it. */
+async function readTheirs() {
+  const st = await fileState();
+  if (!st) return null;
+  let obj = { pets: {} };
+  if (st.f) {
+    try { obj = JSON.parse((await st.f.text()).replace(/^\uFEFF/, "")); }
+    catch (e) { throw new Error(W.target.file + " could not be read (" + (e.message || e) + "), so nothing was saved; try again in a moment"); }
+  }
+  return { sig: st.sig, items: itemsOf(obj) };
+}
+/* An item as this studio would write it (canon JSON), or undefined when it would leave it out. */
+const mineOf = k => { const p = W.pets[k]; return p && p.edited && p.def.swim.length ? canon(k, p.def) : undefined; };
+/* Every item a save would change in the folder's file (theirs), sorted out against what this
+   studio last read (W.base) and what was drawn here (W.touched):
+   conflicts: drawn here, and someone else changed it since this studio read the file;
+   synced:    not drawn here and unchanged since it was read: theirs simply moved on;
+   stale:     not drawn here, yet this studio holds a version that is neither theirs nor what
+              it read (Open..., an old draft, the site's art): writing it would replace or remove
+              someone's drawing.
+   An item the folder never had and that was not drawn here is written as an addition. */
+function sortOut(theirs) {
+  const out = { conflicts: [], synced: [], stale: [] };
+  for (const k of ITEMS()) {
+    const mine = mineOf(k), t = theirs[k];
+    if (mine === t) continue;
+    if (W.touched.has(k)) { if (W.base[k] !== t) out.conflicts.push(k); continue; }
+    if (mine === W.base[k]) out.synced.push(k);
+    else if (t !== undefined) out.stale.push(k);
+  }
+  return out;
+}
 function takeTheirs(k, j) {
   W.pets[k] = j ? { def: JSON.parse(j), edited: true } : { def: G.clone(W.builtin[k]), edited: false };
   delete W.hist[k];                                     /* undo must not bring back the version before theirs */
@@ -620,12 +660,17 @@ function exportFile() {
 async function openFile(file) {
   try {
     const obj = JSON.parse(await file.text());
-    if (W.dirty && !confirm("Replace the unsaved work with " + file.name + "?")) return;
-    loadFileObj(obj);
-    W.hist = {}; W.sel.clear(); W.dirty = true;
-    markTouched();
+    if (!obj || typeof obj.pets !== "object") throw new Error("not a pets.json file");
+    if (Number(obj.format) > PET_DEFS_FORMAT) throw new Error("made by a newer studio (format " + obj.format + ")");
+    const items = itemsOf(obj), ks = Object.keys(items).map(itemKey);
+    const mine = ks.filter(k => W.touched.has(k) && mineOf(k) !== items[k]);
+    if (mine.length && !confirm(file.name + " has its own " + list3(mine) + ", which you have changed here. Use the file's?")) return;
+    /* The file's drawings come in; everything else stays as it is. They are not edits made
+       here: Save keeps the folder's drawing of any of them unless you choose otherwise. */
+    for (const k of ks) { takeTheirs(k, items[k]); W.touched.delete(k); }
+    W.sel.clear(); W.dirty = true;
     syncDefs(); autosave(); renderAll(); editor.fit();
-    toast("Loaded " + Object.values(W.pets).filter(p => p.edited).length + " drawn pets from " + file.name);
+    toast("Loaded " + ks.length + " item" + (ks.length === 1 ? "" : "s") + " from " + file.name + ". Save asks before it replaces anything in the folder.");
   } catch (e) { toast("Could not open it: " + (e.message || e)); }
 }
 
@@ -1427,17 +1472,16 @@ async function start() {
       const was = draft.base, mine = draft.pets || {};
       for (const [key, def] of Object.entries(mine)) {
         const k = itemKey(key);
-        if (canon(k, def) !== was[key]) W.pets[k] = { def: normalize(def), edited: true };
+        if (canon(k, def) !== was[key]) { W.pets[k] = { def: normalize(def), edited: true }; W.touched.add(k); }
       }
-      for (const key of Object.keys(was)) if (!(key in mine)) takeTheirs(itemKey(key), undefined);
+      for (const key of Object.keys(was)) if (!(key in mine)) { takeTheirs(itemKey(key), undefined); W.touched.add(itemKey(key)); }
       W.dirty = true;
-      markTouched();
       note = "Unsaved work from last time is back. Save to repo when ready.";
     } else if (draft && draft.dirty) {                                  /* a draft from before studio 1.16.1 */
-      resetItems();
-      for (const [k, def] of Object.entries(draft.pets || {})) W.pets[k] = { def: normalize(def), edited: true };
+      /* It holds every drawn item, with no record of what was read: its items come in on top
+         of the folder's, none counts as drawn, and Save asks before any of them replaces one. */
+      for (const [k, def] of Object.entries(draft.pets || {})) W.pets[itemKey(k)] = { def: normalize(def), edited: true };
       W.dirty = true;
-      markTouched();
       note = "Unsaved work from last time is back. Save to repo when ready.";
     }
   } catch { }
@@ -1452,7 +1496,7 @@ async function start() {
   setInterval(() => { watchFile().catch(() => { }); }, WATCH_MS);
   checkVersion();
   setInterval(() => { if (!document.hidden) checkVersion(); }, C.VERSION_CHECK_MS);
-  window.STUDIO = { W, app, editor, petsJson, syncDefs, watchFile };     /* for checks from the console */
+  window.STUDIO = { W, app, editor, petsJson, syncDefs, watchFile, saveToRepo, openFile, loadFileObj, itemsOf };   /* for checks from the console */
 }
 
 start();
