@@ -26,7 +26,7 @@
   const blankProject = () => ({
     format: FORMAT, v: VERSION, meta: blankMeta(),
     pos: { wires: null, bom: null, notes: null },
-    blk: { wires: { size: "s", k: 1 }, bom: { size: "s", k: 1 }, notes: { size: "m", k: 1 } },
+    blk: { wires: { size: "s", k: 1, wrap: true, colW: 0 }, bom: { size: "s", k: 1, wrap: true, colW: 0 }, notes: { size: "m", k: 1 } },
     history: [], notes: [], conns: [], cables: [], wires: [], callouts: [], ties: [], tables: []
   });
 
@@ -305,13 +305,13 @@
   // Custom table: free text in a grid, on sheet 1 at x, y or flowed onto sheet 2.
   const newTable = (x, y, o) => Object.assign({
     id: uid(), title: "Table", cols: [{ h: "Column 1", align: "left" }, { h: "Column 2", align: "left" }, { h: "Column 3", align: "left" }],
-    rows: [["", "", ""], ["", "", ""]], size: "s", k: 1, sheet: 1, x: Math.round(x || 0), y: Math.round(y || 0)
+    rows: [["", "", ""], ["", "", ""]], size: "s", k: 1, wrap: true, colW: 0, sheet: 1, x: Math.round(x || 0), y: Math.round(y || 0)
   }, o);
   function normTable(t) {
     const cols = (Array.isArray(t.cols) ? t.cols : []).slice(0, 30).map(c => ({ h: str(c && c.h).slice(0, 200), align: ["left", "center", "right"].includes(c && c.align) ? c.align : "left" }));
     if (!cols.length) cols.push({ h: "", align: "left" });
     const rows = (Array.isArray(t.rows) ? t.rows : []).slice(0, 500).map(r => cols.map((c, i) => str(Array.isArray(r) ? r[i] : "").slice(0, 2000)));
-    return { id: str(t.id) || uid(), title: str(t.title).slice(0, 200), cols, rows, size: sizeKey(t.size, "s"), k: scaleK(t.k), sheet: t.sheet === 2 ? 2 : 1, x: num(t.x) || 0, y: num(t.y) || 0 };
+    return { id: str(t.id) || uid(), title: str(t.title).slice(0, 200), cols, rows, size: sizeKey(t.size, "s"), k: scaleK(t.k), wrap: t.wrap !== false, colW: colWOf(t.colW), sheet: t.sheet === 2 ? 2 : 1, x: num(t.x) || 0, y: num(t.y) || 0 };
   }
   // Text pasted from a spreadsheet (tabs) or CSV: rows of cells. Quotes as in CSV.
   function parseGrid(text) {
@@ -334,6 +334,9 @@
   const sizeKey = (v, def) => ["s", "m", "l"].includes(v) ? v : def;
   const scaleK = v => { const n = num(v); return n == null ? 1 : Math.max(0.3, Math.min(6, Math.round(n * 100) / 100)); };
   const sizeOf = (o, def) => ({ size: sizeKey(o && o.size, def), k: scaleK(o && o.k) });
+  // Table text wrapping: wrap (default on) and the width columns wrap at (pt at 100 %; 0 = each column's own limit).
+  const colWOf = v => { const n = num(v); return n == null || n <= 0 ? 0 : Math.max(30, Math.min(600, Math.round(n))); };
+  const wrapOf = o => ({ wrap: !(o && o.wrap === false), colW: colWOf(o && o.colW) });
 
   // Cable presets. Colours: DIN 47100 order; Ethernet uses T568B.
   function cablePreset(p, kind, x, y, n) {
@@ -413,7 +416,7 @@
     }));
     p.callouts = arr(d.callouts).map(c => Object.assign(newCallout(c.x || 0, c.y || 0, c), sizeOf(c, "m")));
     const bk = d.blk || {};
-    p.blk = { wires: sizeOf(bk.wires, "s"), bom: sizeOf(bk.bom, "s"), notes: sizeOf(bk.notes, "m") };
+    p.blk = { wires: Object.assign(sizeOf(bk.wires, "s"), wrapOf(bk.wires)), bom: Object.assign(sizeOf(bk.bom, "s"), wrapOf(bk.bom)), notes: sizeOf(bk.notes, "m") };
     const ends = ["a", "b"];
     p.ties = arr(d.ties).filter(t => t && t.a && t.b && ends.includes(t.a.end)).map(t => ({
       id: str(t.id) || uid(), a: { cable: str(t.a.cable), end: t.a.end },
@@ -672,7 +675,7 @@
   Object.assign(CD, {
     FORMAT, VERSION, uid, today, num, str,
     blankProject, normalize, newConn, setPinCount, reorderPins, removePins, addPins, spaceBoardPins, boardPins,
-    addTie, tiesOf, pruneTies, newTable, normTable, parseGrid, scaleK, shieldText, tieTargetText, insertBoard, partFromConn, normPart, connFromPart, partFromCable, cableFromPart, partFromWire, applyWirePart, wireProfile, newCable, newWire, newGroup, newMark, newCallout, cablePreset, nextWireNo,
+    addTie, tiesOf, pruneTies, newTable, normTable, parseGrid, scaleK, colWOf, shieldText, tieTargetText, insertBoard, partFromConn, normPart, connFromPart, partFromCable, cableFromPart, partFromWire, applyWirePart, wireProfile, newCable, newWire, newGroup, newMark, newCallout, cablePreset, nextWireNo,
     byId, libOf, groupOf, conductors, wireRef, endText, sigOf, isDrain, colorText, gaugeText,
     UNIT, fmtLen, fmtTol, wireLen, WIRE_COLS, wireRows, BOM_COLS, bom, bomCells, checks,
     csvCell, wireCsv, bomCsv, connectCable, example

@@ -9,7 +9,7 @@
 (function () {
   "use strict";
   const CD = window.CD, OUT = CD.out;
-  const REV = "rev 1.8.0";
+  const REV = "rev 1.9.0";
   const LS_UI = "cableDesigner.ui";
   const $ = id => document.getElementById(id);
   const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -421,6 +421,8 @@
     },
     pins(c, v) { CD.setPinCount(p, c, parseInt(v, 10)); },
     wireProfile(w, v) { const x = parts.find(q => q.id === v && q.type === "wire"); if (x) { CD.applyWirePart(w, x); toast(x.name + " applied"); } },
+    wrapOn(o, v) { o.wrap = !!v; },
+    colW(o, v) { o.colW = CD.colWOf(v); },
     pct(o, v) { const n = parseFloat(v); if (isFinite(n)) o.k = CD.scaleK(n / 100); },
     boardSize(c, v, el) { const k = el.dataset.k.split(".")[1], n = parseFloat(v); if (isFinite(n)) c.board[k] = Math.max(k === "w" ? 60 : 40, Math.round(n)); else c.board[k] = k === "w" ? 150 : 100; },
     tblSheet(t, v) { t.sheet = v === "2" ? 2 : 1; sheet = t.sheet; paintSheets(); requestAnimationFrame(fit); },
@@ -671,7 +673,7 @@
   function tableForm(t) {
     const o = "tb:" + t.id, nC = t.cols.length;
     let h = F("Title", I(o, "title", t.title, 'placeholder="No title" data-re="1"'));
-    h += sizeCtl(o, t);
+    h += sizeCtl(o, t) + wrapCtl(o, t);
     h += F("Sheet", S(o, "sheet", String(t.sheet), [["1", "Sheet 1, where you put it"], ["2", "Sheet 2 (continuation)"]], 'data-fx="tblSheet" data-set="0" data-re="1"'));
     const head = '<tr><th></th>' + t.cols.map((c, j) => "<th>" + I(o, "cols." + j + ".h", c.h, 'class="tg-h" placeholder="Column ' + (j + 1) + '"') +
       '<div class="tg-colbar">' + S(o, "cols." + j + ".align", c.align, [["left", "⇤"], ["center", "↔"], ["right", "⇥"]], 'title="Align"') +
@@ -712,6 +714,12 @@
         B("scaleReset", "100", 'data-o="' + o + '" title="Back to 100 %"') + "</div>") + "</div>";
   }
 
+  function wrapCtl(o, obj) {
+    const on = obj.wrap !== false;
+    return '<div class="r2">' + F("Wrap text", S(o, "wrap", on ? "1" : "", [["1", "On"], ["", "Off, one line per cell"]], 'data-fx="wrapOn" data-set="0" data-re="1"')) +
+      F("Wrap at (pt)", '<input type="number" min="30" max="600" step="10" data-o="' + o + '" data-k="colW" data-fx="colW" data-set="0" data-lazy="1" value="' + (obj.colW || "") + '" placeholder="auto"' + (on ? "" : " disabled") + ">") + "</div>";
+  }
+
   function calloutForm(k) {
     const o = "k:" + k.id;
     let h = F("Kind", S(o, "kind", k.kind, [["text", "Text note"], ["flag", "Flag note (triangle)"], ["balloon", "Balloon (find number)"]], 'data-re="1"'));
@@ -724,7 +732,7 @@
 
   function blockForm(key) {
     let h = '<p class="hint">' + ({ wires: "Generated from all wires and cable conductors.", bom: "Generated from connectors, contacts, seals, accessories, cables, loose wires and cable markings. Items with the same part number add up.", notes: "Edit notes in the Drawing dialog." }[key] || "") + " Drag to move it on the sheet.</p>";
-    if (p.blk[key]) h += sizeCtl("blk:" + key, p.blk[key]);
+    if (p.blk[key]) h += sizeCtl("blk:" + key, p.blk[key]) + (key === "notes" ? "" : wrapCtl("blk:" + key, p.blk[key]));
     h += C("meta", "showWires", p.meta.showWires, "Show wire list", 'data-re="1"') + C("meta", "showBom", p.meta.showBom, "Show bill of materials", 'data-re="1"');
     h += F("Tables on", S("meta", "tables", p.meta.tables, [["1", "Sheet 1, beside the drawing"], ["2", "Sheet 2 (continuation sheet)"]], 'data-re="1"'));
     h += '<div class="btn-row">' + B("resetPos", "Reset position", 'data-id="' + key + '"') + (key === "notes" ? B("drawing", "Edit notes…") : "") + "</div>";

@@ -73,13 +73,14 @@
     const f = opt.f || 1, S = 5.8 * f, HS = 5.2 * f, LH = S + 1.6 * f, PADX = 3 * f;
     const ax = (c, cx, w) => c.align === "right" ? cx + w - PADX : c.align === "center" ? cx + w / 2 : cx + PADX;
     const an = c => c.align === "right" ? "end" : c.align === "center" ? "middle" : "start";
+    const noWrap = opt.wrap === false, colMax = c => (opt.colW > 0 ? opt.colW : c.max || 120) * f;
     const widths = cols.map((c, i) => {
       let w = tw(c.h.toUpperCase(), HS, true);
       rows.forEach(r => { w = Math.max(w, tw(r[i], S)); });
-      return Math.max((c.min || 14) * f, Math.min((c.max || 120) * f, w + PADX * 2));
+      return Math.max((c.min || 14) * f, noWrap ? w + PADX * 2 : Math.min(colMax(c), w + PADX * 2));
     });
     const W = widths.reduce((a, b) => a + b, 0);
-    const cells = rows.map(r => r.map((v, i) => wrap(v, widths[i] - PADX * 2, S)));
+    const cells = rows.map(r => r.map((v, i) => noWrap ? [String(v == null ? "" : v)] : wrap(v, widths[i] - PADX * 2, S)));
     const rh = cells.map(r => Math.max(1, ...r.map(l => l.length)) * LH + 3 * f);
     const TH = title ? 11 * f : 0, HH = 10 * f;
     const H = TH + HH + rh.reduce((a, b) => a + b, 0);
@@ -333,6 +334,7 @@
   // Text size: Small / Medium / Large baseline times a free scale k (corner handle). def = the item's
   // own default size, at which it draws exactly as before.
   const SIZE_PT = { s: 5.8, m: 7, l: 9 };
+  const tblOpt = (o, def) => ({ f: fac(o, def), wrap: !(o && o.wrap === false), colW: o && o.colW > 0 ? o.colW : 0 });
   function fac(o, def) { return (SIZE_PT[o && o.size] || SIZE_PT[def]) / SIZE_PT[def] * (o && o.k > 0 ? o.k : 1); }
 
   const WIRE_TCOLS = [{ h: "Wire", bold: true, max: 50 }, { h: "Cable", max: 40 }, { h: "Size", max: 50 }, { h: "Color", max: 40 }, { h: "Length", max: 70 }, { h: "From", max: 60 }, { h: "To", max: 60 }, { h: "Signal", max: 80 }, { h: "Twist / shield", max: 70 }, { h: "Note", max: 120 }];
@@ -588,18 +590,31 @@
     ext(x, dy); ext(x + w, dy);
     dim(x, x + w, dy, CD.num(c.len) != null ? CD.fmtLen(c.len, m) + CD.fmtTol(c.tol, m) : "LENGTH NOT SET");
     dy += 8;
-    // markings (labels, heat-shrink, sleeving ...)
-    c.marks.forEach(mk => {
-      const kind = (CD.MARKS.find(k => k[0] === mk.kind) || ["", "Item"])[1].toUpperCase();
-      const endName = { A: "END A", B: "END B", both: "BOTH ENDS", mid: "MIDDLE", all: "FULL LENGTH" }[mk.end] || "";
-      const len = CD.num(mk.len) != null ? ", " + CD.fmtLen(mk.len, m) + " LONG" : "";
-      const s = kind + ", " + endName + len + (mk.text ? ": " + mk.text : "");
-      dy += 11;
-      let tx = x + 2;
-      if (find[mk.id]) { balloon(pen, x + 6, dy - 2.2, find[mk.id]); tx = x + 16; }
-      pen.text(tx, dy, s, { size: 6.2 });
+    // markings (labels, heat-shrink, sleeving ...): same order and columns under every cable,
+    // whatever order they were added in: balloon | where | what | text, rows far enough apart for the balloons.
+    const rows = markRows(c.marks);
+    if (rows.length) dy += 6;
+    rows.forEach(mk => {
+      const len = CD.num(mk.len) != null ? CD.fmtLen(mk.len, m) + " LONG" : "";
+      const txt = [len, mk.text].filter(Boolean).join(": ");
+      const lines = txt ? wrap(txt, Math.max(60, w - MARK_COL.text - 2), 6.2) : [""];
+      dy += MARK_ROW / 2 + 1;
+      if (find[mk.id]) balloon(pen, x + 6, dy - 2.2, find[mk.id]);
+      pen.text(x + MARK_COL.where, dy, MARK_END_TXT[mk.end] || "", { size: 5.6, bold: true, c: DIM });
+      pen.text(x + MARK_COL.what, dy, (CD.MARKS.find(k => k[0] === mk.kind) || ["", "Item"])[1].toUpperCase(), { size: 5.6, bold: true });
+      lines.forEach((l, i) => pen.text(x + MARK_COL.text, dy + i * 7.4, l, { size: 6.2 }));
+      dy += (lines.length - 1) * 7.4 + MARK_ROW / 2 - 1;
     });
     pen.g.box = { x, y, w, h: dy + 4 - y };
+  }
+  const MARK_ROW = 14;   // a balloon is 12 pt tall
+  const MARK_END_TXT = { A: "END A", both: "BOTH ENDS", mid: "MIDDLE", all: "FULL LENGTH", B: "END B" };
+  const MARK_COL = { where: 15, what: 15 + 46, text: 15 + 46 + 80 };
+  // Fixed order: where on the cable (end A to end B), then kind (as in the Kind list), then text.
+  function markRows(marks) {
+    const ends = ["A", "both", "mid", "all", "B"], kinds = CD.MARKS.map(k => k[0]);
+    const rank = (list, v) => { const i = list.indexOf(v); return i < 0 ? list.length : i; };
+    return marks.slice().sort((a, b) => rank(ends, a.end) - rank(ends, b.end) || rank(kinds, a.kind) - rank(kinds, b.kind) || String(a.text).localeCompare(String(b.text)));
   }
   function endConn(p, c, end) {
     const ids = {};
@@ -646,7 +661,7 @@
   const customRows = t => t.rows.length ? t.rows : [t.cols.map(() => "")];
   function drawCustomTable(pen, t, x, y) {
     pen.begin("tbl:" + t.id, "table");
-    const d = table(pen, x, y, t.title ? t.title.toUpperCase() : "", customCols(t), customRows(t), { f: fac(t, "s") });
+    const d = table(pen, x, y, t.title ? t.title.toUpperCase() : "", customCols(t), customRows(t), tblOpt(t, "s"));
     pen.g.box = { x, y, w: d.w, h: d.h };
     return d;
   }
@@ -677,15 +692,15 @@
         draw(x, y); x += w + 20; rowH = Math.max(rowH, h);
       };
       if (m.tables === "2" && m.showWires) {
-        const t = wireTbl(), tf = { f: fac(p.blk && p.blk.wires, "s") }, d = measureTable("WIRE LIST", t.cols, t.rows, tf);
+        const t = wireTbl(), tf = tblOpt(p.blk && p.blk.wires, "s"), d = measureTable("WIRE LIST", t.cols, t.rows, tf);
         flow(d.w, d.h, (xx, yy) => { pen.begin("blk:wires", "table"); table(pen, xx, yy, "WIRE LIST", t.cols, t.rows, tf); pen.g.box = { x: xx, y: yy, w: d.w, h: d.h }; });
       }
       if (m.tables === "2" && m.showBom) {
-        const t = bomTbl(), tf = { f: fac(p.blk && p.blk.bom, "s") }, d = measureTable("BILL OF MATERIALS", t.cols, t.rows, tf);
+        const t = bomTbl(), tf = tblOpt(p.blk && p.blk.bom, "s"), d = measureTable("BILL OF MATERIALS", t.cols, t.rows, tf);
         flow(d.w, d.h, (xx, yy) => { pen.begin("blk:bom", "table"); table(pen, xx, yy, "BILL OF MATERIALS", t.cols, t.rows, tf); pen.g.box = { x: xx, y: yy, w: d.w, h: d.h }; });
       }
       (p.tables || []).filter(t => t.sheet === 2).forEach(t => {
-        const d = measureTable(t.title ? t.title.toUpperCase() : "", customCols(t), customRows(t), { f: fac(t, "s") });
+        const d = measureTable(t.title ? t.title.toUpperCase() : "", customCols(t), customRows(t), tblOpt(t, "s"));
         flow(d.w, d.h, (xx, yy) => drawCustomTable(pen, t, xx, yy));
       });
       return out;
@@ -786,14 +801,14 @@
     }
     if (m.tables !== "2") {
       if (m.showBom) {
-        const t = bomTbl(), tf = { f: fac(p.blk && p.blk.bom, "s") }, d = measureTable("BILL OF MATERIALS", t.cols, t.rows, tf);
+        const t = bomTbl(), tf = tblOpt(p.blk && p.blk.bom, "s"), d = measureTable("BILL OF MATERIALS", t.cols, t.rows, tf);
         const pos = p.pos.bom || { x: fr.R - d.w, y: tb.y - d.h - 10 };
         pen.begin("blk:bom", "table");
         table(pen, pos.x, pos.y, "BILL OF MATERIALS", t.cols, t.rows, tf);
         pen.g.box = { x: pos.x, y: pos.y, w: d.w, h: d.h };
       }
       if (m.showWires) {
-        const t = wireTbl(), tf = { f: fac(p.blk && p.blk.wires, "s") }, d = measureTable("WIRE LIST", t.cols, t.rows, tf);
+        const t = wireTbl(), tf = tblOpt(p.blk && p.blk.wires, "s"), d = measureTable("WIRE LIST", t.cols, t.rows, tf);
         const pos = p.pos.wires || { x: fr.L + 10, y: fr.T + 10 };
         pen.begin("blk:wires", "table");
         table(pen, pos.x, pos.y, "WIRE LIST", t.cols, t.rows, tf);
@@ -814,5 +829,5 @@
     return isFinite(x0) ? { x: x0, y: y0, w: x1 - x0, h: y1 - y0 } : null;
   }
 
-  Object.assign(CD, { SIZE_PT, sizeFactor: fac, boardMargins, boardFit, scene, sheetsOf, contentBox, textWidth: tw, wrapText: wrap, FONT });
+  Object.assign(CD, { markRows, SIZE_PT, sizeFactor: fac, boardMargins, boardFit, scene, sheetsOf, contentBox, textWidth: tw, wrapText: wrap, FONT });
 })(typeof window !== "undefined" ? window : globalThis);

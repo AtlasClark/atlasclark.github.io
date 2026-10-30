@@ -356,7 +356,7 @@ test("text and tables scale as a whole: size baseline times the handle scale", (
   const back = CD.normalize(JSON.parse(JSON.stringify(Object.assign(p, { blk: { wires: { size: "x", k: 99 } } }))));
   assert.equal(back.tables.find(x => x.id === t.id).k, 2);
   assert.equal(back.callouts.find(x => x.id === k.id).k, 2);
-  assert.deepEqual(plain(back.blk.wires), { size: "s", k: 6 }, "unknown size falls back, scale is capped");
+  assert.deepEqual(plain(back.blk.wires), { size: "s", k: 6, wrap: true, colW: 0 }, "unknown size falls back, scale is capped");
   assert.deepEqual(plain(back.blk.notes), { size: "m", k: 1 });
 });
 
@@ -393,4 +393,38 @@ test("cable and wire profiles: cable parameters only, no labels, sleeving, lengt
   CD.applyWirePart(tgt, wp);
   assert.deepEqual([tgt.gauge, tgt.color, tgt.spec, tgt.mpn, tgt.len, tgt.sig, tgt.ref], ["20", "GNYE", "UL1015", "EX-W20-GY", "12", "X", "9"]);
   assert.equal(CD.normPart({ type: "wire", wire: { color: "<b>", gu: "x" } }).wire.color, "BK");
+});
+
+test("markings: fixed order and spacing whatever order they were added in", () => {
+  const p = CD.example();
+  const c = p.cables[0];
+  c.marks.push(CD.newMark({ kind: "sleeve", end: "all", text: "Braided sleeve", mpn: "EX-SLV-1" }), CD.newMark({ kind: "label", end: "A", text: "P1", mpn: "EX-LBL-A" }));
+  const order = CD.markRows(c.marks).map(m => m.end + ":" + m.kind);
+  assert.deepEqual(plain(order), ["A:label", "both:label", "all:sleeve", "B:heatshrink"]);
+  const balloons = () => CD.scene(p, { sheet: 1 }).groups.find(g => g.id === "w:" + c.id).prims.filter(o => o.t === "circle" && o.r === 6).map(o => o.cy).sort((a, b) => a - b);
+  const ys = balloons();
+  const gaps = ys.slice(1).map((y, i) => y - ys[i]).filter(g => g > 0.5);
+  assert.ok(gaps.every(g => g >= 12), "marking balloons never overlap: " + gaps.join(", "));
+  const before = JSON.stringify(balloons());
+  c.marks.reverse();
+  assert.equal(JSON.stringify(balloons()), before, "same layout in any order");
+});
+
+test("table text wrapping: on wraps at the set width, off keeps one line per cell", () => {
+  const p = CD.blankProject();
+  const long = "A long description that will not fit in a narrow column at all";
+  const t = CD.newTable(100, 100, { cols: [{ h: "Step", align: "left" }, { h: "Description", align: "left" }], rows: [["1", long]] });
+  p.tables.push(t);
+  const g = () => CD.scene(p, { sheet: 1 }).groups.find(x => x.id === "tbl:" + t.id);
+  const lines = () => g().prims.filter(o => o.t === "text" && o.s.length > 1 && long.includes(o.s)).length;
+  t.colW = 80;
+  const narrow = g().box.w, wrapped = lines();
+  assert.ok(wrapped >= 3, "wraps at 80 pt");
+  t.colW = 0;
+  assert.ok(g().box.w > narrow && lines() < wrapped, "auto width wraps less");
+  t.wrap = false;
+  assert.equal(lines(), 1, "off: one line");
+  assert.ok(g().prims.some(o => o.t === "text" && o.s === long));
+  const back = CD.normalize(JSON.parse(JSON.stringify(Object.assign(p, { tables: [Object.assign({}, t, { colW: 5 })] }))));
+  assert.equal(back.tables[0].wrap, false); assert.equal(back.tables[0].colW, 30, "width kept within 30-600 pt");
 });
