@@ -222,7 +222,7 @@ function petVisual(p, st, danger, key) {
 }
 
 function updateGlasses() {
-  const key = todayKey();
+  const key = todayKey(), holidayHats = !!holidayOn(key);
   let best = 0;
   for (const p of ordered) best = Math.max(best, dayScoreFor(totalOn(p, key), p, key));
   ordered.forEach((p, i) => {
@@ -235,13 +235,17 @@ function updateGlasses() {
     setEl("ha_" + i, null, danger ? "halo red" : (over ? "halo gold" : "halo"));
     show("go_" + i, over || danger);
     show("sku_" + i, danger);
-    st.duckCrown = best > 0 && dayScoreFor(total, p, key) >= best - C.RATIO_EPSILON;
-    st.duckJester = st.duckCrown && !over;
+    /* The leader wears the crown (goal met) or the jester hat (still under goal). On a
+       holiday with its own hats, every other pet wears that holiday's jester hat too; the
+       icon over the glass still marks only the leader. */
+    const lead = best > 0 && dayScoreFor(total, p, key) >= best - C.RATIO_EPSILON, leadJester = lead && !over;
+    st.duckCrown = lead || holidayHats;
+    st.duckJester = lead ? leadJester : holidayHats;
     st.duckMedal = wearsMedal(p, key);
-    const hat = st.duckJester ? "j" : "c";
-    if (st.hatIs !== hat) { st.hatIs = hat; setEl("cr_" + i, glassHatSvg(st.duckJester), null); }
-    setEl("cr_" + i, null, st.duckCrown ? "crown-wrap on" : "crown-wrap");
-    setTitle("cr_" + i, st.duckJester ? "Leading, but still short of your goal" : "Leading the day, goal met");
+    const hat = leadJester ? "j" : "c";
+    if (st.hatIs !== hat) { st.hatIs = hat; setEl("cr_" + i, glassHatSvg(leadJester), null); }
+    setEl("cr_" + i, null, lead ? "crown-wrap on" : "crown-wrap");
+    setTitle("cr_" + i, leadJester ? "Leading, but still short of your goal" : "Leading the day, goal met");
     const real = fmt(total) + " / " + fmt(goal) + " fl oz";
     if (danger) {
       setEl("sb_" + i, maskSpan("ozm_" + i, fmt(total)) + " / " + fmt(goal) + " fl oz", "sub");
