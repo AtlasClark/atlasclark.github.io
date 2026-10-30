@@ -9,7 +9,7 @@
 (function () {
   "use strict";
   const CD = window.CD, OUT = CD.out;
-  const REV = "rev 1.6.2";
+  const REV = "rev 1.8.0";
   const LS_UI = "cableDesigner.ui";
   const $ = id => document.getElementById(id);
   const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -126,6 +126,7 @@
       if (g.leader) o.push('<circle class="handle" data-h="leader" cx="' + g.leader.x + '" cy="' + g.leader.y + '" r="4"/>');
       const BL = kindOf(sel) === "c" && sc.blocks.conn && sc.blocks.conn[idOf(sel)];
       if (BL && BL.board) o.push('<rect class="handle rs" data-h="bsize" x="' + (BL.x + BL.w - 4) + '" y="' + (BL.y + BL.h - 4) + '" width="8" height="8"><title>Drag to resize</title></rect>');
+      if (scaleTarget(sel)) o.push('<rect class="handle rs" data-h="scale" x="' + (b.x + b.w - 4) + '" y="' + (b.y + b.h - 4) + '" width="8" height="8"><title>Drag to scale (text scales too)</title></rect>');
     }
     if (sheet === 1) {
       Object.entries(sc.blocks.conn || {}).forEach(([cid, L]) => {
@@ -202,6 +203,11 @@
     const bp = t.closest(".bpin");
     if (bp) { select("c:" + bp.dataset.bc); drag = { t: "bpin", c: bp.dataset.bc, i: +bp.dataset.bp, moved: false }; stage.setPointerCapture(e.pointerId); return; }
     const hd = t.closest(".handle");
+    if (hd && hd.dataset.h === "scale") {
+      const g = sc.groups.find(x => x.id === sel), o = scaleTarget(sel);
+      if (g && g.box && o) { drag = { t: "scale", o, box: Object.assign({}, g.box), k0: o.k || 1, moved: false }; stage.setPointerCapture(e.pointerId); }
+      return;
+    }
     if (hd && hd.dataset.h === "bsize") { drag = { t: "bsize", c: idOf(sel), moved: false }; stage.setPointerCapture(e.pointerId); return; }
     if (hd) { startLeader(e); return; }
     const g = t.closest("[data-id]");
@@ -261,6 +267,17 @@
       if (k === "blk") p.pos[idOf(drag.id)] = { x: nx, y: ny };
       else { const o = selObj(); if (o) { o.x = nx; o.y = ny; } }
       requestRender();
+    } else if (drag.t === "scale") {
+      // the box's top-left stays put; the corner follows the pointer (both axes averaged)
+      const pt = toSheet(e), b = drag.box;
+      const r = ((pt.x - b.x) / b.w + (pt.y - b.y) / b.h) / 2;
+      let k = drag.k0 * Math.max(0.05, r);
+      if (!e.altKey) k = Math.round(k * 20) / 20;
+      k = CD.scaleK(k);
+      if (k === drag.o.k && !drag.moved) return;
+      if (!drag.moved) { pushUndo(); drag.moved = true; }
+      drag.o.k = k;
+      requestRender();
     } else if (drag.t === "bpin" || drag.t === "bsize") {
       const c = conn(drag.c), L = sc.blocks.conn && sc.blocks.conn[drag.c];
       if (!c || !c.board || !L) return;
@@ -303,7 +320,7 @@
     if (!ui.ports) svg.classList.remove("show-ports");
     if (d.t === "move" && d.moved) { scheduleSave(); refreshPanels(); render(); }
     if (d.t === "leader" && d.moved) { scheduleSave(); render(); }
-    if ((d.t === "bpin" || d.t === "bsize") && d.moved) { scheduleSave(); render(); renderInspector(); }
+    if ((d.t === "bpin" || d.t === "bsize" || d.t === "scale") && d.moved) { scheduleSave(); render(); renderInspector(); }
     if (d.t === "wire") {
       const tgt = d.hot && portInfo(d.hot);
       if (tgt) makeWire(d.src, tgt); else render();
@@ -377,6 +394,7 @@
       case "x": return wire(a);
       case "k": return callout(a);
       case "tb": return ctable(a);
+      case "blk": return p.blk && p.blk[a];
       case "pin": { const c = conn(a); return c && c.pins[+b]; }
       case "acc": { const c = conn(a); return c && c.acc[+b]; }
       case "bpin": { const c = conn(a); return c && c.board && c.board.pins[+b]; }
@@ -402,6 +420,8 @@
       CD.pruneTies(p);
     },
     pins(c, v) { CD.setPinCount(p, c, parseInt(v, 10)); },
+    wireProfile(w, v) { const x = parts.find(q => q.id === v && q.type === "wire"); if (x) { CD.applyWirePart(w, x); toast(x.name + " applied"); } },
+    pct(o, v) { const n = parseFloat(v); if (isFinite(n)) o.k = CD.scaleK(n / 100); },
     boardSize(c, v, el) { const k = el.dataset.k.split(".")[1], n = parseFloat(v); if (isFinite(n)) c.board[k] = Math.max(k === "w" ? 60 : 40, Math.round(n)); else c.board[k] = k === "w" ? 150 : 100; },
     tblSheet(t, v) { t.sheet = v === "2" ? 2 : 1; sheet = t.sheet; paintSheets(); requestAnimationFrame(fit); },
     tie(c, v, el) {
@@ -620,12 +640,16 @@
         '<div class="r2">' + F("Qty per place", I(mo, "qty", m.qty, 'placeholder="1"')) + F("Cut length", I(mo, "len", m.len, 'placeholder="for tubing"')) + "</div></div>";
     }).join(""), B("markAdd", "＋ Add", 'data-id="' + c.id + '"'));
     h += F("Note", T(o, "note", c.note, 'rows="2"'));
+    h += '<div class="btn-row">' + B("partSave", "Save cable to My parts…", 'data-id="' + c.id + '" data-kind="cable"') + "</div>";
     return h;
   }
 
   function wireForm(w) {
     const o = "x:" + w.id, c = cable(w.cable), u = CD.UNIT(p.meta.units);
-    let h = '<div class="r2">' + F("Wire ID", I(o, "ref", w.ref, 'data-re="1" placeholder="' + esc(CD.wireRef(p, w)) + '"')) +
+    const wps = parts.filter(x => x.type === "wire").sort((a, b) => a.name.localeCompare(b.name));
+    let h = wps.length ? F("Wire profile", '<select data-o="' + o + '" data-k="profile" data-fx="wireProfile" data-set="0" data-re="1"><option value="">Use a saved wire…</option>' +
+      wps.map(x => '<option value="' + esc(x.id) + '">' + esc(x.name) + "</option>").join("") + "</select>") : "";
+    h += '<div class="r2">' + F("Wire ID", I(o, "ref", w.ref, 'data-re="1" placeholder="' + esc(CD.wireRef(p, w)) + '"')) +
       F("In cable", S(o, "cable", w.cable || "", [["", "Loose wire"]].concat(p.cables.map(x => [x.id, x.ref])), 'data-fx="cable" data-set="0" data-re="1"')) + "</div>";
     h += '<div class="r3">' + F("Size", I(o, "gauge", w.gauge, 'list="dlAwg" data-fx="wireDefault"')) + F("Unit", S(o, "gu", w.gu, [["AWG", "AWG"], ["mm2", "mm²"]], 'data-fx="wireDefault"')) + F("Insulation", I(o, "insul", w.insul, 'list="dlInsul" data-fx="wireDefault"')) + "</div>";
     h += '<div class="r2">' + F("Colour " + swatch(w.color), S(o, "color", w.color, COLOR_OPTS, 'data-re="1"')) + F("Stripe", S(o, "stripe", w.stripe, STRIPE_OPTS)) + "</div>";
@@ -640,14 +664,15 @@
     h += F("Signal", I(o, "sig", w.sig, 'placeholder="' + esc(CD.sigOf(p, Object.assign({}, w, { sig: "" })) || "from pin names") + '"'));
     if (!c || c.kind === "bundle") h += '<div class="r3">' + F("Mfr", I(o, "mfr", w.mfr)) + F("Mfr part no.", I(o, "mpn", w.mpn)) + F("Part no.", I(o, "ipn", w.ipn)) + "</div>";
     h += F("Note", T(o, "note", w.note, 'rows="2"'));
+    h += '<div class="btn-row">' + B("partSave", "Save wire to My parts…", 'data-id="' + w.id + '" data-kind="wire"') + "</div>";
     return h;
   }
 
   function tableForm(t) {
     const o = "tb:" + t.id, nC = t.cols.length;
     let h = F("Title", I(o, "title", t.title, 'placeholder="No title" data-re="1"'));
-    h += '<div class="r2">' + F("Text size", S(o, "size", t.size, [["s", "Small"], ["m", "Medium"]])) +
-      F("Sheet", S(o, "sheet", String(t.sheet), [["1", "Sheet 1, where you put it"], ["2", "Sheet 2 (continuation)"]], 'data-fx="tblSheet" data-set="0" data-re="1"')) + "</div>";
+    h += sizeCtl(o, t);
+    h += F("Sheet", S(o, "sheet", String(t.sheet), [["1", "Sheet 1, where you put it"], ["2", "Sheet 2 (continuation)"]], 'data-fx="tblSheet" data-set="0" data-re="1"'));
     const head = '<tr><th></th>' + t.cols.map((c, j) => "<th>" + I(o, "cols." + j + ".h", c.h, 'class="tg-h" placeholder="Column ' + (j + 1) + '"') +
       '<div class="tg-colbar">' + S(o, "cols." + j + ".align", c.align, [["left", "⇤"], ["center", "↔"], ["right", "⇥"]], 'title="Align"') +
       IB("tblColDel", "✕", "Remove column", 'data-id="' + t.id + '" data-i="' + j + '"' + (nC > 1 ? "" : " disabled")) + "</div></th>").join("") + "<th></th></tr>";
@@ -673,9 +698,24 @@
       } }]);
   }
 
+  // What the scale handle and size controls act on: a text / flag / balloon, a custom table, or a generated block.
+  function scaleTarget(id) {
+    const k = kindOf(id);
+    if (k === "k") return callout(idOf(id));
+    if (k === "tbl") return ctable(idOf(id));
+    if (k === "blk" && ["wires", "bom", "notes"].includes(idOf(id))) return p.blk[idOf(id)];
+    return null;
+  }
+  function sizeCtl(o, obj) {
+    return '<div class="r2">' + F("Text size", S(o, "size", obj.size, [["s", "Small"], ["m", "Medium"], ["l", "Large"]], 'data-re="1"')) +
+      F("Scale %", '<div class="fb-inline"><input type="number" min="30" max="600" step="5" data-o="' + o + '" data-k="k" data-fx="pct" data-set="0" data-lazy="1" data-re="1" value="' + Math.round((obj.k || 1) * 100) + '">' +
+        B("scaleReset", "100", 'data-o="' + o + '" title="Back to 100 %"') + "</div>") + "</div>";
+  }
+
   function calloutForm(k) {
     const o = "k:" + k.id;
     let h = F("Kind", S(o, "kind", k.kind, [["text", "Text note"], ["flag", "Flag note (triangle)"], ["balloon", "Balloon (find number)"]], 'data-re="1"'));
+    h += sizeCtl(o, k);
     h += k.kind === "text" ? F("Text", T(o, "text", k.text, 'rows="4"')) : F(k.kind === "flag" ? "Note number" : "Item number", I(o, "text", k.text));
     h += '<div class="btn-row">' + B("leader", k.lx != null ? "Remove leader" : "Add leader arrow", 'data-id="' + k.id + '"') + "</div>";
     h += '<p class="hint">Drag the callout to move it. Drag the lime dot to aim the leader. Alt while dragging turns off the 5 pt snap.</p>';
@@ -684,6 +724,7 @@
 
   function blockForm(key) {
     let h = '<p class="hint">' + ({ wires: "Generated from all wires and cable conductors.", bom: "Generated from connectors, contacts, seals, accessories, cables, loose wires and cable markings. Items with the same part number add up.", notes: "Edit notes in the Drawing dialog." }[key] || "") + " Drag to move it on the sheet.</p>";
+    if (p.blk[key]) h += sizeCtl("blk:" + key, p.blk[key]);
     h += C("meta", "showWires", p.meta.showWires, "Show wire list", 'data-re="1"') + C("meta", "showBom", p.meta.showBom, "Show bill of materials", 'data-re="1"');
     h += F("Tables on", S("meta", "tables", p.meta.tables, [["1", "Sheet 1, beside the drawing"], ["2", "Sheet 2 (continuation sheet)"]], 'data-re="1"'));
     h += '<div class="btn-row">' + B("resetPos", "Reset position", 'data-id="' + key + '"') + (key === "notes" ? B("drawing", "Edit notes…") : "") + "</div>";
@@ -773,6 +814,7 @@
       changed(true);
     },
     bpinDel: d => { const c = conn(d.id); pushUndo(); CD.removePins(p, c, [+d.i]); changed(true); },
+    scaleReset: d => { const o = resolve(d.o); if (!o || (o.k || 1) === 1) return; pushUndo(); o.k = 1; changed(true); },
     bimgPick: d => { imgTarget = d.id; $("boardImgFile").click(); },
     bimgDel: d => { const c = conn(d.id); pushUndo(); c.board.img = null; changed(true); },
     bimgFit: d => { const c = conn(d.id), f = CD.boardFit(c); if (!f) return; pushUndo(); c.board.w = f.w; c.board.h = f.h; changed(true); },
@@ -797,7 +839,7 @@
     resetPos: d => { pushUndo(); p.pos[d.id] = null; changed(true); },
     drawing: () => drawingDialog(),
     faceEdit: d => faces.open(d.id),
-    partSave: d => savePart(conn(d.id)),
+    partSave: d => savePart(d.kind || "conn", d.kind === "cable" ? cable(d.id) : d.kind === "wire" ? wire(d.id) : conn(d.id)),
     partDel: d => deletePart(d.id),
     partsImport: () => $("partsFile").click(),
     partsExport: () => exportParts(),
@@ -950,23 +992,31 @@
   function renderParts() {
     const box = $("myParts");
     if (!box) return;
-    const list = parts.slice().sort((a, b) => a.name.localeCompare(b.name));
+    const tip = x => x.type === "cable" ? [x.cable.mpn, x.conductors.length + " conductors", x.cable.shield !== "none" ? x.cable.shield + " shield" : ""].filter(Boolean).join(" · ") + ". Click to place."
+      : x.type === "wire" ? "Click: apply to the selected wire, or use for new wires."
+      : [x.mpn, CD.LIB[x.lib] ? CD.LIB[x.lib].name : "", x.pins.length + " pins"].filter(Boolean).join(" · ");
+    const row = x => '<div class="lib-row"><button class="lib-item" data-part="' + esc(x.id) + '" title="' + esc(tip(x)) + '"><span>' + esc(x.name) + '</span><span class="plus">' + (x.type === "wire" ? "↳" : "＋") + "</span></button>" +
+      '<button class="icon-btn" data-a="partDel" data-id="' + esc(x.id) + '" title="Delete from My parts" aria-label="Delete ' + esc(x.name) + '">✕</button></div>';
+    const group = (t, label) => { const l = parts.filter(x => (x.type || "conn") === t).sort((a, b) => a.name.localeCompare(b.name)); return l.length ? '<div class="lib-sub">' + label + "</div>" + l.map(row).join("") : ""; };
     box.innerHTML = '<details' + (parts.length ? " open" : "") + '><summary>My parts<span>' + parts.length + "</span></summary>" +
-      list.map(x => '<div class="lib-row"><button class="lib-item" data-part="' + esc(x.id) + '" title="' + esc([x.mpn, CD.LIB[x.lib] ? CD.LIB[x.lib].name : "", x.pins.length + " pins"].filter(Boolean).join(" · ")) + '"><span>' + esc(x.name) + '</span><span class="plus">＋</span></button>' +
-        '<button class="icon-btn" data-a="partDel" data-id="' + esc(x.id) + '" title="Delete from My parts" aria-label="Delete ' + esc(x.name) + '">✕</button></div>').join("") +
-      (parts.length ? "" : '<p class="empty-note">Build a connector, then press "Save to My parts" in its properties.</p>') +
+      group("conn", "Connectors") + group("cable", "Cables") + group("wire", "Wires") +
+      (parts.length ? "" : '<p class="empty-note">Save a connector, cable or wire from its properties.</p>') +
       '<div class="btn-row" style="padding:4px 8px 8px 24px">' + B("partsImport", "Import…") + (parts.length ? B("partsExport", "Export") : "") + "</div></details>";
   }
-  function savePart(c) {
+  function savePart(kind, c) {
     if (!c) return;
-    const def = c.desc || c.mpn || CD.libOf(c).name;
-    openModal("Save to My parts", F("Part name", '<input id="partName" value="' + esc(def) + '">') +
-      "<p>Saves the type, face, pin numbers, part numbers, contact, seal and accessories. Signals stay with this drawing. My parts live in this browser; export them to share with the team.</p>", [
+    const def = kind === "cable" ? c.desc || c.mpn || c.ref : kind === "wire" ? CD.partFromWire(c).name : c.desc || c.mpn || CD.libOf(c).name;
+    const what = {
+      conn: "Type, face, pin numbers, part numbers, contact, seal and accessories. Signals stay with this drawing.",
+      cable: "The cable itself: description, part numbers, jacket, OD, shield type and every conductor with its twisted pairs. Lengths, labels, sleeving and ends stay with this drawing.",
+      wire: "Size, colour, stripe, insulation, spec and part numbers."
+    }[kind];
+    openModal("Save to My parts", F("Name", '<input id="partName" value="' + esc(def) + '">') + "<p>" + what + "</p>", [
       { label: "Cancel", onClick: closeModal },
       { label: "Save", cls: "btn-primary", onClick: () => {
         const name = $("partName").value.trim() || def;
-        const old = parts.find(x => x.name === name);
-        const part = CD.partFromConn(c, name);
+        const old = parts.find(x => x.name === name && (x.type || "conn") === kind);
+        const part = kind === "cable" ? CD.partFromCable(p, c, name) : kind === "wire" ? CD.partFromWire(c, name) : CD.partFromConn(c, name);
         if (old) { part.id = old.id; parts[parts.indexOf(old)] = part; } else parts.push(part);
         closeModal(); storeParts(); toast((old ? "Updated " : "Saved ") + name + " in My parts");
       } }]);
@@ -979,8 +1029,21 @@
   function addPart(id) {
     const x = parts.find(q => q.id === id);
     if (!x) return;
+    if (x.type === "wire") {
+      const w = kindOf(sel) === "x" && wire(idOf(sel));
+      if (w) { pushUndo(); CD.applyWirePart(w, x); changed(true); toast(x.name + " applied to " + CD.wireRef(p, w)); }
+      else { Object.assign(ui.wire, CD.wireProfile(x.wire)); saveUi(); toast("New wires will use " + x.name + "."); }
+      return;
+    }
     sheet = 1;
     pushUndo();
+    if (x.type === "cable") {
+      const cb = CD.cableFromPart(p, x, 0, 0);
+      place("w:" + cb.id, cb);
+      sel = "w:" + cb.id;
+      changed(true);
+      return;
+    }
     const c = CD.connFromPart(p, x, 0, 0);
     p.conns.push(c);
     place("c:" + c.id, c);
@@ -996,7 +1059,7 @@
     const list = (d && d.format === "atlas-cable-parts" && Array.isArray(d.parts) ? d.parts : []).map(CD.normPart).filter(Boolean);
     if (!list.length) { toast("No parts found in " + file.name, "warn"); return; }
     let added = 0, updated = 0;
-    list.forEach(x => { const i = parts.findIndex(q => q.id === x.id || q.name === x.name); if (i >= 0) { parts[i] = x; updated++; } else { parts.push(x); added++; } });
+    list.forEach(x => { const i = parts.findIndex(q => q.id === x.id || (q.name === x.name && (q.type || "conn") === x.type)); if (i >= 0) { parts[i] = x; updated++; } else { parts.push(x); added++; } });
     storeParts();
     toast("My parts: " + added + " added, " + updated + " updated");
   }

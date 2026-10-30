@@ -334,3 +334,63 @@ test("custom tables: paste parsing, saved shape, sheet 1 at its spot or flowed o
   assert.ok(!s2.groups.some(x => x.id === "blk:wires"), "wire list stays on sheet 1");
   assert.ok(CD.scene(p, { sheet: 1 }).groups.some(x => x.id === "blk:wires"));
 });
+
+test("text and tables scale as a whole: size baseline times the handle scale", () => {
+  const p = CD.example();
+  const t = CD.newTable(300, 450, { title: "Scale test", cols: [{ h: "A", align: "left" }, { h: "B", align: "left" }], rows: [["one", "two"]] });
+  const k = CD.newCallout(100, 500, { text: "Check twist" });
+  p.tables.push(t); p.callouts.push(k);
+  const grab = () => { const s = CD.scene(p, { sheet: 1 }); const g = id => s.groups.find(x => x.id === id); return { t: g("tbl:" + t.id), k: g("k:" + k.id), w: g("blk:wires"), n: g("blk:notes") }; };
+  const big = o => Math.max(...o.prims.filter(q => q.t === "text").map(q => q.size));
+  const a = grab();
+  assert.equal(big(a.k), 7, "medium text note draws as before (7 pt)");
+  t.k = 2; k.k = 2; p.blk.wires.k = 1.5; p.blk.notes.size = "l";
+  const b = grab();
+  assert.ok(Math.abs(b.t.box.w - a.t.box.w * 2) < 0.5 && Math.abs(b.t.box.h - a.t.box.h * 2) < 0.5, "table doubles, text included");
+  assert.ok(Math.abs(big(b.t) - big(a.t) * 2) < 1e-9);
+  assert.equal(big(b.k), 14);
+  assert.ok(Math.abs(b.w.box.w - a.w.box.w * 1.5) < 1);
+  assert.ok(Math.abs(big(b.n) - big(a.n) * 9 / 7) < 1e-9, "Large notes = 9/7 of Medium");
+  t.size = "l";
+  assert.ok(Math.abs(big(grab().t) - big(a.t) * 2 * 9 / 5.8) < 1e-9, "Large table text = 9/5.8 of Small, times the scale");
+  const back = CD.normalize(JSON.parse(JSON.stringify(Object.assign(p, { blk: { wires: { size: "x", k: 99 } } }))));
+  assert.equal(back.tables.find(x => x.id === t.id).k, 2);
+  assert.equal(back.callouts.find(x => x.id === k.id).k, 2);
+  assert.deepEqual(plain(back.blk.wires), { size: "s", k: 6 }, "unknown size falls back, scale is capped");
+  assert.deepEqual(plain(back.blk.notes), { size: "m", k: 1 });
+});
+
+test("cable and wire profiles: cable parameters only, no labels, sleeving, lengths or ends", () => {
+  const p = CD.example();
+  const w1 = p.cables[0];
+  w1.desc = "2 pair shielded test cable";
+  const part = CD.partFromCable(p, w1, "Test 2-pair");
+  assert.equal(part.type, "cable");
+  assert.equal(part.conductors.length, 5);
+  assert.deepEqual(plain(part.conductors.map(c => c.color)), ["WH", "BN", "GN", "YE", "BARE"]);
+  assert.deepEqual(plain(part.groups.map(g => [g.wires, g.lay])), [[[0, 1], "1.00"], [[2, 3], "1.50"]]);
+  assert.equal(part.cable.shield, "foil"); assert.equal(part.cable.mpn, "EX-CBL-2P24S"); assert.equal(part.cable.od, "0.22");
+  const text = JSON.stringify(part);
+  for (const gone of ["36.00", "1.50\",\"stripB", "P1 / P2", "EX-LBL-WHT", "EX-HS-3/8", "pigtail", "float"]) assert.ok(!text.includes(gone), "left out: " + gone);
+  assert.ok(!("len" in part.cable) && !("marks" in part.cable) && !("stripA" in part.cable));
+  // through a .cdparts round trip and back onto a drawing
+  const back = CD.normPart(JSON.parse(text));
+  const q = CD.blankProject();
+  const c = CD.cableFromPart(q, back, 10, 20);
+  const list = CD.conductors(q, c);
+  assert.equal(list.length, 5); assert.ok(list.every(w => !w.a && !w.b && !w.ref));
+  assert.equal(c.len, ""); assert.equal(c.marks.length, 0); assert.equal(c.groups.length, 2);
+  assert.deepEqual(plain(c.shield), { type: "foil", a: "none", b: "none" });
+  assert.equal(c.ref, "W1");
+  assert.equal(CD.normPart({ type: "cable", conductors: [] }), null);
+  // wire profile
+  const gw = p.wires.find(w => w.color === "GNYE");
+  gw.spec = "UL1015"; gw.mpn = "EX-W20-GY";
+  const wp = CD.normPart(JSON.parse(JSON.stringify(CD.partFromWire(gw))));
+  assert.equal(wp.type, "wire"); assert.equal(wp.name, "20 AWG GNYE PVC UL1015");
+  assert.ok(!("len" in wp.wire) && !("a" in wp.wire) && !("ref" in wp.wire));
+  const tgt = CD.newWire(q, { len: "12", sig: "X", ref: "9" });
+  CD.applyWirePart(tgt, wp);
+  assert.deepEqual([tgt.gauge, tgt.color, tgt.spec, tgt.mpn, tgt.len, tgt.sig, tgt.ref], ["20", "GNYE", "UL1015", "EX-W20-GY", "12", "X", "9"]);
+  assert.equal(CD.normPart({ type: "wire", wire: { color: "<b>", gu: "x" } }).wire.color, "BK");
+});

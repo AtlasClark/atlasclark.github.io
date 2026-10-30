@@ -26,6 +26,7 @@
   const blankProject = () => ({
     format: FORMAT, v: VERSION, meta: blankMeta(),
     pos: { wires: null, bom: null, notes: null },
+    blk: { wires: { size: "s", k: 1 }, bom: { size: "s", k: 1 }, notes: { size: "m", k: 1 } },
     history: [], notes: [], conns: [], cables: [], wires: [], callouts: [], ties: [], tables: []
   });
 
@@ -194,19 +195,81 @@
   // ---------- saved parts ("My parts") ----------
   const PART_KEYS = ["lib", "gender", "desc", "mfr", "mpn", "ipn", "term", "seal", "acc", "face", "faceFrom", "custom", "layout", "board", "strip", "note"];
   function partFromConn(c, name) {
-    const o = { id: uid(), name: str(name) || c.desc || c.mpn || CD.libOf(c).name };
+    const o = { id: uid(), type: "conn", name: str(name) || c.desc || c.mpn || CD.libOf(c).name };
     PART_KEYS.forEach(k => { o[k] = JSON.parse(JSON.stringify(c[k] == null ? null : c[k])); });
     o.pins = c.pins.map(x => ({ n: x.n }));
     return o;
   }
   function normPart(o) {
+    if (o && o.type === "cable") return normCablePart(o);
+    if (o && o.type === "wire") return normWirePart(o);
     if (!o || typeof o !== "object" || !Array.isArray(o.pins) || !o.pins.length) return null;
     const tmp = normalize({ conns: [Object.assign({}, o, { id: "x", pins: o.pins.map(x => ({ n: str(x && x.n), sig: "" })) })] }).conns[0];
-    const out = { id: str(o.id) || uid(), name: str(o.name) || tmp.desc || CD.libOf(tmp).name };
+    const out = { id: str(o.id) || uid(), type: "conn", name: str(o.name) || tmp.desc || CD.libOf(tmp).name };
     PART_KEYS.forEach(k => { out[k] = tmp[k]; });
     out.pins = tmp.pins.map(x => ({ n: x.n }));
     return out;
   }
+  // Cable and wire profiles: what defines the cable or wire as bought. Lengths, strip lengths, labels,
+  // sleeving, ends, signals, shield terminations and references stay with each drawing.
+  const WIRE_KEYS = ["gauge", "gu", "color", "stripe", "insul", "spec", "mfr", "mpn", "ipn"];
+  function wireProfile(w) {
+    const o = {};
+    WIRE_KEYS.forEach(k => { o[k] = str(w && w[k]).slice(0, 80); });
+    if (o.gu !== "mm2") o.gu = "AWG";
+    if (!CD.COLOR[o.color]) o.color = "BK";
+    if (o.stripe && (!CD.COLOR[o.stripe] || CD.COLOR[o.stripe].bare)) o.stripe = "";
+    return o;
+  }
+  const wireName = w => [gaugeText(w), colorText(w), w.insul, w.spec].filter(Boolean).join(" ") || "Wire";
+  function partFromWire(w, name) { const wp = wireProfile(w); return { id: uid(), type: "wire", name: str(name) || wireName(wp), wire: wp }; }
+  function normWirePart(o) {
+    if (!o || typeof o !== "object" || !o.wire || typeof o.wire !== "object") return null;
+    const wp = wireProfile(o.wire);
+    return { id: str(o.id) || uid(), type: "wire", name: str(o.name) || wireName(wp), wire: wp };
+  }
+  function applyWirePart(w, part) { Object.assign(w, wireProfile(part.wire)); }
+
+  function partFromCable(p, c, name) {
+    const list = conductors(p, c);
+    return normCablePart({
+      id: uid(), type: "cable", name: str(name) || c.desc || c.mpn || "Cable",
+      cable: { kind: c.kind, desc: c.desc, mfr: c.mfr, mpn: c.mpn, ipn: c.ipn, jacket: c.jacket, jcolor: c.jcolor, od: c.od, shield: c.shield.type },
+      conductors: list.map(wireProfile),
+      groups: c.groups.map(g => ({ wires: g.wires.map(id => list.findIndex(w => w.id === id)), lay: g.lay, shield: g.shield }))
+    });
+  }
+  function normCablePart(o) {
+    if (!o || typeof o !== "object") return null;
+    const cb = o.cable && typeof o.cable === "object" ? o.cable : {};
+    const conds = (Array.isArray(o.conductors) ? o.conductors : []).slice(0, 200).map(wireProfile);
+    if (!conds.length) return null;
+    const used = new Set();
+    const groups = (Array.isArray(o.groups) ? o.groups : []).map(g => ({
+      wires: [...new Set((g && Array.isArray(g.wires) ? g.wires : []).filter(i => Number.isInteger(i) && i >= 0 && i < conds.length && !used.has(i)))],
+      lay: str(g && g.lay).slice(0, 20), shield: ["foil", "braid"].includes(g && g.shield) ? g.shield : "none"
+    })).filter(g => g.wires.length > 1 && (g.wires.forEach(i => used.add(i)), true));
+    const s = k => str(cb[k]).slice(0, 200);
+    return {
+      id: str(o.id) || uid(), type: "cable", name: str(o.name) || s("desc") || "Cable",
+      cable: {
+        kind: cb.kind === "bundle" ? "bundle" : "cable", desc: s("desc"), mfr: s("mfr"), mpn: s("mpn"), ipn: s("ipn"),
+        jacket: s("jacket"), jcolor: CD.COLOR[cb.jcolor] && !CD.COLOR[cb.jcolor].bare ? cb.jcolor : "", od: s("od"),
+        shield: CD.SHIELDS.some(x => x[0] === cb.shield) ? cb.shield : "none"
+      },
+      conductors: conds, groups
+    };
+  }
+  function cableFromPart(p, part, x, y) {
+    const P = part.cable;
+    const c = newCable(p, x, y, { kind: P.kind, desc: P.desc, mfr: P.mfr, mpn: P.mpn, ipn: P.ipn, jacket: P.jacket, jcolor: P.jcolor, od: P.od, shield: { type: P.shield, a: "none", b: "none" } });
+    const ws = part.conductors.map(cd => newWire(p, Object.assign(wireProfile(cd), { cable: c.id })));
+    c.groups = part.groups.map(g => newGroup(g.wires.map(i => ws[i].id), { lay: g.lay, shield: g.shield }));
+    p.cables.push(c);
+    p.wires.push(...ws);
+    return c;
+  }
+
   function connFromPart(p, part, x, y) {
     const c = newConn(p, part.lib in CD.LIB ? part.lib : "custom", x, y);
     PART_KEYS.forEach(k => { if (k !== "lib" && part[k] !== undefined) c[k] = JSON.parse(JSON.stringify(part[k])); });
@@ -242,13 +305,13 @@
   // Custom table: free text in a grid, on sheet 1 at x, y or flowed onto sheet 2.
   const newTable = (x, y, o) => Object.assign({
     id: uid(), title: "Table", cols: [{ h: "Column 1", align: "left" }, { h: "Column 2", align: "left" }, { h: "Column 3", align: "left" }],
-    rows: [["", "", ""], ["", "", ""]], size: "s", sheet: 1, x: Math.round(x || 0), y: Math.round(y || 0)
+    rows: [["", "", ""], ["", "", ""]], size: "s", k: 1, sheet: 1, x: Math.round(x || 0), y: Math.round(y || 0)
   }, o);
   function normTable(t) {
     const cols = (Array.isArray(t.cols) ? t.cols : []).slice(0, 30).map(c => ({ h: str(c && c.h).slice(0, 200), align: ["left", "center", "right"].includes(c && c.align) ? c.align : "left" }));
     if (!cols.length) cols.push({ h: "", align: "left" });
     const rows = (Array.isArray(t.rows) ? t.rows : []).slice(0, 500).map(r => cols.map((c, i) => str(Array.isArray(r) ? r[i] : "").slice(0, 2000)));
-    return { id: str(t.id) || uid(), title: str(t.title).slice(0, 200), cols, rows, size: t.size === "m" ? "m" : "s", sheet: t.sheet === 2 ? 2 : 1, x: num(t.x) || 0, y: num(t.y) || 0 };
+    return { id: str(t.id) || uid(), title: str(t.title).slice(0, 200), cols, rows, size: sizeKey(t.size, "s"), k: scaleK(t.k), sheet: t.sheet === 2 ? 2 : 1, x: num(t.x) || 0, y: num(t.y) || 0 };
   }
   // Text pasted from a spreadsheet (tabs) or CSV: rows of cells. Quotes as in CSV.
   function parseGrid(text) {
@@ -266,7 +329,11 @@
     if (cell !== "" || row.length) { row.push(cell); rows.push(row); }
     return rows.filter(r => r.some(c => c.trim() !== ""));
   }
-  const newCallout = (x, y, o) => Object.assign({ id: uid(), kind: "text", text: "", x: Math.round(x), y: Math.round(y), lx: null, ly: null }, o);
+  const newCallout = (x, y, o) => Object.assign({ id: uid(), kind: "text", text: "", size: "m", k: 1, x: Math.round(x), y: Math.round(y), lx: null, ly: null }, o);
+  // Text size (Small / Medium / Large) and free scale (corner handle), kept within sensible bounds.
+  const sizeKey = (v, def) => ["s", "m", "l"].includes(v) ? v : def;
+  const scaleK = v => { const n = num(v); return n == null ? 1 : Math.max(0.3, Math.min(6, Math.round(n * 100) / 100)); };
+  const sizeOf = (o, def) => ({ size: sizeKey(o && o.size, def), k: scaleK(o && o.k) });
 
   // Cable presets. Colours: DIN 47100 order; Ethernet uses T568B.
   function cablePreset(p, kind, x, y, n) {
@@ -344,7 +411,9 @@
     p.wires = arr(d.wires).map(w => Object.assign(newWire(p, { ref: "x" }), w, {
       ref: str(w.ref), cable: cab.has(w.cable) ? w.cable : null, a: end(w.a), b: end(w.b)
     }));
-    p.callouts = arr(d.callouts).map(c => newCallout(c.x || 0, c.y || 0, c));
+    p.callouts = arr(d.callouts).map(c => Object.assign(newCallout(c.x || 0, c.y || 0, c), sizeOf(c, "m")));
+    const bk = d.blk || {};
+    p.blk = { wires: sizeOf(bk.wires, "s"), bom: sizeOf(bk.bom, "s"), notes: sizeOf(bk.notes, "m") };
     const ends = ["a", "b"];
     p.ties = arr(d.ties).filter(t => t && t.a && t.b && ends.includes(t.a.end)).map(t => ({
       id: str(t.id) || uid(), a: { cable: str(t.a.cable), end: t.a.end },
@@ -603,7 +672,7 @@
   Object.assign(CD, {
     FORMAT, VERSION, uid, today, num, str,
     blankProject, normalize, newConn, setPinCount, reorderPins, removePins, addPins, spaceBoardPins, boardPins,
-    addTie, tiesOf, pruneTies, newTable, normTable, parseGrid, shieldText, tieTargetText, insertBoard, partFromConn, normPart, connFromPart, newCable, newWire, newGroup, newMark, newCallout, cablePreset, nextWireNo,
+    addTie, tiesOf, pruneTies, newTable, normTable, parseGrid, scaleK, shieldText, tieTargetText, insertBoard, partFromConn, normPart, connFromPart, partFromCable, cableFromPart, partFromWire, applyWirePart, wireProfile, newCable, newWire, newGroup, newMark, newCallout, cablePreset, nextWireNo,
     byId, libOf, groupOf, conductors, wireRef, endText, sigOf, isDrain, colorText, gaugeText,
     UNIT, fmtLen, fmtTol, wireLen, WIRE_COLS, wireRows, BOM_COLS, bom, bomCells, checks,
     csvCell, wireCsv, bomCsv, connectCable, example

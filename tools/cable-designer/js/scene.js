@@ -67,38 +67,39 @@
 
   // ---------- table ----------
   // cols: [{h, min, max, align}]; rows: arrays of strings. Returns {w, h}.
+  // opt.f scales the whole table: text, row heights, padding and column limits.
   function table(pen, x, y, title, cols, rows, opt) {
     opt = opt || {};
-    const S = opt.size || 5.8, HS = Math.max(5.2, S - 0.6), LH = S + 1.6, PADX = 3;
+    const f = opt.f || 1, S = 5.8 * f, HS = 5.2 * f, LH = S + 1.6 * f, PADX = 3 * f;
     const ax = (c, cx, w) => c.align === "right" ? cx + w - PADX : c.align === "center" ? cx + w / 2 : cx + PADX;
     const an = c => c.align === "right" ? "end" : c.align === "center" ? "middle" : "start";
     const widths = cols.map((c, i) => {
       let w = tw(c.h.toUpperCase(), HS, true);
       rows.forEach(r => { w = Math.max(w, tw(r[i], S)); });
-      return Math.max(c.min || 14, Math.min(c.max || 120, w + PADX * 2));
+      return Math.max((c.min || 14) * f, Math.min((c.max || 120) * f, w + PADX * 2));
     });
     const W = widths.reduce((a, b) => a + b, 0);
     const cells = rows.map(r => r.map((v, i) => wrap(v, widths[i] - PADX * 2, S)));
-    const rh = cells.map(r => Math.max(1, ...r.map(l => l.length)) * LH + 3);
-    const TH = title ? 11 : 0, HH = 10;
+    const rh = cells.map(r => Math.max(1, ...r.map(l => l.length)) * LH + 3 * f);
+    const TH = title ? 11 * f : 0, HH = 10 * f;
     const H = TH + HH + rh.reduce((a, b) => a + b, 0);
     pen.rect(x, y, W, H, { f: PAPER, lw: 0.8 });
     let cy = y;
     if (title) {
-      pen.text(x + W / 2, cy + 8, title, { size: 7, bold: true, anchor: "middle" });
+      pen.text(x + W / 2, cy + 8 * f, title, { size: 7 * f, bold: true, anchor: "middle" });
       cy += TH; pen.line(x, cy, x + W, cy, { lw: 0.6 });
     }
     pen.rect(x, cy, W, HH, { s: null, f: HEAD });
     let cx = x;
     cols.forEach((c, i) => {
-      pen.text(ax(c, cx, widths[i]), cy + 7, c.h.toUpperCase(), { size: HS, bold: true, anchor: an(c) });
+      pen.text(ax(c, cx, widths[i]), cy + 7 * f, c.h.toUpperCase(), { size: HS, bold: true, anchor: an(c) });
       cx += widths[i];
     });
     cy += HH; pen.line(x, cy, x + W, cy, { lw: 0.6 });
     cells.forEach((r, ri) => {
       cx = x;
       r.forEach((lines, i) => {
-        lines.forEach((l, k) => pen.text(ax(cols[i], cx, widths[i]), cy + 2 + S + k * LH, l, { size: S, anchor: an(cols[i]), bold: !!cols[i].bold }));
+        lines.forEach((l, k) => pen.text(ax(cols[i], cx, widths[i]), cy + 2 * f + S + k * LH, l, { size: S, anchor: an(cols[i]), bold: !!cols[i].bold }));
         cx += widths[i];
       });
       cy += rh[ri];
@@ -324,11 +325,15 @@
     const rows = p.history.length ? p.history.map(r => [r.rev, r.eco, r.desc, r.date, r.by]) : [["", "", "", "", ""]];
     return Object.assign({ x: R - TBW, y: T }, table(pen, R - TBW, T, "REVISIONS", cols, rows, { size: 5.8 }));
   }
-  function notesBlock(p) {
+  function notesBlock(p, f) {
     const lines = [];
-    p.notes.forEach((n, i) => wrap(n.text, 340, 6.4).forEach((l, k) => lines.push({ n: k ? "" : (i + 1) + ".", l })));
+    p.notes.forEach((n, i) => wrap(n.text, 340 * f, 6.4 * f).forEach((l, k) => lines.push({ n: k ? "" : (i + 1) + ".", l })));
     return lines;
   }
+  // Text size: Small / Medium / Large baseline times a free scale k (corner handle). def = the item's
+  // own default size, at which it draws exactly as before.
+  const SIZE_PT = { s: 5.8, m: 7, l: 9 };
+  function fac(o, def) { return (SIZE_PT[o && o.size] || SIZE_PT[def]) / SIZE_PT[def] * (o && o.k > 0 ? o.k : 1); }
 
   const WIRE_TCOLS = [{ h: "Wire", bold: true, max: 50 }, { h: "Cable", max: 40 }, { h: "Size", max: 50 }, { h: "Color", max: 40 }, { h: "Length", max: 70 }, { h: "From", max: 60 }, { h: "To", max: 60 }, { h: "Signal", max: 80 }, { h: "Twist / shield", max: 70 }, { h: "Note", max: 120 }];
   const BOM_TCOLS = [{ h: "Item", min: 20, max: 24, bold: true }, { h: "Qty", align: "right", max: 50 }, { h: "Unit", max: 26 }, { h: "Part No.", max: 80 }, { h: "Mfr", max: 80 }, { h: "Mfr Part No.", max: 100 }, { h: "Description", max: 170 }, { h: "Ref Des", max: 90 }];
@@ -608,20 +613,21 @@
   function drawCallout(pen, k) {
     pen.begin("k:" + k.id, "callout");
     let box;
+    const f = fac(k, "m");
     if (k.kind === "flag") {
-      const s = 15;
+      const s = 15 * f;
       pen.poly([k.x, k.y - s * 0.62, k.x + s * 0.58, k.y + s * 0.38, k.x - s * 0.58, k.y + s * 0.38], { close: true, f: PAPER, lw: 0.9 });
-      pen.text(k.x, k.y + 3.4, k.text || "?", { size: 6.8, bold: true, anchor: "middle" });
-      box = { x: k.x - 10, y: k.y - 11, w: 20, h: 18 };
+      pen.text(k.x, k.y + 3.4 * f, k.text || "?", { size: 6.8 * f, bold: true, anchor: "middle" });
+      box = { x: k.x - 10 * f, y: k.y - 11 * f, w: 20 * f, h: 18 * f };
     } else if (k.kind === "balloon") {
-      pen.circle(k.x, k.y, 7.5, { f: PAPER, lw: 0.9 });
-      pen.text(k.x, k.y + 2.4, k.text || "?", { size: 6.8, bold: true, anchor: "middle" });
-      box = { x: k.x - 9, y: k.y - 9, w: 18, h: 18 };
+      pen.circle(k.x, k.y, 7.5 * f, { f: PAPER, lw: 0.9 });
+      pen.text(k.x, k.y + 2.4 * f, k.text || "?", { size: 6.8 * f, bold: true, anchor: "middle" });
+      box = { x: k.x - 9 * f, y: k.y - 9 * f, w: 18 * f, h: 18 * f };
     } else {
-      const lines = wrap(k.text || "Note", 220, 7);
-      const w = Math.max(...lines.map(l => tw(l, 7))) + 8;
-      lines.forEach((l, i) => pen.text(k.x + 4, k.y + 9 + i * 8.6, l, { size: 7 }));
-      box = { x: k.x, y: k.y, w, h: lines.length * 8.6 + 5 };
+      const lines = wrap(k.text || "Note", 220 * f, 7 * f);
+      const w = Math.max(...lines.map(l => tw(l, 7 * f))) + 8 * f;
+      lines.forEach((l, i) => pen.text(k.x + 4 * f, k.y + (9 + i * 8.6) * f, l, { size: 7 * f }));
+      box = { x: k.x, y: k.y, w, h: (lines.length * 8.6 + 5) * f };
     }
     if (k.lx != null && k.ly != null) {
       const cx = box.x + box.w / 2, cy = box.y + box.h / 2;
@@ -640,7 +646,7 @@
   const customRows = t => t.rows.length ? t.rows : [t.cols.map(() => "")];
   function drawCustomTable(pen, t, x, y) {
     pen.begin("tbl:" + t.id, "table");
-    const d = table(pen, x, y, t.title ? t.title.toUpperCase() : "", customCols(t), customRows(t), { size: t.size === "m" ? 7 : 5.8 });
+    const d = table(pen, x, y, t.title ? t.title.toUpperCase() : "", customCols(t), customRows(t), { f: fac(t, "s") });
     pen.g.box = { x, y, w: d.w, h: d.h };
     return d;
   }
@@ -671,15 +677,15 @@
         draw(x, y); x += w + 20; rowH = Math.max(rowH, h);
       };
       if (m.tables === "2" && m.showWires) {
-        const t = wireTbl(), d = measureTable("WIRE LIST", t.cols, t.rows);
-        flow(d.w, d.h, (xx, yy) => { pen.begin("blk:wires", "table"); table(pen, xx, yy, "WIRE LIST", t.cols, t.rows); pen.g.box = { x: xx, y: yy, w: d.w, h: d.h }; });
+        const t = wireTbl(), tf = { f: fac(p.blk && p.blk.wires, "s") }, d = measureTable("WIRE LIST", t.cols, t.rows, tf);
+        flow(d.w, d.h, (xx, yy) => { pen.begin("blk:wires", "table"); table(pen, xx, yy, "WIRE LIST", t.cols, t.rows, tf); pen.g.box = { x: xx, y: yy, w: d.w, h: d.h }; });
       }
       if (m.tables === "2" && m.showBom) {
-        const t = bomTbl(), d = measureTable("BILL OF MATERIALS", t.cols, t.rows);
-        flow(d.w, d.h, (xx, yy) => { pen.begin("blk:bom", "table"); table(pen, xx, yy, "BILL OF MATERIALS", t.cols, t.rows); pen.g.box = { x: xx, y: yy, w: d.w, h: d.h }; });
+        const t = bomTbl(), tf = { f: fac(p.blk && p.blk.bom, "s") }, d = measureTable("BILL OF MATERIALS", t.cols, t.rows, tf);
+        flow(d.w, d.h, (xx, yy) => { pen.begin("blk:bom", "table"); table(pen, xx, yy, "BILL OF MATERIALS", t.cols, t.rows, tf); pen.g.box = { x: xx, y: yy, w: d.w, h: d.h }; });
       }
       (p.tables || []).filter(t => t.sheet === 2).forEach(t => {
-        const d = measureTable(t.title ? t.title.toUpperCase() : "", customCols(t), customRows(t), { size: t.size === "m" ? 7 : 5.8 });
+        const d = measureTable(t.title ? t.title.toUpperCase() : "", customCols(t), customRows(t), { f: fac(t, "s") });
         flow(d.w, d.h, (xx, yy) => drawCustomTable(pen, t, xx, yy));
       });
       return out;
@@ -770,27 +776,27 @@
 
     // notes and tables
     if (p.notes.length) {
-      const lines = notesBlock(p), h = lines.length * 8.2 + 16;
+      const f = fac(p.blk && p.blk.notes, "m"), lines = notesBlock(p, f), h = (lines.length * 8.2 + 16) * f, bw = 368 * f;
       const pos = p.pos.notes || { x: fr.L + 10, y: fr.B - h - 10 };
       pen.begin("blk:notes", "table");
-      pen.rect(pos.x - 4, pos.y - 2, 368, h + 2, { s: null, f: PAPER });
-      pen.text(pos.x, pos.y + 8, "NOTES:", { size: 7.5, bold: true });
-      lines.forEach((l, i) => { pen.text(pos.x + 14, pos.y + 18 + i * 8.2, l.n, { size: 6.4, anchor: "end" }); pen.text(pos.x + 18, pos.y + 18 + i * 8.2, l.l, { size: 6.4 }); });
-      pen.g.box = { x: pos.x - 4, y: pos.y - 2, w: 368, h: h + 2 };
+      pen.rect(pos.x - 4, pos.y - 2, bw, h + 2, { s: null, f: PAPER });
+      pen.text(pos.x, pos.y + 8 * f, "NOTES:", { size: 7.5 * f, bold: true });
+      lines.forEach((l, i) => { const ly = pos.y + (18 + i * 8.2) * f; pen.text(pos.x + 14 * f, ly, l.n, { size: 6.4 * f, anchor: "end" }); pen.text(pos.x + 18 * f, ly, l.l, { size: 6.4 * f }); });
+      pen.g.box = { x: pos.x - 4, y: pos.y - 2, w: bw, h: h + 2 };
     }
     if (m.tables !== "2") {
       if (m.showBom) {
-        const t = bomTbl(), d = measureTable("BILL OF MATERIALS", t.cols, t.rows);
+        const t = bomTbl(), tf = { f: fac(p.blk && p.blk.bom, "s") }, d = measureTable("BILL OF MATERIALS", t.cols, t.rows, tf);
         const pos = p.pos.bom || { x: fr.R - d.w, y: tb.y - d.h - 10 };
         pen.begin("blk:bom", "table");
-        table(pen, pos.x, pos.y, "BILL OF MATERIALS", t.cols, t.rows);
+        table(pen, pos.x, pos.y, "BILL OF MATERIALS", t.cols, t.rows, tf);
         pen.g.box = { x: pos.x, y: pos.y, w: d.w, h: d.h };
       }
       if (m.showWires) {
-        const t = wireTbl(), d = measureTable("WIRE LIST", t.cols, t.rows);
+        const t = wireTbl(), tf = { f: fac(p.blk && p.blk.wires, "s") }, d = measureTable("WIRE LIST", t.cols, t.rows, tf);
         const pos = p.pos.wires || { x: fr.L + 10, y: fr.T + 10 };
         pen.begin("blk:wires", "table");
-        table(pen, pos.x, pos.y, "WIRE LIST", t.cols, t.rows);
+        table(pen, pos.x, pos.y, "WIRE LIST", t.cols, t.rows, tf);
         pen.g.box = { x: pos.x, y: pos.y, w: d.w, h: d.h };
       }
     }
@@ -808,5 +814,5 @@
     return isFinite(x0) ? { x: x0, y: y0, w: x1 - x0, h: y1 - y0 } : null;
   }
 
-  Object.assign(CD, { boardMargins, boardFit, scene, sheetsOf, contentBox, textWidth: tw, wrapText: wrap, FONT });
+  Object.assign(CD, { SIZE_PT, sizeFactor: fac, boardMargins, boardFit, scene, sheetsOf, contentBox, textWidth: tw, wrapText: wrap, FONT });
 })(typeof window !== "undefined" ? window : globalThis);
