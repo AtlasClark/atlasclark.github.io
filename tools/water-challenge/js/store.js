@@ -6,7 +6,12 @@
    - JSON in UTF-16 LE with BOM.
    - Sidecar "<file>.lock" files, stolen after LOCK_STALE_MS.
    - Read-merge-write inside the lock, so a stale view never paints over a pour.
-   - Fields this build does not know are kept, so a newer build's data survives. */
+   - Fields this build does not know are kept, so a newer build's data survives.
+
+   Cloud (rev 1.38.0): signed in with an access code, the same files live in the Worker
+   (cloud.js, set with setCloud). Each function below then uses that instead of the
+   folder: a save merges onto the cloud's copy and is sent with the version it merged
+   onto (no lock files), and the Worker takes the evening backup itself. */
 
 import * as C from "./config.js";
 import { S, dataChanged, currentGoalFor, currentGoal, currentAnnualGoal, currentIdleMax,
@@ -15,9 +20,13 @@ import { S, dataChanged, currentGoalFor, currentGoal, currentAnnualGoal, current
 import { todayKey, dateKey, localStamp, parseKey, has, shiftKey } from "./util.js";
 
 export let dir = null;          /* FileSystemDirectoryHandle of the data folder */
+export let cloud = null;        /* cloud.js, while signed in with an access code */
 export const diag = { trail: [], lastError: "", permission: "", writes: 0, lockSteals: 0, lastBackup: "" };
 
-export function setDir(h) { dir = h; }
+export function setDir(h) { dir = h; if (h) cloud = null; }
+export function setCloud(c) { cloud = c; if (c) dir = null; }
+export const online = () => !!(dir || cloud);
+export const sourceName = () => cloud ? "cloud" : dir ? dir.name : "";
 
 function note(line) {
   diag.trail.push(new Date().toTimeString().slice(0, 8) + "  " + line);
@@ -88,6 +97,11 @@ async function fileOrNull(name, d = dir) {
   try { return await d.getFileHandle(name); } catch { return null; }
 }
 async function readText(name) {
+  if (cloud) {
+    const t = cloud.read(name);
+    if (t === null) throw new DOMException(name, "NotFoundError");
+    return t;
+  }
   const fh = await dir.getFileHandle(name);
   return decodeBytes(await (await fh.getFile()).arrayBuffer());
 }
@@ -140,6 +154,22 @@ async function withLock(fileName, fn) {
     } catch { }
   }
   return true;
+}
+
+/* Read, merge, write one file. build(disk) gets the file as it is now (null when there is
+   none) and returns the text to write; it may throw to stop the write. Folder: inside the
+   file's lock. Cloud: sent with the version it merged onto, merged again on a clash.
+   False when the file stayed busy. */
+async function updateFile(name, build) {
+  if (cloud) return cloud.update(name, build);
+  return withLock(name, async () => {
+    let disk = null;
+    try { disk = JSON.parse(await readText(name)); }
+    catch (e) {                                         /* missing is new; anything else must not be written over */
+      if (!e || e.name !== "NotFoundError") throw new Error("could not read it (" + (e && e.message || e) + "), so nothing was written");
+    }
+    await writeText(name, build(disk));
+  });
 }
 
 /* ---- names -------------------------------------------------------------- */
@@ -306,21 +336,19 @@ let spendCheck = null;
 export function setSpendCheck(fn) { spendCheck = fn; }
 
 export async function saveParticipant(p, removedIds, removedPets, revivedPets, clearRoll) {
-  if (!dir) return false;
+  if (!online()) return false;
   const name = participantFileName(p.name);
   try {
-    return await withLock(name, async () => {
-      let disk = null;
-      try { disk = JSON.parse(await readText(name)); }
-      catch (e) {                                       /* missing is new; anything else must not be written over */
-        if (!e || e.name !== "NotFoundError") throw new Error("could not read it (" + (e && e.message || e) + "), so nothing was written");
-      }
-      const merged = mergeWithDisk(p, disk, removedIds, removedPets, revivedPets, clearRoll);
+    let merged = null;
+    const ok = await updateFile(name, disk => {
+      merged = mergeWithDisk(p, disk, removedIds, removedPets, revivedPets, clearRoll);
       if (spendCheck) {
         const why = spendCheck(Object.assign({}, p, merged), disk);
         if (why) throw new Error(why + ", so nothing was written");
       }
-      await writeText(name, toJson(merged));
+      return toJson(merged);
+    });
+    if (ok) {
       p.entries = merged.entries;
       p.pets = merged.pets;
       p.graves = merged.graves;
@@ -333,7 +361,8 @@ export async function saveParticipant(p, removedIds, removedPets, revivedPets, c
       p.rerollDay = merged.rerollDay;
       for (const f of ["petRollDay", "equippedPet", "rollKind", "rollWasNew", "lastRoll", "prevRoll", "graveDay", "deadKind"]) p[f] = merged[f];
       dataChanged();
-    });
+    } else note("busy: " + name);
+    return ok;
   } catch (e) {
     diag.lastError = "save " + name + ": " + (e.name || "") + " " + (e.message || e);
     note(diag.lastError);
@@ -347,7 +376,8 @@ export async function saveParticipant(p, removedIds, removedPets, revivedPets, c
    S.settingsOk false, which stops goal stamping until it reads again: stamping with
    default settings would write wrong goals into every file. */
 export async function loadSettings() {
-  if (!dir) { S.settings = defaultSettings(); return; }
+  if (!online()) { S.settings = defaultSettings(); return; }
+  if (cloud) await cloud.sync(false);
   const keep = why => {
     S.settingsOk = false;
     if (!S.settings) S.settings = defaultSettings();
@@ -379,8 +409,9 @@ export async function loadSettings() {
     if (Number(o.legacyGoalOz) > 0) s.legacyGoalOz = Number(o.legacyGoalOz);
     if (typeof o.title === "string") s.title = o.title.trim().slice(0, C.TITLE_MAX);
     if (typeof o.tagline === "string") s.tagline = o.tagline.trim().slice(0, C.TAGLINE_MAX);
-    if (o.minGoalOz === undefined || o.goalFactor === undefined || o.minGoalDays === undefined ||
-        o.dropTopDay === undefined || o.goalWindowDays === undefined || o.legacyFlatUntil === undefined) {
+    if ((!cloud || cloud.isAdmin()) &&                 /* in the cloud only an admin may write settings */
+        (o.minGoalOz === undefined || o.goalFactor === undefined || o.minGoalDays === undefined ||
+         o.dropTopDay === undefined || o.goalWindowDays === undefined || o.legacyFlatUntil === undefined)) {
       await saveSettings();
     }
   } catch (e) { note("settings unreadable: " + (e.message || e)); }
@@ -406,6 +437,7 @@ export async function saveSettings() {
     ',\n  "updatedBy": ' + q(S.me) +
     ',\n  "updatedAt": ' + q(localStamp(new Date())) + '\n}\n';
   try {
+    if (cloud) return await cloud.update(C.SETTINGS_FILE, () => body);
     return await withLock(C.SETTINGS_FILE, () => writeText(C.SETTINGS_FILE, body));
   } catch (e) {
     diag.lastError = "save settings: " + (e.message || e);
@@ -415,19 +447,30 @@ export async function saveSettings() {
 }
 
 /* ---- loading ------------------------------------------------------------ */
+/* Every top-level .json of the folder or the cloud, as [name, read()]. */
+async function* jsonFiles() {
+  if (cloud) { for (const [name, text] of cloud.entries()) yield [name, async () => text]; return; }
+  for await (const [name, h] of dir.entries()) {
+    if (h.kind === "file" && name.toLowerCase().endsWith(".json")) yield [name, async () => decodeBytes(await (await h.getFile()).arrayBuffer())];
+  }
+}
+
 export async function loadAll() {
   const list = [], prev = {};
-  S.newerRevSeen = false; S.loadRecovered = 0; S.loadFailed = 0;
-  if (!dir) return list;
+  S.newerRevSeen = false; S.loadRecovered = 0; S.loadFailed = 0; S.moved = null;
+  if (!online()) return list;
   /* A file caught mid-write falls back to the last good copy, so nobody drops out
      of the day index for a poll and hands their wins to second place. */
   for (const p of S.participants) prev[participantFileName(p.name)] = p;
 
-  for await (const [name, h] of dir.entries()) {
-    if (h.kind !== "file") continue;
-    if (!name.toLowerCase().endsWith(".json") || name.charAt(0) === "_") continue;
+  for await (const [name, readRaw] of jsonFiles()) {
+    if (name === C.MOVED_FILE && !cloud) {            /* this folder was moved to the cloud */
+      try { S.moved = JSON.parse(await readRaw()) || {}; } catch { S.moved = {}; }
+      continue;
+    }
+    if (name.charAt(0) === "_") continue;
     try {
-      const raw = decodeBytes(await (await h.getFile()).arrayBuffer());
+      const raw = await readRaw();
       if (raw === "") throw new Error("empty file");
       const o = JSON.parse(raw);
       if (!o || !o.name) throw new Error("no name field");
@@ -469,6 +512,7 @@ export async function loadAll() {
 
 /* Cheap change detector: name + size + mtime of every file. */
 export async function folderSignature() {
+  if (cloud) return cloud.signature();
   if (!dir) return "offline";
   let sig = "";
   for await (const [name, h] of dir.entries()) {
@@ -483,6 +527,12 @@ export async function folderSignature() {
 /* { sig } with obj when the folder has a readable FOLDER_PETS_FILE, error when it
    is there but not JSON. sig changes whenever the file does. */
 export async function readFolderPets() {
+  if (cloud) {
+    const t = cloud.read(C.FOLDER_PETS_FILE);
+    if (t === null) return { sig: "" };
+    const sig = "v" + cloud.version(C.FOLDER_PETS_FILE);
+    try { return { sig, obj: JSON.parse(t) }; } catch (e) { return { sig, error: e.message || String(e) }; }
+  }
   const h = dir && await fileOrNull(C.FOLDER_PETS_FILE);
   if (!h) return { sig: "" };
   const f = await h.getFile(), sig = f.size + "|" + f.lastModified;
@@ -492,6 +542,7 @@ export async function readFolderPets() {
 
 /* ---- roster files ------------------------------------------------------- */
 export async function participantExists(name) {
+  if (cloud) { await cloud.sync(true); return cloud.read(participantFileName(name)) !== null; }
   return !!(await fileOrNull(participantFileName(name)));
 }
 
@@ -499,6 +550,7 @@ export async function participantExists(name) {
    is taken out of the data folder. */
 export async function moveToRemoved(name) {
   const src = participantFileName(name);
+  if (cloud) { await cloud.remove(src); return src; }      /* the Worker keeps it in its removed list */
   const sub = await dir.getDirectoryHandle(C.REMOVED_SUBDIR, { create: true });
   const destName = safeFileName(name) + "_" + todayKey() + ".json";
   const fh = await dir.getFileHandle(src);
@@ -521,6 +573,7 @@ export async function moveToRemoved(name) {
 export const backupSlot = (now = new Date()) => now.getHours() >= C.BACKUP_HOUR ? dateKey(now) : shiftKey(dateKey(now), -1);
 
 export async function backupIfDue(key) {
+  if (cloud) { diag.lastBackup = cloud.cdiag.lastBackup; return 0; }   /* the Worker takes it each evening */
   if (!dir) return 0;
   const root = await dir.getDirectoryHandle(C.BACKUP_SUBDIR, { create: true });
   let day = null;
@@ -556,6 +609,7 @@ export async function backupIfDue(key) {
 async function liveDir() { return dir.getDirectoryHandle(C.LIVE_SUBDIR, { create: true }); }
 
 export async function writeLive(ev) {
+  if (cloud) return cloud.sendLive(ev);
   if (!dir) return false;
   try {
     const d = await liveDir();
@@ -582,6 +636,7 @@ async function pruneLive(d) {
 /* Events newer than sinceMs (writer's clock, from the file name), oldest first.
    seen holds liveFileId()s of events already handled. */
 export async function readLive(sinceMs, seen) {
+  if (cloud) return cloud.takeLive(sinceMs, seen);
   if (!dir) return [];
   const out = [];
   try {
@@ -626,7 +681,7 @@ export function oldWriter(o) {
 /* Adds today's sightings to the log in _alerts/ and reads the whole log back into
    S.htaLog. One entry per file and write time, so a page that sees it again adds nothing. */
 export async function noteHtaWriters() {
-  if (!dir) { S.htaLog = []; return; }
+  if (!dir) { S.htaLog = []; return; }               /* the cloud: no HTA can reach it */
   let sub = null, log = [];
   try { sub = await dir.getDirectoryHandle(C.ALERTS_SUBDIR, { create: S.htaWriters.length > 0 }); } catch { sub = null; }
   if (!sub) { S.htaLog = []; return; }
@@ -643,4 +698,20 @@ export async function noteHtaWriters() {
     catch (e) { note("could not log the HTA write: " + (e.message || e)); }
   }
   S.htaLog = log;
+}
+
+/* ---- moving a folder to the cloud ---------------------------------------------- */
+/* Every top-level .json of a folder as { name, body } text, for the cloud import. */
+export async function folderFiles(h) {
+  const out = [];
+  for await (const [name, e] of h.entries()) {
+    if (e.kind !== "file" || !name.toLowerCase().endsWith(".json") || name === C.MOVED_FILE) continue;
+    out.push({ name, body: decodeBytes(await (await e.getFile()).arrayBuffer()) });
+  }
+  return out.sort((a, b) => a.name < b.name ? -1 : 1);
+}
+
+/* Marks a folder as moved: its pages stop writing to it and ask for a code. */
+export async function markMoved(h, info) {
+  await writeText(C.MOVED_FILE, JSON.stringify(Object.assign({ movedAt: localStamp(new Date()), by: S.me || "" }, info), null, 1), h);
 }

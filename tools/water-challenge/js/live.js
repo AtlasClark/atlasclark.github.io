@@ -1,6 +1,7 @@
 /* Live events between open pages. There is no server: the share is the only thing
    every browser has in common, so an event is a small file in _live/ and every open
-   page lists that folder once a second (LIVE_POLL_MS) while it is visible. Others see
+   page lists that folder once a second (LIVE_POLL_MS) while it is visible (in the cloud,
+   events come over the socket and the same tick reads them from memory). Others see
    an event about a second after it happens; an event older than LIVE_SHOW_MS is
    handed over as "late" so its handler can skip the animation.
    Types: "drop" (Plinko), "pour" (someone logged water), "unlock" (an unlock card). */
@@ -23,7 +24,7 @@ export function emit(type, payload) {
 }
 
 async function tick() {
-  if (document.hidden || !store.dir) return;
+  if (document.hidden || !store.online()) return;
   const evs = await store.readLive(since, seen);
   for (const ev of evs) {
     seen.add(store.liveFileId(ev.id));

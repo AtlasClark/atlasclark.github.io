@@ -1,8 +1,8 @@
 /* Water Challenge (web) - constants: rules, tunables and the on-disk contract
    (FORMAT_REV, UTF-16 LE + BOM JSON, unknown fields kept). */
 
-export const REV         = "rev 1.37.1";
-export const APP_VERSION = "web 1.37.1";   /* stamped as writerVersion */
+export const REV         = "rev 1.38.0";
+export const APP_VERSION = "web 1.38.0";   /* stamped as writerVersion */
 /* Every file is written at FORMAT_REV. A file stamped higher came from a newer
    build, and the page asks for a reload. */
 export const FORMAT_REV    = 22;
@@ -68,11 +68,28 @@ export const BACKUP_KEEP_DAYS = 14;
    (filed under the evening it belongs to, before anything is written that day). */
 export const BACKUP_HOUR      = 18;
 
+/* ---- cloud (rev 1.38.0) ----
+   The challenge held online by the Worker in cloud/ (one Durable Object), reached with
+   an access code instead of a folder (js/cloud.js). CLOUD_URL is the Worker's address;
+   while it is blank the gate asks for one. */
+export const CLOUD_URL        = "";
+export const CLOUD_TIMEOUT_MS = 20000;
+export const CLOUD_TRIES      = 6;          /* merge-and-send rounds before a save gives up */
+export const CLOUD_PING_MS    = 25000;      /* keeps the socket open through proxies */
+export const CLOUD_RETRY_MS   = [1000, 2000, 5000, 10000, 30000];
+export const CLOUD_LIVE_FALLBACK_MS = 10000; /* live events are asked for this often while the socket is down */
+export const CLOUD_POLL_FAILS = 3;          /* polls that may fail in a row before the page shows the gate */
+export const IMPORT_CHUNK     = 40;
+export const BUNDLE_FORMAT    = "awc-cloud-backup";
+/* Written into a data folder once it has been imported to the cloud: folder pages stop
+   writing to it and ask for an access code. */
+export const MOVED_FILE       = "_moved.json";
+
 /* ---- updates ----
    Every file the page is made of. When a new version is out, these are re-fetched
    past the browser cache before reloading, so old and new modules never mix. */
 export const SITE_FILES = ["./", "app.css",
-  "js/app.js", "js/art.js", "js/bottle.js", "js/config.js", "js/glass.js", "js/guard.js", "js/live.js", "js/model.js", "js/hydration.js", "js/hydfx.js", "js/cosmetics.js", "js/styleart.js", "js/styleui.js", "js/pen1art.js", "js/pen2art.js", "js/pen3art.js", "js/propart.js", "js/petdefs.js",
+  "js/app.js", "js/art.js", "js/bottle.js", "js/cloud.js", "js/cloudui.js", "js/config.js", "js/glass.js", "js/guard.js", "js/live.js", "js/model.js", "js/hydration.js", "js/hydfx.js", "js/cosmetics.js", "js/styleart.js", "js/styleui.js", "js/pen1art.js", "js/pen2art.js", "js/pen3art.js", "js/propart.js", "js/petdefs.js",
   "js/pets.js", "js/plinko.js", "js/radial.js", "js/reveal.js", "js/shop.js", "js/shopui.js", "js/store.js", "js/ui.js", "js/util.js", "pets/pets.json"];
 export const VERSION_CHECK_MS = 300000;
 

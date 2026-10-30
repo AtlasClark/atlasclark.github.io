@@ -11,7 +11,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; worker-src 'none'; frame-src 'none'; form-action 'none'; base-uri 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self' https://*.workers.dev; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; worker-src 'none'; frame-src 'none'; form-action 'none'; base-uri 'none'">
 <meta name="referrer" content="no-referrer">
 <meta name="robots" content="noindex">
 <title>Pet Studio</title>
@@ -27,6 +27,7 @@
     <span id="saveState" class="save-state"></span>
     <span id="saveTarget" class="save-target"></span>
     <button type="button" id="folderBtn" class="btn ghost" title="Choose where Save writes: the repo's pets folder, or a challenge data folder for testing">Folder&hellip;</button>
+    <button type="button" id="cloudBtn" class="btn ghost" hidden title="Save to the challenge in the cloud (signed in on the challenge page with an access code that has the pet-art right)">Cloud</button>
     <button type="button" id="openBtn" class="btn ghost" title="Load a pets.json file">Open&hellip;</button>
     <button type="button" id="exportBtn" class="btn ghost" title="Download pets.json">Export</button>
     <button type="button" id="saveBtn" class="btn primary" title="Save (Ctrl+S)">Save to repo</button>

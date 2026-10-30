@@ -765,3 +765,27 @@ li.pour.armed .undo-x { opacity: 1; background: #c4434f; color: #fff; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
 }
+
+/* ---- cloud (rev 1.38.0): access-code gate, admin cards ---- */
+.gate-code { margin: 14px 0 2px; }
+.code-row { display: flex; gap: 8px; }
+.code-in { flex: 1; min-width: 0; font-family: var(--mono); font-size: 16px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+.code-in::placeholder { letter-spacing: .08em; color: var(--fainter); }
+.code-url { width: 100%; }
+#urlRow .field-label { margin-top: 12px; }
+#gateCodeHint { margin: 10px 0 0; }
+.not-admin .trash-button, .not-admin .newp { display: none !important; }
+.chk { display: inline-flex; align-items: center; gap: 6px; margin-top: 8px; font-size: 12.5px; font-weight: 700; color: var(--ink-2); cursor: pointer; }
+.chk input { accent-color: var(--accent); }
+.mini-list h5 { margin: 14px 0 2px; font-size: 11px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.mini-row { display: flex; align-items: center; gap: 6px; padding: 5px 0; border-bottom: 1px solid var(--line); font-size: 12.5px; }
+.mini-row:last-child { border-bottom: 0; }
+.mini-row .rn { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 700; color: var(--ink-2); }
+.mini-row .rs { color: var(--faint); font-size: 11.5px; white-space: nowrap; }
+.mini-row .btn.small { margin-top: 0; }
+.code-out { margin-top: 12px; padding: 10px 12px; border-radius: 12px; background: var(--accent-soft); border: 1px dashed var(--chip-line); }
+.code-out code { display: inline-block; margin-right: 8px; padding: 2px 8px; font-size: 17px; font-weight: 800; letter-spacing: .1em; color: var(--accent-ink); background: var(--solid); user-select: all; }
+.code-out .hint { margin: 8px 0 0; }
+.mini-row { flex-wrap: wrap; row-gap: 2px; }
+.mini-row .rn { flex-basis: 100%; }
+.mini-row .rs { margin-left: auto; }

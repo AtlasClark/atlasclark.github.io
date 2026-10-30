@@ -1,11 +1,14 @@
 /* Boot, connection, actions and polling. Every write goes through serial(), so a
    poll can never interleave with a pour, and every change is followed by the same
-   reconcile pass (stamp finished days, settle today's pet events) before render. */
+   reconcile pass (stamp finished days, settle today's pet events) before render.
+   The data comes from the cloud (an access code, cloud.js) or a shared folder. */
 
 import * as C from "./config.js";
 import { S, dataChanged, findParticipant, knownUsers, matchUser, totalOn, metGoal, currentGoalFor, streaks, isActive,
          stampDayGoals, currentGoal, currentAnnualGoal, currentIdleMax, challengeStart, challengeEnd } from "./model.js";
 import * as store from "./store.js";
+import * as cloud from "./cloud.js";
+import { initCloudUi, applyRole, fillCloudCards } from "./cloudui.js";
 import { reconcilePets, equipPet } from "./pets.js";
 import { rollCardQueued } from "./reveal.js";
 import * as G from "./glass.js";
@@ -22,7 +25,7 @@ import { ui, render, setTab, setMsg, showBanner, tickMasks, relayout, forceRebui
          renderActivityNow, showUnlock, uiHooks, htaDismiss } from "./ui.js";
 import { $, esc, bus, todayKey, localStamp, fmt, fmtOz, trim, parseKey, shiftKey, clockStamp } from "./util.js";
 
-let lastSig = "", pollTimer = 0;
+let lastSig = "", pollTimer = 0, pollFails = 0;
 
 /* ---- bus wiring --------------------------------------------------------- */
 bus.msg = setMsg;
@@ -105,6 +108,7 @@ async function maybeBackup() {
 async function refresh() {
   await store.loadSettings();
   S.participants = await store.loadAll();
+  if (S.moved) { movedAway(); return; }             /* imported to the cloud: write nothing more here */
   try { await store.noteHtaWriters(); } catch (e) { store.diagNote("HTA log: " + (e.message || e)); }
   dataChanged();
   await syncFolderPets();
@@ -154,14 +158,17 @@ async function poll() {
       else { await maybeBackup(); await reconcile(); ui.lastSync = clockStamp(); safeRender(); }
     });
     showBanner("");
+    pollFails = 0;
   } catch (e) {
     store.diagNote("poll failed: " + (e.name || "") + " " + (e.message || e));
+    if (e && e.status === 401) return;               /* signedOut() has shown the gate */
+    if (store.cloud && ++pollFails < C.CLOUD_POLL_FAILS) { showBanner("Can't reach the cloud. Trying again..."); schedulePoll(); return; }
     ui.connected = false;
     render();
-    showGate("lost", e);
+    showGate(store.cloud ? "cloudlost" : "lost", e);
     return;
   }
-  schedulePoll();
+  if (ui.connected) schedulePoll();
 }
 
 /* ---- gate: choosing and reconnecting the data folder -------------------- */
@@ -171,43 +178,121 @@ function gateTrail() {
   $("gateDetails").hidden = !store.diag.trail.length;
 }
 
+/* Modes. Cloud: "code" (sign in), "bye" (the code stopped working), "cloudlost",
+   "account" (signed in: sign out). Folder: "pick", "reconnect", "lost", "moved" (the
+   folder was imported to the cloud). The access-code form is there in every mode but
+   cloudlost and account; the folder part folds away unless it is the matter in hand. */
 function showGate(mode, err) {
-  const g = $("gate"), name = store.dir ? store.dir.name : "data";
+  const g = $("gate"), name = esc(store.dir ? store.dir.name : "data"), folderApi = typeof window.showDirectoryPicker === "function";
+  const me = cloud.who();
   g.hidden = false;
   $("gateWarn").hidden = true;
   $("gateReconnect").hidden = true;
-  $("gatePick").hidden = false;
-  if (mode === "noapi") {
-    $("gateMsg").innerHTML = "This browser can't open shared folders. Use <b>Chrome</b> or <b>Edge</b>.";
-    $("gatePick").hidden = true;
-  } else if (mode === "reconnect") {
-    $("gateMsg").innerHTML = "Confirm access to the <b>" + name + "</b> folder.";
-    $("gateReconnect").textContent = "Reconnect to " + name;
-    $("gateReconnect").hidden = false;
-    $("gatePick").textContent = "Choose a different folder";
-  } else if (mode === "lost") {
-    $("gateMsg").innerHTML = "Lost the <b>" + name + "</b> folder. The share may be offline.";
-    $("gateReconnect").textContent = "Reconnect to " + name;
-    $("gateReconnect").hidden = false;
-    $("gatePick").textContent = "Choose a different folder";
-  } else {
-    $("gateMsg").innerHTML = "Pick the challenge's <b>data</b> folder (the one with <code>_settings.json</code>).";
-    $("gatePick").textContent = "Choose data folder";
-  }
-  if (err) { $("gateWarn").textContent = (err.name ? err.name + ": " : "") + (err.message || err); $("gateWarn").hidden = false; }
+  $("gatePick").hidden = !folderApi;
+  $("gatePick").textContent = store.dir ? "Choose a different folder" : "Choose data folder";
+  $("codeForm").hidden = mode === "cloudlost" || mode === "account";
+  $("gateCodeHint").hidden = $("codeForm").hidden;
+  $("urlRow").hidden = !!C.CLOUD_URL;
+  if (!$("urlIn").value && cloud.cdiag.url) $("urlIn").value = cloud.cdiag.url;
+  $("gateCloudActs").hidden = $("gateRetry").hidden = mode !== "cloudlost";
+  $("gateSignOut").hidden = !(mode === "cloudlost" || mode === "account");
+  $("gateFolder").hidden = mode === "cloudlost" || mode === "account";
+  if (!$("gateSignOut").hidden) $("gateCloudActs").hidden = false;
+  $("gateFolder").open = ["reconnect", "lost"].includes(mode) || (mode === "pick" && !C.CLOUD_URL);
+  $("gateTitle").textContent = mode === "account" ? "Your sign-in" : mode === "cloudlost" ? "Connection lost" : "Connect to the challenge";
+  const msg = {
+    code: "Sign in with your access code.",
+    bye: "That access code no longer works. Enter a new one.",
+    cloudlost: "Can't reach the cloud right now. Everything saved so far is safe in the cloud.",
+    account: me ? "Signed in to the cloud as <b>" + esc(me.user) + "</b>" + (me.glass ? " (glass: " + esc(me.glass) + ")" : "") + (me.admin ? ", admin." : ".") : "Signed in to the cloud.",
+    moved: "The <b>" + name + "</b> folder has moved online. Sign in with your access code.",
+    reconnect: "Confirm access to the <b>" + name + "</b> folder, or sign in with an access code.",
+    lost: "Lost the <b>" + name + "</b> folder. The share may be offline.",
+    pick: "Sign in with your access code, or use a shared data folder (the one with <code>_settings.json</code>)."
+  }[mode] || "Sign in with your access code.";
+  $("gateMsg").innerHTML = msg + (mode !== "cloudlost" && mode !== "account" && !folderApi ? ' <span class="dim">(Shared folders need Chrome or Edge.)</span>' : "");
+  if (mode === "reconnect" || mode === "lost") { $("gateReconnect").textContent = "Reconnect to " + (store.dir ? store.dir.name : "data"); $("gateReconnect").hidden = !folderApi; }
+  if (err) { $("gateWarn").textContent = (err.name && err.name !== "Error" ? err.name + ": " : "") + (err.message || err); $("gateWarn").hidden = false; }
   gateTrail();
+  if (!$("codeForm").hidden && !["reconnect", "lost"].includes(mode)) setTimeout(() => $("codeIn").focus(), 0);
+}
+
+/* ---- cloud: sign in, sign out ------------------------------------------- */
+function goOnline() {
+  $("gate").hidden = true;
+  ui.connected = true;
+  pollFails = 0;
+  applyRole();
+  forceRebuild();
+}
+
+async function connectCloud(c) {
+  const folderOn = ui.connected && !!store.dir;
+  clearTimeout(pollTimer);
+  ui.connected = false;
+  let me;
+  try { me = await cloud.start(c, { onChange: pollSoon, onBye: signedOut }); }
+  catch (e) { if (folderOn) { ui.connected = true; schedulePoll(); } throw e; }   /* a wrong code leaves the folder as it was */
+  store.setCloud(cloud);
+  backedUp = ""; lastSig = ""; petSig = "";
+  S.me = me.user; S.mine = me.glass || "";         /* the code says who this is */
+  goOnline();
+  await store.serial(refresh);
+  store.diagNote("signed in to the cloud as " + me.user + (me.admin ? " (admin)" : "") + ", " + S.participants.length + " people");
+  if (me.glass && !findParticipant(me.glass)) setMsg("Your code is for " + me.glass + "'s glass, which is not on the roster.", false);
+  schedulePoll();
+  startLive();
+}
+
+async function codeSignIn(e) {
+  e.preventDefault();
+  const code = cloud.normCode($("codeIn").value), url = C.CLOUD_URL || $("urlIn").value.trim();
+  $("gateWarn").hidden = true;
+  if (code.length < 10) { showGate("code", new Error("Enter the whole code: 12 letters and digits.")); return; }
+  if (!cloud.URL_RE.test(url.replace(/\/+$/, ""))) { showGate("code", new Error("Enter the cloud address (https://...workers.dev).")); return; }
+  $("codeGo").disabled = true;
+  try { await connectCloud({ url, code }); $("codeIn").value = ""; }
+  catch (err) { store.diagNote("sign-in failed: " + (err.message || err)); showGate("code", err); }
+  finally { $("codeGo").disabled = false; }
+}
+
+/* The Worker refused the code (revoked, or OWNER_CODE changed). */
+async function signedOut(why) {
+  if (!ui.connected && !store.cloud) return;
+  clearTimeout(pollTimer);
+  ui.connected = false;
+  await cloud.signOut();
+  store.setCloud(null);
+  store.diagNote("signed out: " + why);
+  render();
+  showGate("bye", new Error(why));
+}
+
+async function signOutHere() {
+  if (!(await askConfirm("Sign out of the cloud?", "This browser forgets your access code. You need it again to sign back in.", "Sign out"))) return;
+  await cloud.signOut();
+  location.reload();
+}
+
+/* The folder was imported to the cloud (MOVED_FILE): nothing more is written to it. */
+function movedAway() {
+  clearTimeout(pollTimer);
+  ui.connected = false;
+  store.diagNote("this folder has " + C.MOVED_FILE + ": it moved to the cloud");
+  showGate("moved");
 }
 
 async function connect(h) {
   if (h !== store.dir) { backedUp = ""; lastSig = ""; petSig = ""; }   /* another folder: back it up, read it, take its art */
+  if (store.cloud) { await cloud.signOut(); S.me = ""; S.mine = null; }   /* a folder replaces the cloud sign-in */
   store.setDir(h);
   if (window.FileSystemHandle && h instanceof window.FileSystemHandle) {
     try { await store.kvSet("dir", h); } catch (e) { store.diagNote("could not remember folder: " + e.message); }
   }
-  $("gate").hidden = true;
-  ui.connected = true;
-  forceRebuild();
+  if (!S.me) { try { S.me = (await store.kvGet("me")) || ""; const m = await store.kvGet("mine"); S.mine = typeof m === "string" ? m : null; } catch { } }
+  goOnline();
   await store.serial(refresh);
+  if (!ui.connected) return;                                /* the folder moved to the cloud */
   if (!S.me || S.mine === null) await askIdentity(true);   /* asked once; the roster is loaded by now */
   store.diagNote("connected to " + h.name + " (" + S.participants.length + " files)");
   schedulePoll();
@@ -466,13 +551,14 @@ async function addParticipant() {
 
 async function removeParticipant(name) {
   if (!guard()) return;
-  const ok = await askConfirm("Remove " + name + "?",
-    "Their file moves to " + C.REMOVED_SUBDIR + " and can be restored by hand.", "Remove");
+  const ok = await askConfirm("Remove " + name + "?", store.cloud
+    ? "They go to the removed list. Settings > Cloud data can bring them back."
+    : "Their file moves to " + C.REMOVED_SUBDIR + " and can be restored by hand.", "Remove");
   if (!ok) return;
   await store.serial(async () => {
     try {
       await store.moveToRemoved(name);
-      setMsg(name + " was moved to " + C.REMOVED_SUBDIR + ".", true);
+      setMsg(name + (store.cloud ? " was taken off the roster." : " was moved to " + C.REMOVED_SUBDIR + "."), true);
     } catch (e) {
       setMsg("Could not move " + name + "'s file: " + (e.message || e), false);
       return;
@@ -535,7 +621,7 @@ function rememberCards() {
   try { localStorage.setItem(SP_KEY, JSON.stringify(st)); } catch { }
 }
 function openSettings() {
-  fillSettings(); fillBottle(); restoreCards();
+  fillSettings(); fillBottle(); restoreCards(); fillCloudCards();
   $("settingsPanel").hidden = false; $("cog").setAttribute("aria-expanded", "true");
   ($("settingsPanel").querySelector(".sp-card[open] input") || $("spClose")).focus();
 }
@@ -545,6 +631,17 @@ function closeSettings() { $("settingsPanel").hidden = true; $("cog").setAttribu
 function wire() {
   $("gatePick").onclick = pickFolder;
   $("gateReconnect").onclick = reconnect;
+  $("codeForm").onsubmit = codeSignIn;
+  $("codeIn").addEventListener("input", () => { $("gateWarn").hidden = true; });
+  $("gateRetry").onclick = async () => {
+    $("gateRetry").disabled = true;
+    try { await connectCloud(cloud.config() || await cloud.loadCfg()); }
+    catch (e) { if (e.status !== 401) showGate("cloudlost", e); }
+    finally { $("gateRetry").disabled = false; }
+  };
+  $("gateSignOut").onclick = signOutHere;
+  window.addEventListener("hashchange", () => { if (/[#&]code=/.test(location.hash)) location.reload(); });   /* an invite link opened on this page */
+  initCloudUi({ askConfirm, refreshNow: () => store.serial(refresh) });
   const tab = name => { setTab(name); shopTabChanged(name === "shop"); };
   $("tab-today").onclick = () => tab("today");
   $("tab-history").onclick = () => tab("history");
@@ -566,9 +663,13 @@ function wire() {
   $("addP").onclick = addParticipant;
   $("quickPour").onclick = () => { if (S.mine) addWater(S.mine, ui.amount); };
   wireBottle();
-  $("sbMe").onclick = () => askIdentity(false);
+  $("sbMe").onclick = () => { if (store.cloud) { showGate("account"); $("gateClose").hidden = !ui.connected; } else askIdentity(false); };
   $("sbDiag").onclick = showDiag;
-  $("sbFolder").onclick = () => { if (ui.connected) showGate("reconnect"); else showGate(store.dir ? "reconnect" : "pick"); $("gateClose").hidden = !ui.connected; };
+  $("sbFolder").onclick = () => {
+    if (store.cloud) showGate(ui.connected ? "account" : "cloudlost");
+    else if (ui.connected) showGate("reconnect"); else showGate(store.dir ? "reconnect" : "pick");
+    $("gateClose").hidden = !ui.connected;
+  };
   $("gateClose").onclick = () => { $("gate").hidden = true; };
 
   wireRadial();
@@ -773,7 +874,18 @@ async function boot() {
 
   if (await checkVersion(true)) return;
   setInterval(() => { if (!document.hidden) checkVersion(false); }, C.VERSION_CHECK_MS);
-  if (typeof window.showDirectoryPicker !== "function") { showGate("noapi"); return; }
+  /* the cloud first: a saved code, or one from an invite link */
+  const cc = await cloud.loadCfg();
+  if (cc) {
+    try { await connectCloud(cc); return; }
+    catch (e) {
+      store.diagNote("cloud sign-in failed: " + (e.message || e));
+      if (e.status === 401 || e.status === 503 || cc.fresh) { if (!cc.fresh) await cloud.signOut(); showGate("code", e); }
+      else showGate("cloudlost", e);
+      return;
+    }
+  }
+  if (typeof window.showDirectoryPicker !== "function") { showGate("code"); return; }
   try { S.me = (await store.kvGet("me")) || ""; const m = await store.kvGet("mine"); S.mine = typeof m === "string" ? m : null; } catch { }
   let stored = null;
   try { stored = await store.kvGet("dir"); } catch (e) { store.diagNote("stored folder unreadable: " + e.message); }
@@ -790,6 +902,6 @@ async function boot() {
 }
 
 /* Dev harness hook (localhost only): connect a handle-like object without the picker. */
-if (location.hostname === "localhost" || location.hostname === "127.0.0.1") window.AWC = { connect, S, store, G };
+if (location.hostname === "localhost" || location.hostname === "127.0.0.1") window.AWC = { connect, connectCloud, S, store, cloud, G };
 
 boot();

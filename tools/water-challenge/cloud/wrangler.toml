@@ -1,0 +1,22 @@
+# Water Challenge cloud Worker (water-cloud-worker.js). Set-up steps are in that file's header.
+# Deployed by .github/workflows/water-cloud-deploy.yml (or by hand here: npx wrangler deploy).
+# The one secret, OWNER_CODE, comes from the repo secret WATER_OWNER_CODE.
+
+name = "water-cloud"
+main = "water-cloud-worker.js"
+compatibility_date = "2026-10-01"
+workers_dev = true
+
+[vars]
+TIME_ZONE = "America/New_York"   # the team's clock, for the evening backup
+BACKUP_HOUR = "18"               # the evening backup is taken from this hour on
+BACKUP_KEEP_DAYS = "14"
+
+[[durable_objects.bindings]]
+name = "CHALLENGE"
+class_name = "Challenge"
+
+# SQLite storage (free plan). Never remove or rename this migration once deployed.
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["Challenge"]

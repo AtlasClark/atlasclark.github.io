@@ -15,7 +15,7 @@ import { petKindFor, ownsEquipped, graveEquipped, petHueFor, isGrave, gravesOf, 
          hashHue, hueOf, rarityLabel, undoEffect, rollOdds } from "./pets.js";
 import { crownSvg, jesterSvg, hatSvg, drawPortrait, drawCritter, drawHeadstone, drawGoldPile, drawCoin, hatKeyFor, drawMedal } from "./art.js";
 import * as G from "./glass.js";
-import { diag, dir } from "./store.js";
+import { diag, dir, cloud, sourceName } from "./store.js";
 import { defs as petDefs, hats as petHats, petSource } from "./petdefs.js";
 import { shownKind, hiddenPets, shownBalance, hiddenIds, rollHoldLeft, rollCardDone } from "./reveal.js";
 import { balance, spentTotal, spendsOn, earnedTotal, chestWinnings, shopDay, lookOf, winShare } from "./shop.js";
@@ -28,7 +28,8 @@ import { $, esc, fmt, fmtOz, fmtGal, todayKey, dateKey, prettyTime, clockStamp, 
 export const uiHooks = { renderShop: null, bottle: null };
 
 export const ui = { tab: "today", amount: C.DEFAULT_AMOUNT, connected: false, lastSync: "", petPen: {}, shopPen: 0,
-                    armed: "" };   /* eid of the pour whose undo is waiting for a second click */
+                    armed: "",     /* eid of the pour whose undo is waiting for a second click */
+                    admin: true }; /* false for a cloud code without admin: roster and settings are read-only */
 
 /* ---- DOM helpers -------------------------------------------------------- */
 const htmlCache = {};
@@ -656,8 +657,9 @@ function renderStatus() {
   const pill = $("syncPill");
   if (ui.connected) { pill.className = "sync-pill"; pill.textContent = "synced " + (ui.lastSync || clockStamp()); }
   else { pill.className = "sync-pill bad"; pill.textContent = "offline"; }
-  setEl("sbFolder", dir ? esc(dir.name) : "not connected", null);
-  setEl("petArtNote", petSource.from === "folder"
+  setEl("sbFolder", sourceName() ? esc(sourceName()) : "not connected", null);
+  setEl("petArtNote", cloud ? "Redraw the pets and hats. A save goes to the cloud, and everyone sees it on their next refresh."
+    : petSource.from === "folder"
     ? "This folder uses its own art (" + esc(C.FOLDER_PETS_FILE) + "). Delete that file to go back to the site&rsquo;s art."
     : "Redraw the pets, the crown and the jester hat.", null);
   setEl("sbMe", S.me ? esc(S.me) + (S.mine ? ' &middot; ' + esc(S.mine) : '') : "set your name", null);
@@ -1211,7 +1213,12 @@ export function showDiag() {
   h.push('<h4>Health</h4><table class="rt">');
   h.push(rRow("Status", probs.length ? '<span class="bad">' + esc(probs.join(" · ")) + '</span>' : '<span class="ok">all clear</span>'));
   h.push(rRow("Build", esc(C.REV) + ' <span class="dim">&middot; writes as "' + esc(C.APP_VERSION) + '", format ' + C.FORMAT_REV + '</span>'));
-  h.push(rRow("Data folder", esc(dir ? dir.name : "(none)")));
+  if (cloud) {
+    const cd = cloud.cdiag;
+    h.push(rRow("Data", 'cloud <span class="dim">&middot; ' + esc(cd.url) + ' &middot; ' + esc(cd.rev) + '</span>'));
+    h.push(rRow("Socket", (cd.state === "live" ? '<span class="ok">live</span>' : '<span class="bad">' + esc(cd.state) + '</span> <span class="dim">(polling)</span>') +
+                ' <span class="dim">&middot; change ' + cd.seq + ' &middot; signed in ' + esc(cd.since) + '</span>'));
+  } else h.push(rRow("Data folder", esc(dir ? dir.name : "(none)")));
   for (const e of S.htaLog.slice(-8).reverse()) {
     h.push(rRow("Old HTA write", '<span class="bad">' + esc(e.file) + '</span> by ' + esc(e.user) + ' (' + esc(e.ver) + ') at ' + esc(String(e.at).replace("T", " ")) +
                 ' <span class="dim">&middot; seen ' + esc(String(e.seen || "").replace("T", " ")) + (e.by ? ' by ' + esc(e.by) : '') + '</span>'));
@@ -1259,11 +1266,19 @@ export function showDiag() {
   h.push(rRow("Browser", esc(navigator.userAgent)));
   h.push(rRow("Origin", esc(location.origin) + (window.isSecureContext ? '' : ' <span class="bad">not a secure context</span>')));
   h.push(rRow("Folder API", typeof window.showDirectoryPicker === "function" ? '<span class="ok">available</span>' : '<span class="bad">missing &mdash; use Chrome or Edge</span>'));
-  h.push(rRow("Permission", esc(diag.permission || "(not checked)")));
-  h.push(rRow("Signed in as", esc(S.me || "(not set)") + (S.mine ? ' &middot; glass: ' + esc(S.mine) : '')));
-  h.push(rRow("Writes", diag.writes + ' this session' + (diag.lockSteals ? ' &middot; ' + diag.lockSteals + ' stale lock(s) cleared' : '')));
-  h.push(rRow("Backup", diag.lastBackup ? esc(C.BACKUP_SUBDIR + '/' + diag.lastBackup) + ' <span class="dim">&middot; ' + C.BACKUP_KEEP_DAYS + ' days kept</span>'
-                                        : '<span class="bad">none yet this session</span>'));
+  if (!cloud) h.push(rRow("Permission", esc(diag.permission || "(not checked)")));
+  h.push(rRow("Signed in as", esc(S.me || "(not set)") + (S.mine ? ' &middot; glass: ' + esc(S.mine) : '') +
+              (cloud ? ' <span class="dim">&middot; access code' + (cloud.isAdmin() ? ', admin' : '') + (cloud.canArt() && !cloud.isAdmin() ? ', pet art' : '') + '</span>' : '')));
+  if (cloud) {
+    const cd = cloud.cdiag;
+    h.push(rRow("Writes", cd.writes + ' this session &middot; ' + cd.conflicts + ' merged again after a clash &middot; ' + cd.calls + ' calls' +
+                (cd.lastError ? ' &middot; <span class="bad">last: ' + esc(cd.lastError) + '</span>' : '')));
+    h.push(rRow("Backup", 'taken by the cloud each evening' + (cd.lastBackup ? ' &middot; last ' + esc(cd.lastBackup) : '')));
+  } else {
+    h.push(rRow("Writes", diag.writes + ' this session' + (diag.lockSteals ? ' &middot; ' + diag.lockSteals + ' stale lock(s) cleared' : '')));
+    h.push(rRow("Backup", diag.lastBackup ? esc(C.BACKUP_SUBDIR + '/' + diag.lastBackup) + ' <span class="dim">&middot; ' + C.BACKUP_KEEP_DAYS + ' days kept</span>'
+                                          : '<span class="bad">none yet this session</span>'));
+  }
   h.push(rRow("Drawn pets", Object.keys(petDefs).length + Object.keys(petHats).length ? esc([...Object.keys(petDefs).map(k => C.PET_NAMES[k]), ...Object.keys(petHats)].join(", ")) + (petSource.from === "folder" ? '' : ' <span class="dim">from pets/pets.json</span>')
                                                        : '<span class="dim">none &middot; all built-in</span>') +
     (petSource.from === "folder" ? ' <span class="bad">from this folder&rsquo;s ' + esc(C.FOLDER_PETS_FILE) + ' (test art)</span>' : ''));
@@ -1292,7 +1307,7 @@ export function renderRoster() {
     return '<div class="roster-row' + (away ? ' away' : '') + '" data-name="' + ja(p.name) + '">' +
       '<i class="dot" style="background:' + p.color + '"></i><span class="rn">' + esc(p.name) + '</span>' +
       '<span class="rs">' + (away ? 'away since ' + esc(openAwaySince(p)) : 'playing') + '</span>' +
-      '<button type="button" class="btn small" data-act="away" data-away="' + (away ? "0" : "1") + '">' + (away ? 'Back' : 'Away') + '</button></div>';
+      (ui.admin || p.name === S.mine ? '<button type="button" class="btn small" data-act="away" data-away="' + (away ? "0" : "1") + '">' + (away ? 'Back' : 'Away') + '</button>' : '') + '</div>';
   });
   $("rosterList").innerHTML = h.length ? h.join("") : '<p class="hint">Nobody on the roster yet.</p>';
   const away = S.participants.filter(p => !isActive(p)).length;

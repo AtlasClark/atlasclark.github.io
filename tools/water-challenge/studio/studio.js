@@ -13,8 +13,10 @@ import { importAll, importHat, basePalette } from "./importer.js";
 import { Editor, TOOL_HINTS } from "./editor.js";
 import { Preview } from "./preview.js";
 import * as G from "./geom.js";
+import { CloudDir, hello } from "../js/cloud.js";
+import { kvGet } from "../js/store.js";
 
-const REV = "studio 1.19.0";
+const REV = "studio 1.20.0";
 const PETS_URL = "../pets/pets.json";
 const $ = id => document.getElementById(id);
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -408,6 +410,27 @@ async function readSaved() {
   return res.ok ? res.json() : { format: 1, pets: {} };
 }
 
+/* The challenge in the cloud (studio 1.20.0): Save writes its _pets.json through the Worker,
+   with the access code the challenge page saved in this browser. The code needs the
+   admin or pet-art right. A save on top of someone else's newer one is refused, and the
+   next check takes theirs in, as with a folder. */
+const isCloud = () => W.dirHandle instanceof CloudDir;
+async function cloudSignIn() { try { const c = await kvGet("cloud"); return c && c.url && c.code ? c : null; } catch { return null; } }
+async function useCloud(loud) {
+  const c = await cloudSignIn();
+  if (!c) { if (loud) toast("Sign in on the challenge page with your access code first, then come back."); return false; }
+  try {
+    const r = await hello(c.url, c.code);
+    if (!r.me.admin && !r.me.art) { toast("Your access code can't save pet art. Ask an admin for the Pet art right."); return false; }
+  } catch (e) { toast("The cloud: " + (e.message || e)); return false; }
+  W.dirHandle = new CloudDir(c); W.target = { file: FOLDER_FILE, data: true };
+  try { await idb.set("useCloud", true); } catch { }
+  W.base = {}; W.baseSig = "picked";                               /* as a picked folder: nothing known of its file yet */
+  renderSaveState();
+  if (loud) { toast("Save now goes to the challenge in the cloud."); watchFile().catch(() => { }); }
+  return true;
+}
+
 async function pickSaveFolder() {
   toast("Pick tools/water-challenge/pets in the repo to publish, or a challenge data folder to test there.");
   let h;
@@ -420,7 +443,7 @@ async function pickSaveFolder() {
     if (!has && !confirm('"' + h.name + '" is neither the repo\'s pets folder nor a challenge data folder. Save pets.json there anyway?')) return false;
   }
   W.dirHandle = h; W.target = t;
-  try { await idb.set("dir", h); } catch { }
+  try { await idb.set("dir", h); await idb.set("useCloud", false); } catch { }
   /* Nothing is known of this folder's file yet: the next check takes in its art for every
      item not drawn here, and Save keeps what is drawn here (asking when both changed). A
      missing file is just empty, not "they took everything out". */
@@ -521,6 +544,7 @@ async function saveToRepo() {
     autosave();
     const n = count + " item" + (count === 1 ? "" : "s");
     if (!W.target.data) { toast("Saved " + n + " to pets/pets.json. Commit and push to put them on the site."); return; }
+    if (isCloud()) { toast("Saved " + n + " to the cloud. Everyone sees them within a few seconds."); return; }
     toast("Saved " + n + " to " + W.dirHandle.name + "/" + FOLDER_FILE + ". Everyone on that folder sees it on their next refresh.");
     /* a pets.json in a data folder is read as a person's file and fails: offer to remove it */
     let stray = false;
@@ -694,10 +718,11 @@ function renderSaveState() {
   el.className = "save-state" + (W.dirty ? " dirty" : "");
   el.textContent = W.dirty ? "Unsaved changes" : W.savedAt ? "Saved " + W.savedAt : "No changes";
   const t = $("saveTarget");
-  t.textContent = W.dirHandle ? "\u2192 " + W.dirHandle.name + (W.target ? "/" + W.target.file : "") + (W.target && W.target.data ? " (test art)" : "") : "";
-  t.title = W.target && W.target.data ? "A challenge data folder: everyone on it sees this art at once. Delete " + FOLDER_FILE + " there to go back to the site's art."
-                                      : "The repo's pets folder: commit and push to publish.";
-  $("saveBtn").textContent = W.target && W.target.data ? "Save to folder" : "Save to repo";
+  t.textContent = isCloud() ? "\u2192 the cloud" : W.dirHandle ? "\u2192 " + W.dirHandle.name + (W.target ? "/" + W.target.file : "") + (W.target && W.target.data ? " (test art)" : "") : "";
+  t.title = isCloud() ? "The challenge in the cloud: everyone sees a save within a few seconds."
+          : W.target && W.target.data ? "A challenge data folder: everyone on it sees this art at once. Delete " + FOLDER_FILE + " there to go back to the site's art."
+          : "The repo's pets folder: commit and push to publish.";
+  $("saveBtn").textContent = isCloud() ? "Save to cloud" : W.target && W.target.data ? "Save to folder" : "Save to repo";
   $("editedCount").textContent = n ? n + " drawn" : "";
   $("undoBtn").disabled = !hist().u.length;
   $("redoBtn").disabled = !hist().r.length;
@@ -1212,6 +1237,7 @@ function wire() {
   $("fitBtn").onclick = () => editor.fit();
   $("saveBtn").onclick = saveToRepo;
   $("folderBtn").onclick = () => pickSaveFolder();
+  $("cloudBtn").onclick = () => useCloud(true);
   $("exportBtn").onclick = exportFile;
   $("openBtn").onclick = () => $("openFile").click();
   $("openFile").addEventListener("change", e => { if (e.target.files[0]) openFile(e.target.files[0]); e.target.value = ""; });
@@ -1437,7 +1463,8 @@ function startNote() {
     label = "Reconnect";
     fn = async () => { if (await W.dirHandle.requestPermission({ mode: "readwrite" }) === "granted") location.reload(); };
   } else if (W.loadedFrom === "folder" && W.target && W.target.data) {
-    msg = "Loaded the latest " + FOLDER_FILE + " from " + name + ". If this studio was left open a while, reload before you edit.";
+    msg = isCloud() ? "Loaded the challenge's latest pet art from the cloud. If this studio was left open a while, reload before you edit."
+                    : "Loaded the latest " + FOLDER_FILE + " from " + name + ". If this studio was left open a while, reload before you edit.";
     label = "Reload"; fn = () => { seen(); location.reload(); };
     try { quiet = sessionStorage.getItem(NOTE_SEEN) === "1"; } catch { }   /* just reloaded: the art is fresh */
   } else if (W.loadedFrom === "folder") {
@@ -1460,6 +1487,10 @@ async function start() {
   for (const key of HAT_KEYS) W.builtin[key] = hatDef(importHat(key));
   resetItems();
   try { W.dirHandle = (await idb.get("dir")) || null; } catch { }
+  let cloudOn = false;
+  try { cloudOn = /[?&]cloud\b/.test(location.search) || !!(await idb.get("useCloud")); } catch { }
+  if (cloudOn) await useCloud(false);
+  $("cloudBtn").hidden = !(await cloudSignIn());
   let note = "";
   try { const obj = await readSaved(); loadFileObj(obj); W.base = itemsOf(obj); } catch (e) { note = "pets.json could not be read: " + (e.message || e); }
   try {

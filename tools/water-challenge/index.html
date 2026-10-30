@@ -5,17 +5,19 @@
   Each person's glass fills toward a personal daily goal set from their own history;
   reaching it rolls a pet, passing twice the goal drowns one. Leaderboard, streaks,
   time away, a team year target, a season history and pet collections.
-  Data lives only in the shared fileshare folder (one UTF-16 JSON per person plus
-  _settings.json). The page reaches it through the File System Access API (Chrome/Edge)
-  and remembers the folder handle in this browser. Nothing is stored on this site,
-  and the CSP below only lets scripts fetch this site's own files (the update check).
-  Bump REV in js/config.js on each change.
+  Data lives in one of two places, never on this site:
+  - the cloud (rev 1.38.0): the Worker in cloud/ (a Cloudflare Durable Object), reached
+    with a personal access code; any browser works. The code is kept in this browser.
+  - a shared fileshare folder (one UTF-16 JSON per person plus _settings.json), through
+    the File System Access API (Chrome/Edge); the folder handle is kept in this browser.
+  The CSP below lets scripts fetch this site's own files (the update check) and
+  *.workers.dev (the cloud, and the bottle relay). Bump REV in js/config.js on each change.
 -->
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self' https://*.workers.dev; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; worker-src 'none'; frame-src 'none'; form-action 'none'; base-uri 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self' https://*.workers.dev wss://*.workers.dev; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; worker-src 'none'; frame-src 'none'; form-action 'none'; base-uri 'none'">
 <meta name="referrer" content="no-referrer">
 <meta name="robots" content="noindex">
 <title>Water Challenge</title>
@@ -50,7 +52,7 @@
           <input id="titleVal" class="txt sp-wide" type="text" maxlength="40" spellcheck="false" placeholder="Water Challenge">
           <label class="field-label" for="taglineVal">Tagline</label>
           <input id="taglineVal" class="txt sp-wide" type="text" maxlength="80" placeholder="Drink responsibly. Brag irresponsibly.">
-          <p class="hint">Shown at the top of the page for everyone on this data folder.</p>
+          <p class="hint">Shown at the top of the page for everyone in this challenge.</p>
         </details>
         <details class="sp-card" data-card="goals" open>
           <summary>Goals</summary>
@@ -78,7 +80,44 @@
         <details class="sp-card" data-card="pets">
           <summary>Pet art</summary>
           <p class="hint" id="petArtNote">Redraw the pets, the crown and the jester hat.</p>
-          <a class="btn muted btn-link" href="studio/" target="_blank" rel="noopener">Open Pet Studio &#8599;</a>
+          <a class="btn muted btn-link" id="studioLink" href="studio/" target="_blank" rel="noopener">Open Pet Studio &#8599;</a>
+        </details>
+        <details class="sp-card" data-card="codes" id="codesCard" hidden>
+          <summary>Access codes <b id="codesCount" class="sp-count"></b></summary>
+          <div id="codeList" class="code-list"></div>
+          <div class="sp-pair">
+            <div><label class="field-label" for="ncUser">Sign-in name</label>
+              <input id="ncUser" class="txt sp-wide" type="text" maxlength="60" list="ncUsers" spellcheck="false" autocomplete="off" placeholder="their username">
+              <datalist id="ncUsers"></datalist></div>
+            <div><label class="field-label" for="ncGlass">Their glass</label>
+              <select id="ncGlass" class="txt sp-wide"></select></div>
+          </div>
+          <div class="bottle-row">
+            <label class="chk"><input type="checkbox" id="ncAdmin"> Admin</label>
+            <label class="chk"><input type="checkbox" id="ncArt"> Pet art</label>
+            <span class="sb-grow"></span>
+            <button type="button" id="ncMake" class="btn primary">Make code</button>
+          </div>
+          <div id="ncOut" class="code-out" hidden>
+            <code id="ncCode"></code>
+            <button type="button" id="ncCopy" class="btn muted small">Copy link</button>
+            <p class="hint">Shown once. Send it to them yourself; the link signs them in.</p>
+          </div>
+        </details>
+        <details class="sp-card" data-card="cloud" id="cloudCard" hidden>
+          <summary>Cloud data</summary>
+          <p class="hint" id="cloudNote"></p>
+          <div class="bottle-row">
+            <button type="button" id="cdImportDir" class="btn muted" title="Copy a shared data folder into the cloud, then mark that folder as moved">Import from folder&hellip;</button>
+            <button type="button" id="cdImportFile" class="btn muted">Import backup file&hellip;</button>
+            <input type="file" id="cdFile" accept=".json,application/json" hidden>
+          </div>
+          <div class="bottle-row">
+            <button type="button" id="cdBackupNow" class="btn muted">Back up now</button>
+            <button type="button" id="cdDownload" class="btn muted">Download all</button>
+          </div>
+          <div id="cdBackups" class="mini-list"></div>
+          <div id="cdRemoved" class="mini-list"></div>
         </details>
         <details class="sp-card" data-card="bottle" id="bottleBox" hidden>
           <summary>Bottle sync</summary>
@@ -102,7 +141,7 @@
             <button type="button" id="bSyncNow" class="btn primary">Sync now</button></div>
         </details>
       </div>
-      <div class="sp-foot"><span class="hint">Challenge and Goals are shared with everyone on this folder.</span>
+      <div class="sp-foot" id="spFoot"><span class="hint">Challenge and Goals are shared with everyone in this challenge.</span>
         <button type="button" id="applySettings" class="btn primary">Save</button></div>
     </div>
   </header>
@@ -225,7 +264,7 @@
 
 <footer class="statusbar">
   <span class="rev" id="revLabel"></span>
-  <button type="button" class="sb-link" id="sbFolder" title="Data folder (click to reconnect or change)">not connected</button>
+  <button type="button" class="sb-link" id="sbFolder" title="Where the data is (click to reconnect, sign out or change)">not connected</button>
   <span class="sb-sep">signed in as</span>
   <button type="button" class="sb-link" id="sbMe" title="Name stamped on what you log (click to change)">set your name</button>
   <span class="sb-grow"></span>
@@ -236,16 +275,32 @@
 <div id="gate" class="gate" hidden>
   <div class="gate-box">
     <button type="button" id="gateClose" class="report-x" title="Close" hidden>&times;</button>
-    <p class="eyebrow">Shared data folder</p>
-    <h2>Connect to the challenge</h2>
+    <p class="eyebrow">Water Challenge</p>
+    <h2 id="gateTitle">Connect to the challenge</h2>
     <p id="gateMsg"></p>
-    <div class="gate-actions">
-      <button type="button" id="gateReconnect" class="btn primary" hidden>Reconnect</button>
-      <button type="button" id="gatePick" class="btn primary">Choose data folder</button>
+    <form id="codeForm" class="gate-code" autocomplete="off">
+      <label class="field-label" for="codeIn">Access code</label>
+      <div class="code-row">
+        <input id="codeIn" class="txt code-in" type="text" placeholder="XXXX-XXXX-XXXX" spellcheck="false" autocapitalize="characters" maxlength="40">
+        <button type="submit" id="codeGo" class="btn primary">Sign in</button>
+      </div>
+      <div id="urlRow" hidden>
+        <label class="field-label" for="urlIn">Cloud address</label>
+        <input id="urlIn" class="txt code-url" type="url" placeholder="https://water-cloud.you.workers.dev" spellcheck="false">
+      </div>
+    </form>
+    <div class="gate-actions" id="gateCloudActs" hidden>
+      <button type="button" id="gateRetry" class="btn primary" hidden>Try again</button>
+      <button type="button" id="gateSignOut" class="btn muted" hidden>Sign out of this browser</button>
     </div>
     <p id="gateWarn" class="gate-warn" hidden></p>
-    <p class="hint">Chrome or Edge only. Your data stays on the share. If asked, choose <b>Allow on every visit</b>.</p>
-    <details class="gate-setup"><summary>New team? Set it up in 4 steps</summary>
+    <p class="hint" id="gateCodeHint">Your code comes from the challenge's admin. Any browser works.</p>
+    <details class="gate-setup" id="gateFolder"><summary>Use a shared data folder instead</summary>
+      <p class="hint">Chrome or Edge only. The data stays on the share. If asked, choose <b>Allow on every visit</b>.</p>
+      <div class="gate-actions">
+        <button type="button" id="gateReconnect" class="btn primary" hidden>Reconnect</button>
+        <button type="button" id="gatePick" class="btn muted">Choose data folder</button>
+      </div>
       <ol>
         <li>Make an empty folder on a share everyone can reach.</li>
         <li>Open this page in Chrome or Edge, choose that folder and allow access.</li>

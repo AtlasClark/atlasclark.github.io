@@ -44,3 +44,8 @@ Cable_Designer/
 
 # Pet Studio save lock (left behind only if a save is cut off)
 tools/water-challenge/pets/*.lock
+# Water Challenge cloud: backup downloads, Wrangler's local state
+water-challenge-backup-*.json
+tools/water-challenge/cloud/.wrangler/
+tools/water-challenge/cloud/.dev.vars
+tools/water-challenge/cloud/node_modules/

@@ -1,0 +1,97 @@
+# Water Challenge cloud: deploys tools/water-challenge/cloud (Worker + Durable Object) to
+# Cloudflare from GitHub's servers, so no PC needs Wrangler. Rev 1.0.
+#
+# Runs when the Worker or its config changes on main or water-cloud, or by hand
+# (Actions > Water cloud deploy > Run workflow). Steps: the cloud tests, deploy (which also
+# creates the Durable Object on the first run), the OWNER_CODE secret, then a check that the
+# live Worker answers.
+#
+# Repo secrets (Settings > Secrets and variables > Actions > New repository secret):
+#   CLOUDFLARE_API_TOKEN   Cloudflare > My Profile > API Tokens > Create Token >
+#                          template "Edit Cloudflare Workers"
+#   CLOUDFLARE_ACCOUNT_ID  Cloudflare dashboard > Workers & Pages, right-hand column
+#   WATER_OWNER_CODE       the permanent admin code: 12+ letters and digits, kept somewhere safe
+#                          (re-sent on every run, so changing it here and re-running replaces it)
+
+name: Water cloud deploy
+
+on:
+  push:
+    branches: [main, water-cloud]
+    paths:
+      - "tools/water-challenge/cloud/**"
+      - ".github/workflows/water-cloud-deploy.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: water-cloud-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: bash          # with pipefail: a failed deploy fails the step through tee
+        working-directory: tools/water-challenge/cloud
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      WRANGLER_SEND_METRICS: "false"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Check the repo secrets are set
+        env:
+          OWNER: ${{ secrets.WATER_OWNER_CODE }}
+        run: |
+          missing=""
+          [ -n "$CLOUDFLARE_API_TOKEN" ] || missing="$missing CLOUDFLARE_API_TOKEN"
+          [ -n "$CLOUDFLARE_ACCOUNT_ID" ] || missing="$missing CLOUDFLARE_ACCOUNT_ID"
+          [ -n "$OWNER" ] || missing="$missing WATER_OWNER_CODE"
+          if [ -n "$missing" ]; then echo "::error::Missing repo secrets:$missing"; exit 1; fi
+          n=$(printf '%s' "$OWNER" | tr -cd 'A-Za-z0-9' | wc -c)
+          if [ "$n" -lt 12 ]; then echo "::error::WATER_OWNER_CODE needs 12 or more letters and digits"; exit 1; fi
+
+      - name: Cloud tests
+        working-directory: .
+        run: node --test tests/water-challenge/cloud.test.mjs
+
+      - name: Deploy
+        id: deploy
+        run: |
+          npx --yes wrangler@4 deploy 2>&1 | tee deploy.log
+          url=$(grep -oE 'https://[a-z0-9.-]+\.workers\.dev' deploy.log | head -1)
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+
+      - name: Set OWNER_CODE
+        env:
+          OWNER: ${{ secrets.WATER_OWNER_CODE }}
+        run: printf '%s' "$OWNER" | npx --yes wrangler@4 secret put OWNER_CODE
+
+      - name: Check the live Worker
+        env:
+          URL: ${{ steps.deploy.outputs.url }}
+          OWNER: ${{ secrets.WATER_OWNER_CODE }}
+        run: |
+          if [ -z "$URL" ]; then echo "::warning::No workers.dev address in the deploy output; check skipped."; exit 0; fi
+          ok=""
+          for i in 1 2 3 4 5 6; do
+            code=$(curl -s -o hello.json -w '%{http_code}' -H "Origin: https://atlasclark.github.io" -H "Authorization: Bearer $OWNER" "$URL/api/hello")
+            if [ "$code" = "200" ]; then ok=1; break; fi
+            sleep 5
+          done
+          if [ -z "$ok" ]; then echo "::error::$URL/api/hello answered $code: $(cat hello.json)"; exit 1; fi
+          echo "### Water cloud is up" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "Address: \`$URL\` (put it in \`CLOUD_URL\` in tools/water-challenge/js/config.js)" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "Worker: $(grep -o '"rev":"[^"]*"' hello.json)" >> "$GITHUB_STEP_SUMMARY"
