@@ -1,8 +1,8 @@
 /* Water Challenge (web) - constants: rules, tunables and the on-disk contract
    (FORMAT_REV, UTF-16 LE + BOM JSON, unknown fields kept). */
 
-export const REV         = "rev 1.38.0";
-export const APP_VERSION = "web 1.38.0";   /* stamped as writerVersion */
+export const REV         = "rev 1.38.1";
+export const APP_VERSION = "web 1.38.1";   /* stamped as writerVersion */
 /* Every file is written at FORMAT_REV. A file stamped higher came from a newer
    build, and the page asks for a reload. */
 export const FORMAT_REV    = 22;
@@ -71,8 +71,8 @@ export const BACKUP_HOUR      = 18;
 /* ---- cloud (rev 1.38.0) ----
    The challenge held online by the Worker in cloud/ (one Durable Object), reached with
    an access code instead of a folder (js/cloud.js). CLOUD_URL is the Worker's address;
-   while it is blank the gate asks for one. */
-export const CLOUD_URL        = "";
+   while it is blank the gate asks for one. Deployed 2026-10-30 (rev 1.38.1). */
+export const CLOUD_URL        = "https://water-cloud.ryan-clark-54d.workers.dev";
 export const CLOUD_TIMEOUT_MS = 20000;
 export const CLOUD_TRIES      = 6;          /* merge-and-send rounds before a save gives up */
 export const CLOUD_PING_MS    = 25000;      /* keeps the socket open through proxies */
