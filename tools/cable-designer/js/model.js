@@ -559,9 +559,12 @@
       if (!has(m)) return;
       const kind = (CD.MARKS.find(k => k[0] === m.kind) || ["", "Item"])[1];
       const desc = m.desc || kind;
-      const L = num(m.len), per = m.end === "both" ? 2 : 1;
-      const r = L != null ? put(keyOf("m", m, desc), { mfr: m.mfr, mpn: m.mpn, ipn: m.ipn, desc }, L * per, u, c.ref, m.id)
-        : put(keyOf("m", m, desc), { mfr: m.mfr, mpn: m.mpn, ipn: m.ipn, desc }, (num(m.qty) || 1) * per, "ea", c.ref, m.id);
+      const per = m.end === "both" ? 2 : 1, o = { mfr: m.mfr, mpn: m.mpn, ipn: m.ipn, desc };
+      if (!CD.LEN_MARKS.includes(m.kind)) return put(keyOf("m", m, desc), o, (num(m.qty) || 1) * per, "ea", c.ref, m.id);
+      // sleeving, heat-shrink, tape: a length; full length with no cut length = the cable's length
+      const L = markLen(c, m);
+      const r = put(keyOf("m", m, desc), o, L == null ? 0 : L * per, u, c.ref, m.id);
+      if (L == null) r.tbd = true;
       return r;
     }));
     rows.forEach((r, i) => {
@@ -576,6 +579,12 @@
     return r.tbd ? (q ? q + " + TBD" : "TBD") : q;
   };
   const bomCells = (r, m) => [String(r.item), bomQty(r, m), r.unit, r.ipn, r.mfr, r.mpn, r.desc, r.refs.join(", ")];
+
+  // Cut length of a length-type marking (one place); a full-length one with none set uses the cable's length.
+  function markLen(c, m) {
+    const L = num(m.len);
+    return L != null ? L : m.end === "all" ? num(c.len) : null;
+  }
 
   // ---------- checks ----------
   function checks(p) {
@@ -607,6 +616,12 @@
     });
     p.cables.forEach(c => ["a", "b"].forEach(e => {
       if (c.shield.type !== "none" && c.shield[e] === "tied" && !tiesOf(p, c.id, e).length) out.push({ lvl: "warn", msg: "Cable " + c.ref + ": shield end " + e.toUpperCase() + " is set to tied, but has no tie." });
+    }));
+    p.cables.forEach(c => c.marks.forEach(m => {
+      if (!CD.LEN_MARKS.includes(m.kind) || markLen(c, m) != null) return;
+      const kind = (CD.MARKS.find(k => k[0] === m.kind) || ["", "Item"])[1].toLowerCase();
+      const where = (CD.MARK_ENDS.find(k => k[0] === m.end) || ["", ""])[1].toLowerCase();
+      out.push({ lvl: "warn", msg: "Cable " + c.ref + ": " + kind + (where ? " at " + where : "") + " has no cut length." });
     }));
     if (!p.meta.dwgNo) out.push({ lvl: "warn", msg: "Drawing number is empty." });
     if (num(p.meta.tol) == null) out.push({ lvl: "warn", msg: "General length tolerance is not set." });
@@ -677,7 +692,7 @@
     blankProject, normalize, newConn, setPinCount, reorderPins, removePins, addPins, spaceBoardPins, boardPins,
     addTie, tiesOf, pruneTies, newTable, normTable, parseGrid, scaleK, colWOf, shieldText, tieTargetText, insertBoard, partFromConn, normPart, connFromPart, partFromCable, cableFromPart, partFromWire, applyWirePart, wireProfile, newCable, newWire, newGroup, newMark, newCallout, cablePreset, nextWireNo,
     byId, libOf, groupOf, conductors, wireRef, endText, sigOf, isDrain, colorText, gaugeText,
-    UNIT, fmtLen, fmtTol, wireLen, WIRE_COLS, wireRows, BOM_COLS, bom, bomCells, checks,
+    markLen, UNIT, fmtLen, fmtTol, wireLen, WIRE_COLS, wireRows, BOM_COLS, bom, bomCells, checks,
     csvCell, wireCsv, bomCsv, connectCable, example
   });
 })(typeof window !== "undefined" ? window : globalThis);

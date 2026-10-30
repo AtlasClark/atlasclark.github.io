@@ -9,7 +9,7 @@
 (function () {
   "use strict";
   const CD = window.CD, OUT = CD.out;
-  const REV = "rev 1.9.0";
+  const REV = "rev 1.9.2";
   const LS_UI = "cableDesigner.ui";
   const $ = id => document.getElementById(id);
   const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -635,11 +635,13 @@
     h += sec("Labels, heat-shrink, sleeving", c.marks.map(m => {
       const mo = "m:" + c.id + ":" + m.id;
       return '<div class="card"><div class="card-h"><span class="grow">' + esc((CD.MARKS.find(x => x[0] === m.kind) || ["", ""])[1]) + "</span>" + IB("markDel", "✕", "Remove", 'data-id="' + c.id + '" data-i="' + m.id + '"') + "</div>" +
-        '<div class="r2">' + F("Kind", S(mo, "kind", m.kind, CD.MARKS, 'data-re="1"')) + F("Where", S(mo, "end", m.end, CD.MARK_ENDS)) + "</div>" +
+        '<div class="r2">' + F("Kind", S(mo, "kind", m.kind, CD.MARKS, 'data-re="1"')) + F("Where", S(mo, "end", m.end, CD.MARK_ENDS, 'data-re="1"')) + "</div>" +
         F("Text / instruction", I(mo, "text", m.text, 'placeholder="Legend or how to apply"')) +
         F("BOM description", I(mo, "desc", m.desc)) +
         '<div class="r3">' + F("Mfr", I(mo, "mfr", m.mfr)) + F("Mfr part no.", I(mo, "mpn", m.mpn)) + F("Part no.", I(mo, "ipn", m.ipn)) + "</div>" +
-        '<div class="r2">' + F("Qty per place", I(mo, "qty", m.qty, 'placeholder="1"')) + F("Cut length", I(mo, "len", m.len, 'placeholder="for tubing"')) + "</div></div>";
+        (CD.LEN_MARKS.includes(m.kind)
+          ? '<div class="r2">' + F("Cut length (" + CD.UNIT(p.meta.units) + ")" + (m.end === "both" ? ", each end" : ""), I(mo, "len", m.len, 'inputmode="decimal" placeholder="' + (m.end === "all" ? "cable length" : "set a length") + '"')) + "<span></span></div>"
+          : '<div class="r2">' + F("Qty per place", I(mo, "qty", m.qty, 'inputmode="numeric" placeholder="1"')) + "<span></span></div>") + "</div>";
     }).join(""), B("markAdd", "＋ Add", 'data-id="' + c.id + '"'));
     h += F("Note", T(o, "note", c.note, 'rows="2"'));
     h += '<div class="btn-row">' + B("partSave", "Save cable to My parts…", 'data-id="' + c.id + '" data-kind="cable"') + "</div>";

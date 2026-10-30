@@ -52,6 +52,7 @@
   // ---------- sheets (points, landscape) ----------
   const SHEETS = {
     A: { w: 792, h: 612, name: "ANSI A (11 × 8.5 in)" },
+    Legal: { w: 1008, h: 612, name: "Legal (14 × 8.5 in)", tb: "LEGAL" },
     B: { w: 1224, h: 792, name: "ANSI B (17 × 11 in)" },
     C: { w: 1584, h: 1224, name: "ANSI C (22 × 17 in)" },
     D: { w: 2448, h: 1584, name: "ANSI D (34 × 22 in)" },
@@ -114,6 +115,8 @@
   const SHIELDS = [["none", "None"], ["foil", "Foil"], ["braid", "Braid"], ["foil+braid", "Foil + braid"], ["spiral", "Spiral"]];
   const SHIELD_TERMS = [["pigtail", "Pigtail / drain to pin"], ["360", "360° to shell"], ["tied", "Tied (see shield ties)"], ["float", "Floating (trim, insulate)"], ["none", "Not set"]];
   const MARKS = [["label", "Label / marker"], ["heatshrink", "Heat-shrink"], ["sleeve", "Sleeving"], ["tie", "Cable tie"], ["boot", "Boot / strain relief"], ["tape", "Tape"], ["other", "Other"]];
+  // Bought and cut by length (BOM in the drawing's length unit); the other kinds are counted.
+  const LEN_MARKS = ["heatshrink", "sleeve", "tape"];
   const MARK_ENDS = [["A", "End A"], ["B", "End B"], ["both", "Both ends"], ["mid", "Middle"], ["all", "Full length"]];
 
   // ---------- face-view pin positions ----------
@@ -283,6 +286,6 @@
     SHELLS, KEY_KINDS, normLayout, layoutGeom, layoutBounds, layoutFromFace, ringPins, gridPins, sortPinOrder,
     COLORS, COLOR, DIN47100, T568A, T568B, ETH_PAIRS,
     AWG, awgMm2, MM2, INSUL, WIRE_SPECS, SHEETS,
-    LIB, LIB_LIST: L, GENDERS, SHIELDS, SHIELD_TERMS, MARKS, MARK_ENDS, faceLayout
+    LIB, LIB_LIST: L, GENDERS, SHIELDS, SHIELD_TERMS, MARKS, LEN_MARKS, MARK_ENDS, faceLayout
   });
 })(typeof window !== "undefined" ? window : globalThis);

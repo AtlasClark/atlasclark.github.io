@@ -267,7 +267,8 @@
     pen.rect(x, y, w, h, { lw: 0.6 });
     if (label) pen.text(x + 2.5, y + 5.6, label, { size: 4.6, c: DIM });
     if (value != null && value !== "") {
-      const size = o.size || 7.5;
+      let size = o.size || 7.5;
+      if (o.fit) while (size > 5 && tw(value, size, o.bold) > w - 5) size -= 0.5;   // shrink a long value to fit
       const lines = o.wrap ? wrap(value, w - 6, size, o.bold).slice(0, o.wrap) : [String(value)];
       const top = label ? y + 6 : y;
       const span = (y + h) - top;
@@ -306,7 +307,7 @@
       pen.img("logo", rx + (rw - lw) / 2, y + (26 - lh) / 2, lw, lh);
     } else if (m.company) pen.text(rx + rw / 2, y + 16.5, m.company, { size: 9, bold: true, anchor: "middle" });
     cell(pen, rx, y + 26, rw, 32, "TITLE", m.title || "", { size: 8.5, bold: true, wrap: 2 });
-    cell(pen, rx, y + 58, 34, 22, "SIZE", m.size, { size: 9, bold: true, center: true });
+    cell(pen, rx, y + 58, 34, 22, "SIZE", (CD.SHEETS[m.size] && CD.SHEETS[m.size].tb) || m.size, { size: 9, bold: true, center: true, fit: true });
     cell(pen, rx + 34, y + 58, rw - 34 - 36, 22, "DWG NO.", m.dwgNo, { size: 9, bold: true });
     cell(pen, rx + rw - 36, y + 58, 36, 22, "REV", m.rev, { size: 9, bold: true, center: true });
     cell(pen, rx, y + 80, 80, 14, "SCALE", m.scale, { size: 6.5 });
@@ -595,7 +596,7 @@
     const rows = markRows(c.marks);
     if (rows.length) dy += 6;
     rows.forEach(mk => {
-      const len = CD.num(mk.len) != null ? CD.fmtLen(mk.len, m) + " LONG" : "";
+      const len = CD.LEN_MARKS.includes(mk.kind) && CD.num(mk.len) != null ? CD.fmtLen(mk.len, m) + " LONG" : "";
       const txt = [len, mk.text].filter(Boolean).join(": ");
       const lines = txt ? wrap(txt, Math.max(60, w - MARK_COL.text - 2), 6.2) : [""];
       dy += MARK_ROW / 2 + 1;

@@ -428,3 +428,32 @@ test("table text wrapping: on wraps at the set width, off keeps one line per cel
   const back = CD.normalize(JSON.parse(JSON.stringify(Object.assign(p, { tables: [Object.assign({}, t, { colW: 5 })] }))));
   assert.equal(back.tables[0].wrap, false); assert.equal(back.tables[0].colW, 30, "width kept within 30-600 pt");
 });
+
+test("sleeving, heat-shrink and tape are bought by length; labels and ties by count", () => {
+  const p = CD.example();
+  const c = p.cables[0];   // 36.00 in long
+  const row = mpn => CD.bom(p).rows.find(r => r.mpn === mpn);
+  c.marks.push(CD.newMark({ kind: "sleeve", end: "all", mpn: "EX-SLV", desc: "Braided sleeve" }));
+  assert.deepEqual([row("EX-SLV").qty, row("EX-SLV").unit, !!row("EX-SLV").tbd], [36, "in", false], "full length = cable length");
+  c.marks.push(CD.newMark({ kind: "tape", end: "both", mpn: "EX-TAPE", desc: "Tape", len: "2", qty: "5" }));
+  assert.deepEqual([row("EX-TAPE").qty, row("EX-TAPE").unit], [4, "in"], "2 in at both ends, qty ignored");
+  c.marks.push(CD.newMark({ kind: "heatshrink", end: "mid", mpn: "EX-HS-MID", desc: "Heat-shrink" }));
+  const hs = row("EX-HS-MID");
+  assert.equal(hs.unit, "in"); assert.ok(hs.tbd); assert.equal(CD.bomCells(hs, p.meta)[1], "TBD");
+  assert.ok(CD.checks(p).some(k => /W1: heat-shrink at middle has no cut length/.test(k.msg)));
+  c.marks.push(CD.newMark({ kind: "tie", end: "mid", mpn: "EX-TIE", desc: "Cable tie", qty: "3", len: "9" }));
+  assert.deepEqual([row("EX-TIE").qty, row("EX-TIE").unit], [3, "ea"], "ties are counted, length ignored");
+  assert.deepEqual([row("EX-LBL-WHT").qty, row("EX-LBL-WHT").unit], [2, "ea"], "labels stay counted");
+  c.len = "";
+  assert.ok(row("EX-SLV").tbd, "full length with no cable length = TBD");
+});
+
+test("Legal sheet: 14 x 8.5 in landscape, title block says LEGAL and fits its cell", () => {
+  const p = CD.example();
+  p.meta.size = "Legal";
+  const s = CD.scene(p, { sheet: 1 });
+  assert.deepEqual([s.W, s.H], [1008, 612]);
+  const t = s.groups.find(g => g.id === "frame").prims.find(o => o.t === "text" && o.s === "LEGAL");
+  assert.ok(t && CD.textWidth("LEGAL", t.size, true) <= 29, "fits the 34 pt SIZE cell");
+  assert.equal(CD.normalize(JSON.parse(JSON.stringify(p))).meta.size, "Legal");
+});
