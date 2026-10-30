@@ -2,7 +2,7 @@
    pen1art.js, pen2art.js, propart.js, then pets.json); only the gold pile's layout is code. */
 
 import * as C from "./config.js";
-import { defs, hats, drawShapes, drawHat, hatSvgFrom, medalSpot, bodyBox } from "./petdefs.js";
+import { defs, hats, drawShapes, drawHat, hatSvgFrom, hatAspect, medalSpot, bodyBox } from "./petdefs.js";
 import { todayKey, parseKey, monthDayOk } from "./util.js";
 import { finishFn, finishWrap } from "./cosmetics.js";
 
@@ -57,6 +57,13 @@ export function hatKeyFor(jester, key) {
 function crownSvg(w, h, cls) { return hatSvgFrom(hats[hatKeyFor(false)], w, h, cls); }
 /* Worn instead of the crown when you led the day but are still under your own goal. */
 function jesterSvg(w, h, cls) { return hatSvgFrom(hats[hatKeyFor(true)], w, h, cls); }
+/* The hat over a glass: 26 px wide, 17 tall for a crown. A tall, narrow hat (the witch,
+   the party hats) is given more height, up to 30 px, so it comes out about as wide as the
+   crown instead of half its size; it grows up into the card's top padding. */
+function glassHatSvg(underGoal, key) {
+  const hat = hats[hatKeyFor(underGoal, key)];
+  return hatSvgFrom(hat, 26, Math.round(Math.min(30, Math.max(17, 22 / hatAspect(hat)))), "crown");
+}
 function hatSvg(w, h, cls, underGoal) {
   /* Leading is not the same as winning: the crown needs the goal actually met. */
   return underGoal ? jesterSvg(w, h, cls) : crownSvg(w, h, cls);
@@ -200,4 +207,4 @@ function drawGoldPile(ctx, W, H, n) {
   ctx.beginPath(); ctx.arc(cx - 3, base - (i - 1) * step - 2, 1.7, 0, 6.2832); ctx.fill();
 }
 
-export { jesterSvg, hatSvg, crownSvg, critterEye, critterCrown, drawCritter, drawHeadstone, drawPortrait, drawGoldPile, drawCoin, drawMedal, wearAt };
+export { jesterSvg, hatSvg, crownSvg, glassHatSvg, critterEye, critterCrown, drawCritter, drawHeadstone, drawPortrait, drawGoldPile, drawCoin, drawMedal, wearAt };

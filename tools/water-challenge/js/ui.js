@@ -13,7 +13,7 @@ import { petKindFor, ownsEquipped, graveEquipped, petHueFor, isGrave, gravesOf, 
          graveLine, petLabel, petName, petRarityOf, petBinIndex, petGridOrder, penFound,
          penOf, penKinds, pen2Open, pensOf, penAlive, penBuried,
          hashHue, hueOf, rarityLabel, undoEffect, rollOdds } from "./pets.js";
-import { crownSvg, jesterSvg, hatSvg, drawPortrait, drawCritter, drawHeadstone, drawGoldPile, drawCoin, hatKeyFor, drawMedal, holidayOn, EVENTS, eventRange, eventDefault, setEventRanges } from "./art.js";
+import { crownSvg, jesterSvg, hatSvg, drawPortrait, drawCritter, drawHeadstone, drawGoldPile, drawCoin, hatKeyFor, drawMedal, holidayOn, glassHatSvg, EVENTS, eventRange, eventDefault, setEventRanges } from "./art.js";
 import * as G from "./glass.js";
 import { diag, dir } from "./store.js";
 import { defs as petDefs, hats as petHats, petSource } from "./petdefs.js";
@@ -139,7 +139,7 @@ function buildGlasses() {
     h.push('<div class="participant-card' + (compact ? " compact" : "") + '" style="width:' + T.card + 'px" data-name="' + n + '">');
     h.push('<button type="button" class="trash-button" title="Remove ' + n + '" data-act="remove">&times;</button>');
     h.push('<canvas class="decorc" id="de_' + i + '" hidden aria-hidden="true"></canvas>');      /* the cup decoration (glass.js) */
-    h.push('<div class="crown-wrap" id="cr_' + i + '">' + crownSvg(26, 17, "crown") + '</div>');
+    h.push('<div class="crown-wrap" id="cr_' + i + '">' + glassHatSvg(false) + '</div>');
     h.push('<div class="gwrap" style="width:' + T.gw + 'px;height:' + T.gh + 'px" data-act="bank" tabindex="0" role="button"' +
            ' aria-label="' + n + ': Enter to log water, click for gold" title="Right-click to log water &middot; click for ' + n + '&rsquo;s gold">');
     h.push('<div class="halo" id="ha_' + i + '" style="border-radius:' + radius + '"></div>');
@@ -239,7 +239,7 @@ function updateGlasses() {
     st.duckJester = st.duckCrown && !over;
     st.duckMedal = wearsMedal(p, key);
     const hat = st.duckJester ? "j" : "c";
-    if (st.hatIs !== hat) { st.hatIs = hat; setEl("cr_" + i, hatSvg(26, 17, "crown", st.duckJester), null); }
+    if (st.hatIs !== hat) { st.hatIs = hat; setEl("cr_" + i, glassHatSvg(st.duckJester), null); }
     setEl("cr_" + i, null, st.duckCrown ? "crown-wrap on" : "crown-wrap");
     setTitle("cr_" + i, st.duckJester ? "Leading, but still short of your goal" : "Leading the day, goal met");
     const real = fmt(total) + " / " + fmt(goal) + " fl oz";

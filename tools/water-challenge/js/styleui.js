@@ -5,7 +5,8 @@
 import * as C from "./config.js";
 import { S, findParticipant } from "./model.js";
 import * as store from "./store.js";
-import { SLOTS, COSMETICS, itemsIn, PAINT_COST, drawDecor, drawEffect, decorBehind } from "./cosmetics.js";
+import { SLOTS, COSMETICS, itemsIn, PAINT_COST, drawDecor, drawEffect, decorBehind, decorDry } from "./cosmetics.js";
+import { CUP_H } from "./styleart.js";
 import { defs, fxSpot, anchorY, zoneOf } from "./petdefs.js";
 import { ownsCosmetic, cosmeticBlock, buyCosmetic, wearCosmetic, lookOf, paintBlock, paintPet, shellBalance, shellRun, shellAward, shellsEarned, pouredOn } from "./shop.js";
 import { hueOf, petLabel } from "./pets.js";
@@ -148,12 +149,17 @@ function startRoom() {
   requestAnimationFrame(drawRoom);
 }
 
+/* A glass with the page's own shape (inside CUP_H times as tall as wide, the pet sized
+   as on a card), drawn in the page's layers: water, a cup item set behind the outline,
+   the outline and shine, an item in front of it, then the pet and its effect. Below the
+   surface the item and the pet take the water's tint, as on the page; a dry item does not. */
+let layerCv = null;
 function drawRoom() {
   const cv = $("styleCv"), p = owner && owner();
   if (!cv || !p || ui.tab !== "shop" || document.hidden || $("styleShop").hidden) { running = false; return; }
   requestAnimationFrame(drawRoom);
   const w = cv.clientWidth || 220, hgt = cv.clientHeight || 260, dpr = Math.min(window.devicePixelRatio || 1, 3);
-  if (cv.width !== Math.round(w * dpr)) { cv.width = Math.round(w * dpr); cv.height = Math.round(hgt * dpr); }
+  if (cv.width !== Math.round(w * dpr) || cv.height !== Math.round(hgt * dpr)) { cv.width = Math.round(w * dpr); cv.height = Math.round(hgt * dpr); }
   const ctx = cv.getContext("2d");
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.clearRect(0, 0, w, hgt);
@@ -164,42 +170,68 @@ function drawRoom() {
   const k = petFor(p), kind = k >= 0 ? k : 0;
   const hue = ui.styleTab === "colour" && ui.styleHue !== null && ui.styleHue !== undefined ? ui.styleHue : (k >= 0 ? hueOf(p, k) : 200);
 
-  const t = performance.now() / 1000, gx = w * 0.14, gy = hgt * 0.22, W = w * 0.72, H = hgt * 0.72;
-  const level = 0.62, top = gy + H * (1 - level), r = Math.min(W * 0.3, 44);
-  const wave = x => Math.sin(x * 0.05 + t * 1.6) * 2.2;
-  ctx.fillStyle = "rgba(255,255,255,0.06)"; ctx.strokeStyle = "rgba(160,200,230,0.8)"; ctx.lineWidth = 2;
-  ctx.beginPath(); ctx.roundRect(gx, gy, W, H, [8, 8, 22, 22]); ctx.fill();
-  ctx.save(); ctx.beginPath(); ctx.roundRect(gx, gy, W, H, [8, 8, 22, 22]); ctx.clip();
-  ctx.beginPath(); ctx.moveTo(gx, gy + H);
-  for (let x = 0; x < W; x += 4) ctx.lineTo(gx + x, top + wave(x));
-  ctx.lineTo(gx + W, top + wave(W));                                  /* the surface reaches the far wall */
-  ctx.lineTo(gx + W, gy + H); ctx.closePath();
-  ctx.fillStyle = p.color; ctx.globalAlpha = 0.85; ctx.fill(); ctx.globalAlpha = 1;
+  /* the glass: inside W x H, room above the rim for tall items */
+  const t = performance.now() / 1000, pad = 10;
+  const W = Math.round(Math.min(w * 0.5, (hgt - 2 * pad) / (CUP_H + 0.42))), H = Math.round(W * CUP_H);
+  const gx = Math.round((w - W) / 2), gy = hgt - pad - H, gw = W + 8, rTop = gw * 0.106, rBot = gw * 0.212;
+  const top = gy + H - 0.62 * (H - C.SURFACE_BAND), r = Math.min(W * C.PET_R_SHARE, C.PET_R_MAX);
+  const wave = x => Math.sin(x * 0.05 + t * 1.6) * 2.2, cs = getComputedStyle(cv);
+  const inside = c => { c.beginPath(); c.roundRect(gx, gy, W, H, [rTop - 3, rTop - 3, rBot - 4, rBot - 4]); };
+  const water = c => {
+    c.beginPath(); c.moveTo(gx, gy + H);
+    for (let x = 0; x < W; x += 4) c.lineTo(gx + x, top + wave(x));
+    c.lineTo(gx + W, top + wave(W));                                  /* the surface reaches the far wall */
+    c.lineTo(gx + W, gy + H); c.closePath();
+  };
+
+  /* drawn on a layer of its own, then tinted below the surface and laid on */
+  const lay = layerCv || (layerCv = document.createElement("canvas"));
+  if (lay.width !== cv.width || lay.height !== cv.height) { lay.width = cv.width; lay.height = cv.height; }
+  const L = lay.getContext("2d");
+  const layer = (draw, tint) => {
+    L.setTransform(1, 0, 0, 1, 0, 0); L.clearRect(0, 0, lay.width, lay.height); L.setTransform(dpr, 0, 0, dpr, 0, 0);
+    draw(L);
+    if (tint && C.UNDERWATER_TINT) {
+      L.save(); L.globalCompositeOperation = "source-atop"; L.globalAlpha = C.UNDERWATER_TINT;
+      inside(L); L.clip(); water(L); L.fillStyle = p.color; L.fill(); L.restore();
+    }
+    ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.drawImage(lay, 0, 0); ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  };
+
+  /* glass and water */
+  ctx.save(); inside(ctx);
+  ctx.fillStyle = cs.getPropertyValue("--glass-fill").trim() || "rgba(255,255,255,0.34)"; ctx.fill();
+  ctx.clip(); water(ctx); ctx.fillStyle = p.color; ctx.fill();
+  const g = ctx.createLinearGradient(0, top, 0, gy + H);
+  g.addColorStop(0, "rgba(255,255,255,0.10)"); g.addColorStop(1, "rgba(0,20,40,0.16)");
+  ctx.fillStyle = g; ctx.fill();
+  water(ctx); ctx.strokeStyle = "rgba(255,255,255,0.55)"; ctx.lineWidth = 2.5; ctx.stroke();
   ctx.restore();
 
-  const edge = () => { ctx.strokeStyle = "rgba(160,200,230,0.8)"; ctx.lineWidth = 2; ctx.beginPath(); ctx.roundRect(gx, gy, W, H, [8, 8, 22, 22]); ctx.stroke(); };
-  const edgeOver = !look.decor || decorBehind(look.decor);           /* the outline over the cup item, or under it */
-  if (!edgeOver) edge();
-  if (look.decor) drawDecor(ctx, look.decor, { x: gx, y: gy, W, H }, x => top + wave(x - gx), t);
-  /* the pet swims slowly across and back at its own depth, hopping now and then */
+  const decor = look.decor, box = { x: gx, y: gy, W, H }, surf = x => top + wave(x - gx);
+  const drawItem = () => layer(c => drawDecor(c, decor, box, surf, t), !decorDry(decor));
+  if (decor && decorBehind(decor)) drawItem();
+  /* the outline and its shine, as .glass-edge */
+  ctx.strokeStyle = cs.getPropertyValue("--glass-edge").trim() || "rgba(126,191,229,0.8)"; ctx.lineWidth = 4;
+  ctx.beginPath(); ctx.roundRect(gx - 2, gy - 1.5, W + 4, H + 3.5, [rTop - 1.5, rTop - 1.5, rBot - 2, rBot - 2]); ctx.stroke();
+  ctx.fillStyle = "rgba(255,255,255,0.5)";
+  ctx.beginPath(); ctx.roundRect(gx + 8, gy + 7, 9, Math.max(0, H - 33), 4.5); ctx.fill();
+  if (decor && !decorBehind(decor)) drawItem();
+
+  /* the pet swims slowly across and back at its own depth, hopping now and then; below
+     the rim it shows only inside the glass, as on the page */
   const sway = Math.sin(t * 0.9), face = Math.cos(t * 0.9) >= 0 ? -1 : 1, z = zoneOf(defs[kind]);
   const px = gx + W / 2 + sway * W * 0.24, hopU = (t % 3.2) / 0.7, hop = hopU < 1 && z === "surface" ? Math.sin(Math.PI * hopU) * r * 0.6 : 0;
   const bob = z === "middle" ? Math.sin(t * 1.3) * r * 0.12 : z === "air" ? Math.sin(t * 2 * Math.PI * C.AIR_BOB_HZ) * r * C.AIR_BOB_R : Math.sin(t * 2.1) * r * 0.035;
   const py = anchorY(defs[kind], r, top + wave(px - gx), gy + H - C.FLOOR_GAP) - hop + bob;
   const spot = fxSpot(defs[kind]), fx = px + spot[0] * r * face, fy = py + spot[1] * r;
-  if (look.effect) drawEffect(ctx, look.effect, fx, fy, r, t, hue, "back");
-  ctx.save(); ctx.translate(px, py); ctx.scale(face, 1);
-  drawCritter(ctx, 0, 0, r, 0, false, false, kind, hue, false, look.finish);
-  ctx.restore();
-  if (look.effect) drawEffect(ctx, look.effect, fx, fy, r, t, hue, "front");
-
-  /* below the surface takes the water's colour, as in the real glass */
-  ctx.save(); ctx.beginPath(); ctx.roundRect(gx, gy, W, H, [8, 8, 22, 22]); ctx.clip();
-  ctx.beginPath(); ctx.moveTo(gx, gy + H);
-  for (let x = 0; x < W; x += 4) ctx.lineTo(gx + x, top + wave(x));
-  ctx.lineTo(gx + W, top + wave(W));                                  /* the surface reaches the far wall */
-  ctx.lineTo(gx + W, gy + H); ctx.closePath();
-  ctx.fillStyle = p.color; ctx.globalAlpha = 0.28; ctx.fill();
-  ctx.restore();
-  if (edgeOver) edge();
+  layer(c => {
+    c.save(); c.beginPath(); c.rect(0, 0, w, gy); c.rect(gx, gy, W, H); c.clip();
+    if (look.effect) drawEffect(c, look.effect, fx, fy, r, t, hue, "back");
+    c.save(); c.translate(px, py); c.scale(face, 1);
+    drawCritter(c, 0, 0, r, 0, false, false, kind, hue, false, look.finish);
+    c.restore();
+    if (look.effect) drawEffect(c, look.effect, fx, fy, r, t, hue, "front");
+    c.restore();
+  }, true);
 }

@@ -409,7 +409,8 @@ h1 { margin: 4px 0 0; font-size: clamp(30px, 5vw, 52px); letter-spacing: -.04em;
 .participant-card { isolation: isolate; }
 .decorc { position: absolute; z-index: 2; pointer-events: none; }
 .decorc.front { z-index: 4; }
-.crown-wrap { position: relative; z-index: 5; height: 20px; margin: 0 0 2px; visibility: hidden; }
+.crown-wrap { position: relative; z-index: 5; height: 20px; margin: 0 0 2px; visibility: hidden;
+  display: flex; justify-content: center; align-items: flex-end; }   /* a taller hat grows upward */
 .crown-wrap.on { visibility: visible; animation: bob 2.6s ease-in-out infinite; }
 @keyframes bob { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-2px); } }
 

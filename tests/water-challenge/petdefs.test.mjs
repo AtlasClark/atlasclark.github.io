@@ -227,6 +227,18 @@ test("holiday hats: the day before to the day after, in place of the crown and j
   for (const h of web_C().HOLIDAY_HATS) for (const k of [h.crown, h.jester]) assert.ok(P.hats[k] && P.hats[k].shapes.length, k + " is drawn");
 });
 
+test("glass hat icon: a tall holiday hat gets more height, so it is drawn about as wide as the crown", () => {
+  const size = (jester, key) => { const s = A.glassHatSvg(jester, key), [, w, h] = /width="(\d+)" height="(\d+)"/.exec(s).map(Number);
+    const vb = /viewBox="([^"]+)"/.exec(s)[1].split(" ").map(Number);
+    return { h, drawnW: vb[2] * Math.min(w / vb[2], h / vb[3]) }; };
+  assert.equal(size(false, "2026-06-15").h, 17, "the crown keeps 26 x 17");
+  for (const [jester, key] of [[false, "2026-10-31"], [true, "2026-12-25"], [false, "2027-01-01"], [true, "2027-01-01"]]) {
+    const s = size(jester, key);
+    assert.ok(s.h >= 17 && s.h <= 30, key + ": slot " + s.h + " px tall");
+    assert.ok(s.drawnW >= 17, key + ": drawn " + s.drawnW.toFixed(1) + " px wide");
+  }
+});
+
 test("events: a folder's own days and off switch replace the default, Hydration Day stays fixed", async () => {
   const U = await import(pathToFileURL(JS + "util.js"));
   const on = k => (A.holidayOn(k) || {}).name || "";

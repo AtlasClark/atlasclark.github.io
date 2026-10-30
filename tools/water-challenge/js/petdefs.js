@@ -342,6 +342,8 @@ function autoFx(def) {
   return spot;
 }
 
+/* Width over height of a hat's drawing. */
+export const hatAspect = hat => { const b = hatBounds(hat.shapes); return (b.x1 - b.x0) / Math.max(1e-6, b.y1 - b.y0); };
 function hatBounds(shapes) {
   let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
   const add = (x, y, p) => { x0 = Math.min(x0, x - p); y0 = Math.min(y0, y - p); x1 = Math.max(x1, x + p); y1 = Math.max(y1, y + p); };
