@@ -5,7 +5,7 @@
 import * as C from "./config.js";
 import { S, findParticipant } from "./model.js";
 import * as store from "./store.js";
-import { SLOTS, COSMETICS, itemsIn, PAINT_COST, drawDecor, drawEffect } from "./cosmetics.js";
+import { SLOTS, COSMETICS, itemsIn, PAINT_COST, drawDecor, drawEffect, decorBehind } from "./cosmetics.js";
 import { defs, fxSpot, anchorY, zoneOf } from "./petdefs.js";
 import { ownsCosmetic, cosmeticBlock, buyCosmetic, wearCosmetic, lookOf, paintBlock, paintPet, shellBalance, shellRun, shellAward, shellsEarned, pouredOn } from "./shop.js";
 import { hueOf, petLabel } from "./pets.js";
@@ -177,6 +177,9 @@ function drawRoom() {
   ctx.fillStyle = p.color; ctx.globalAlpha = 0.85; ctx.fill(); ctx.globalAlpha = 1;
   ctx.restore();
 
+  const edge = () => { ctx.strokeStyle = "rgba(160,200,230,0.8)"; ctx.lineWidth = 2; ctx.beginPath(); ctx.roundRect(gx, gy, W, H, [8, 8, 22, 22]); ctx.stroke(); };
+  const edgeOver = !look.decor || decorBehind(look.decor);           /* the outline over the cup item, or under it */
+  if (!edgeOver) edge();
   if (look.decor) drawDecor(ctx, look.decor, { x: gx, y: gy, W, H }, x => top + wave(x - gx), t);
   /* the pet swims slowly across and back at its own depth, hopping now and then */
   const sway = Math.sin(t * 0.9), face = Math.cos(t * 0.9) >= 0 ? -1 : 1, z = zoneOf(defs[kind]);
@@ -198,6 +201,5 @@ function drawRoom() {
   ctx.lineTo(gx + W, gy + H); ctx.closePath();
   ctx.fillStyle = p.color; ctx.globalAlpha = 0.28; ctx.fill();
   ctx.restore();
-  ctx.strokeStyle = "rgba(160,200,230,0.8)"; ctx.lineWidth = 2;
-  ctx.beginPath(); ctx.roundRect(gx, gy, W, H, [8, 8, 22, 22]); ctx.stroke();
+  if (edgeOver) edge();
 }

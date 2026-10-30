@@ -4,12 +4,16 @@
    CUP_H wide-units tall), origin at the item's anchor (CUP_PLACE): the middle of the
    glass bottom, the middle of the rim, or a point on the water surface. Fixed colours.
    Effect particles ("effect:<key>"): units of the pet's size, origin at the particle's
-   centre. Their pet-colour parts take the colour the effect gives each particle. */
+   centre. Their pet-colour parts take the colour the effect gives each particle.
+   A cup item with behind: true sits behind the glass outline (in the glass); without it
+   the outline is behind the item. Set per item in the Pet Studio. */
 
 export const CUP_H = 1.93;                       /* inside height / inside width of a glass */
 
 /* Where each cup item sits. at: "bottom" | "rim" | "surface" (x: share of the width
-   from the left wall, dy: lift in widths); bob, wobble, spin: how it moves (px, rad). */
+   from the left wall, dy: lift in widths); bob, wobble, spin: how it moves (px, rad);
+   hz: wobble speed (default 0.8 rad/s); pivot: [x, y] in widths from the origin that a
+   wobble turns about (default the origin); dry: never tinted by the water (outside the glass). */
 export const CUP_PLACE = {
   straw:     { at: "bottom" },
   spoon:     { at: "bottom" },
@@ -17,7 +21,13 @@ export const CUP_PLACE = {
   umbrella:  { at: "rim" },
   ice:       { at: "surface", x: 0.31, bob: 1.4, wobble: 0.12 },
   buoy:      { at: "surface", x: 0.78, bob: 1.4 },
-  beachball: { at: "surface", x: 0.24, dy: -0.053, bob: 1.4, spin: 0.5 }
+  beachball: { at: "surface", x: 0.24, dy: -0.053, bob: 1.4, spin: 0.5 },
+  seaweed:   { at: "bottom", wobble: 0.05, hz: 0.9, pivot: [-0.2, 0] },
+  castle:    { at: "bottom" },
+  mint:      { at: "surface", x: 0.66, bob: 1.4, wobble: 0.1 },
+  orange:    { at: "rim" },
+  flag:      { at: "rim", wobble: 0.035, hz: 2.2, pivot: [0.268, 0] },
+  lights:    { at: "rim", dry: true }
 };
 
 const FIX = c => ({ c });
@@ -64,6 +74,34 @@ const STRAW = [[0.16, -0.032], [0.4, -2.03], [0.52, -2.24]];
 const CANOPY = ["#ff6fa3", "#ffd23f", "#3fc1ff", "#7ee081"];
 const BALL = ["#e8505b", "#f4f7f9", "#3f8fd9", "#f4f7f9", "#f7d038", "#f4f7f9"];
 
+/* A seaweed frond from (x0, 0) up h, w wide at the foot, waving amp side to side. */
+function frond(x0, h, w, amp, k, ph, fill) {
+  const left = [], right = [];
+  for (let i = 0; i <= 10; i++) {
+    const v = i / 10, cx = x0 + amp * Math.sin(v * k + ph) * v, half = w * (1 - v * 0.85) / 2;
+    left.push([cx - half, -h * v]); right.push([cx + half, -h * v]);
+  }
+  return P([...left, ...right.reverse()], fill);
+}
+/* A wall with merlons along its top: x0 to x1, top to bot, n merlons d deep. */
+function battlement(x0, x1, top, bot, n, d) {
+  const pts = [[x0, bot], [x0, top]], seg = (x1 - x0) / (2 * n - 1);
+  for (let i = 0; i < 2 * n - 1; i++) {
+    const xb = x0 + (i + 1) * seg;
+    if (i % 2 === 0) { pts.push([xb, top]); if (i < 2 * n - 2) pts.push([xb, top + d]); }
+    else { pts.push([xb, top + d], [xb, top]); }
+  }
+  pts.push([x1, bot]);
+  return pts;
+}
+/* Points along a quadratic swag from a to b over control c, at t = 1/n .. (n-1)/n. */
+const swag = (a, c, b, n) => [...Array(n - 1).keys()].map(i => {
+  const t = (i + 1) / n, u = 1 - t;
+  return [u * u * a[0] + 2 * u * t * c[0] + t * t * b[0], u * u * a[1] + 2 * u * t * c[1] + t * t * b[1]];
+});
+const BULB = ["red", "gold", "green", "blue", "pink"];
+const LIGHTS = [[[-0.56, 0.1], [0, 0.66], [0.56, 0.25]], [[-0.56, 0.76], [0, 1.2], [0.56, 0.62]]];
+
 export const CUP_ART = {
   "decor:straw": { pal: { white: FIX("#ffffff"), red: FIX("#e8505b") }, shapes: [
     S(STRAW, "white", 0.056), ...stripes(STRAW, 0.097, 0.048, "red", 0.056) ] },
@@ -91,7 +129,49 @@ export const CUP_ART = {
 
   "decor:beachball": { pal: { red: FIX(BALL[0]), white: FIX(BALL[1]), blue: FIX(BALL[2]), yellow: FIX(BALL[4]), edge: FIX("rgba(0,0,0,0.15)") }, shapes: [
     ...["red", "white", "blue", "white", "yellow", "white"].map((c, i) => sector(0, 0, 0.097, i * Math.PI / 3, (i + 1) * Math.PI / 3, c)),
-    E(0, 0, 0.019, 0.019, "white"), E(0, 0, 0.097, 0.097, null, { stroke: "edge", w: 0.008 }) ] }
+    E(0, 0, 0.019, 0.019, "white"), E(0, 0, 0.097, 0.097, null, { stroke: "edge", w: 0.008 }) ] },
+
+  "decor:seaweed": { behind: true, pal: { dark: FIX("#26804a"), mid: FIX("#2f9e5b"), light: FIX("#46bd72") }, shapes: [
+    frond(-0.31, 0.74, 0.075, 0.06, 6, 0, "dark"), frond(-0.2, 1.02, 0.085, 0.07, 5, 1.5, "mid"),
+    frond(-0.1, 0.6, 0.065, 0.05, 7, 3, "light"), frond(-0.24, 0.42, 0.06, 0.04, 8, 2, "light") ] },
+
+  "decor:castle": { behind: true, pal: { sand: FIX("#e6c98f"), sand2: FIX("#d6b578"), shade: FIX("rgba(150,110,50,0.22)"),
+      door: FIX("#7a5a33"), pole: FIX("#6b5232"), red: FIX("#e8505b") }, shapes: [
+    S([[0, -0.43], [0, -0.56]], "pole", 0.009), P([[0, -0.56], [0.075, -0.535], [0, -0.51]], "red"),
+    P(battlement(-0.075, 0.075, -0.44, 0, 3, 0.035), "sand2"),
+    P(battlement(-0.2, 0.2, -0.2, 0, 5, 0.03), "sand"),
+    P(battlement(-0.27, -0.13, -0.34, 0, 3, 0.035), "sand"), P(battlement(0.13, 0.27, -0.34, 0, 3, 0.035), "sand"),
+    P([[-0.16, 0], [-0.16, -0.305], [-0.13, -0.305], [-0.13, 0]], "shade"), P([[0.24, 0], [0.24, -0.305], [0.27, -0.305], [0.27, 0]], "shade"),
+    P([[-0.045, 0], [-0.045, -0.07], [-0.045, -0.115, 0, -0.115], [0.045, -0.115, 0.045, -0.07], [0.045, 0]], "door"),
+    E(-0.2, -0.24, 0.018, 0.026, "door"), E(0.2, -0.24, 0.018, 0.026, "door"),
+    E(-0.1, -0.08, 0.012, 0.008, "shade"), E(0.11, -0.12, 0.01, 0.007, "shade"), E(0.06, -0.04, 0.012, 0.008, "shade") ] },
+
+  "decor:mint": { pal: { leaf: FIX("#4cc26a"), leaf2: FIX("#38a75a"), vein: FIX("rgba(255,255,255,0.45)"), stem: FIX("#3c8f50") }, shapes: [
+    S([[0, 0.03], [0.005, -0.03]], "stem", 0.014),
+    E(-0.05, -0.035, 0.075, 0.033, "leaf2", { rot: -0.45 }), S([[-0.11, -0.005], [0.005, -0.06]], "vein", 0.006),
+    E(0.055, -0.045, 0.078, 0.035, "leaf", { rot: 0.4 }), S([[0.115, -0.015], [0, -0.07]], "vein", 0.006),
+    E(0.0, -0.095, 0.06, 0.028, "leaf", { rot: -1.45 }), S([[-0.01, -0.15], [0.006, -0.045]], "vein", 0.006) ] },
+
+  "decor:orange": { pal: { rind: FIX("#f28c28"), pith: FIX("#ffe9c7"), pulp: FIX("#f9a23b") }, shapes: [
+    sector(-0.4, 0, 0.15, Math.PI, 2 * Math.PI, "rind"), sector(-0.4, 0, 0.13, Math.PI, 2 * Math.PI, "pith"),
+    ...[0, 1, 2, 3].map(i => sector(-0.4, 0, 0.118, Math.PI + i * Math.PI / 4 + 0.05, Math.PI + (i + 1) * Math.PI / 4 - 0.05, "pulp")) ] },
+
+  "decor:flag": { pal: { wood: FIX("#8a6a45"), gold: FIX("#f2c14e"), black: FIX("#22262b"), white: FIX("#f4f7f9") }, shapes: [
+    S([[0.3, 0.6], [0.25, -0.33]], "wood", 0.018), E(0.25, -0.34, 0.015, 0.015, "gold"),
+    P([[0.252, -0.32], [0.33, -0.36, 0.41, -0.31], [0.47, -0.27, 0.52, -0.31], [0.51, -0.15], [0.44, -0.18, 0.37, -0.15], [0.3, -0.12, 0.249, -0.17]], "black"),
+    S([[0.345, -0.195], [0.43, -0.172]], "white", 0.012), S([[0.345, -0.172], [0.43, -0.195]], "white", 0.012),
+    E(0.387, -0.25, 0.032, 0.029, "white"), E(0.387, -0.223, 0.02, 0.014, "white"),
+    E(0.376, -0.253, 0.007, 0.008, "black"), E(0.398, -0.253, 0.007, 0.008, "black") ] },
+
+  "decor:lights": { pal: { wire: FIX("#2f4a3a"), cap: FIX("#56645c"),
+      red: FIX("#ff5a5a"), gold: FIX("#ffd04a"), green: FIX("#4fe08a"), blue: FIX("#58b4ff"), pink: FIX("#ff7ad0"),
+      gred: FIX("rgba(255,90,90,0.32)"), ggold: FIX("rgba(255,208,74,0.32)"), ggreen: FIX("rgba(79,224,138,0.32)"),
+      gblue: FIX("rgba(88,180,255,0.32)"), gpink: FIX("rgba(255,122,208,0.32)") }, shapes: [
+    ...LIGHTS.map(([a, c, b]) => S([a, [c[0], c[1], b[0], b[1]]], "wire", 0.01)),
+    ...LIGHTS.flatMap(([a, c, b], j) => swag(a, c, b, 8).flatMap(([x, y], i) => {
+      const col = BULB[(i + j * 2) % BULB.length];
+      return [E(x, y + 0.03, 0.05, 0.05, "g" + col), E(x, y + 0.03, 0.019, 0.027, col), E(x, y + 0.004, 0.011, 0.007, "cap")];
+    })) ] }
 };
 
 /* Effect particles: one shape each, drawn many times by the effect's own motion. */
@@ -102,6 +182,10 @@ function starPts(ro, ri) {
 }
 const hs = 0.16, ns = 0.17;
 export const FX_ART = {
+  "effect:stars": { pal: { gold: FIX("#ffd55a"), edge: FIX("#e0a52a") }, shapes: [P(starPts(0.13, 0.055), "gold", "edge", 0.015)] },
+  "effect:rain": { pal: { cloud: FIX("#eef3f7"), shade: FIX("#c9d6e0") }, shapes: [
+    E(0, 0.075, 0.27, 0.05, "shade"), E(-0.17, 0.03, 0.15, 0.1, "cloud"), E(0.18, 0.03, 0.14, 0.1, "cloud"),
+    E(0, -0.04, 0.19, 0.15, "cloud"), E(0, 0.06, 0.28, 0.06, "cloud") ] },
   "effect:sparkles": { pal: { star: FIX("#fff0aa") }, shapes: [P(starPts(0.15, 0.035), "star")] },
   "effect:hearts": { pal: { heart: HUE(0, 85, 62) }, shapes: [{ t: "path", fill: "heart", d: [
     ["M", 0, r4(0.35 * hs)], ["C", r4(-1.1 * hs), r4(-0.35 * hs), r4(-0.45 * hs), r4(-1.05 * hs), 0, r4(-0.45 * hs)],

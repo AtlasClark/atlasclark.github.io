@@ -32,7 +32,7 @@
   <header class="page-header">
     <div class="hdr-left">
       <button type="button" id="cog" class="icon-btn" title="Challenge settings" aria-expanded="false" aria-controls="settingsPanel">&#9881;</button>
-      <button type="button" id="themeBtn" class="icon-btn theme-btn" title="Theme"><span aria-hidden="true"></span></button>
+      <button type="button" id="themeBtn" class="icon-btn theme-btn" aria-label="Theme"><span aria-hidden="true"></span></button>
     </div>
     <div class="hdr-mid">
       <p class="eyebrow" id="appTagline">Drink responsibly. Brag irresponsibly.</p>
@@ -70,6 +70,12 @@
             The cap is 2&times; the goal: reach the goal to win the day, pass the cap and a pet drowns.
             Changes never alter past days.</p>
         </details>
+        <details class="sp-card" data-card="events">
+          <summary>Events</summary>
+          <p class="hint">Holiday colours, background and hats, from the first day to the last, each year.
+            Dates are MM-DD; leave one blank for the default.</p>
+          <div id="eventList" class="ev-list"></div>
+        </details>
         <details class="sp-card" data-card="roster">
           <summary>Roster <b id="rosterCount" class="sp-count"></b></summary>
           <p class="hint">Away hides a glass and pauses streaks and the year target.</p>
@@ -102,7 +108,7 @@
             <button type="button" id="bSyncNow" class="btn primary">Sync now</button></div>
         </details>
       </div>
-      <div class="sp-foot"><span class="hint">Challenge and Goals are shared with everyone on this folder.</span>
+      <div class="sp-foot"><span class="hint">Challenge, Goals and Events are shared with everyone on this folder.</span>
         <button type="button" id="applySettings" class="btn primary">Save</button></div>
     </div>
   </header>

@@ -26,13 +26,21 @@ const ITEMS = [
   ["effect", "notes",     "Music",      25, "Hums while it swims."],
   ["effect", "sparkles",  "Sparkles",   35, "Twinkling all round."],
   ["effect", "aura",      "Aura",       40, "A soft glow in its own colour."],
+  ["effect", "stars",     "Orbiting stars", 30, "Seeing stars, nicely."],
+  ["effect", "rain",      "Rain cloud", 30, "Its own little weather."],
   ["decor", "straw",     "Straw",          10, "Striped and bendy."],
   ["decor", "spoon",     "Spoon",          10, "For stirring, or just because."],
   ["decor", "ice",       "Ice cubes",      12, "Two cubes, floating."],
   ["decor", "lemon",     "Lemon slice",    12, "On the rim."],
   ["decor", "umbrella",  "Cocktail umbrella", 18, "Holiday mode."],
   ["decor", "buoy",      "Life ring",      20, "Safety first."],
-  ["decor", "beachball", "Beach ball",     20, "Bobs about on top."]
+  ["decor", "beachball", "Beach ball",     20, "Bobs about on top."],
+  ["decor", "mint",      "Mint sprig",     10, "Fresh."],
+  ["decor", "orange",    "Orange wedge",   12, "On the rim, for the vitamins."],
+  ["decor", "seaweed",   "Seaweed",        15, "Sways with the water."],
+  ["decor", "flag",      "Pirate flag",    18, "This glass is claimed."],
+  ["decor", "castle",    "Sandcastle",     22, "A fixer-upper."],
+  ["decor", "lights",    "Fairy lights",   25, "Strung round the glass."]
 ];
 export const COSMETICS = Object.fromEntries(ITEMS.map(([slot, key, name, price, blurb]) =>
   [slot + ":" + key, { id: slot + ":" + key, slot, key, name, price, blurb }]));
@@ -95,9 +103,35 @@ function particle(ctx, key, x, y, r, scale, hue) {
   drawShapes(ctx, h.shapes, r, hue, h.pal, false);
   ctx.restore();
 }
+/* A raindrop, s tall, its tip at x, y. */
+function drop(ctx, x, y, s) {
+  ctx.beginPath(); ctx.moveTo(x, y - s);
+  ctx.quadraticCurveTo(x + s * 0.75, y + s * 0.35, x, y + s * 0.6);
+  ctx.quadraticCurveTo(x - s * 0.75, y + s * 0.35, x, y - s);
+  ctx.fill();
+}
 export function drawEffect(ctx, key, x, cy, r, t, hue, layer) {
   ctx.save();
-  if (key === "aura" && layer === "back") {
+  if (key === "stars") {                                   /* the far half of the orbit behind the pet, the near half in front */
+    for (let i = 0; i < 3; i++) {
+      const a = t * 1.3 + i * 2.0944, near = Math.sin(a) > 0;
+      if (near !== (layer === "front")) continue;
+      const depth = 0.78 + 0.22 * Math.sin(a);
+      ctx.globalAlpha = 0.55 + 0.45 * depth;
+      particle(ctx, key, x + Math.cos(a) * r * 1.0, cy - r * 0.15 + Math.sin(a) * r * 0.3, r, depth, hue);
+    }
+  } else if (key === "rain" && layer === "front") {         /* a cloud over the pet, a drop now and then */
+    const ky = cy - r * 1.25 + Math.sin(t * 1.1) * r * 0.05, floor = cy - r * 0.15;
+    ctx.fillStyle = "rgba(110,180,240,0.9)";
+    for (let i = 0; i < 3; i++) {
+      const u = (t * 0.55 + i * 0.53) % 1.6;              /* falls for 1, then waits 0.6 */
+      if (u > 1) continue;
+      ctx.globalAlpha = Math.min(1, (1 - u) * 4);
+      drop(ctx, x + (i - 1) * r * 0.26, ky + r * 0.12 + u * u * (floor - ky - r * 0.12), r * 0.08);
+    }
+    ctx.globalAlpha = 1;
+    particle(ctx, key, x, ky, r, 1, hue);
+  } else if (key === "aura" && layer === "back") {
     const pulse = 1 + 0.08 * Math.sin(t * 2.2);
     const g = ctx.createRadialGradient(x, cy, r * 0.2, x, cy, r * 1.15 * pulse);
     g.addColorStop(0, "hsla(" + hue + ",90%,68%,0.45)");
@@ -139,22 +173,27 @@ export function drawEffect(ctx, key, x, cy, r, t, hue, layer) {
    "decor:<key>", in units of the glass's width) goes on its anchor (CUP_PLACE). Drawn
    before the pet; the page's underwater tint then colours whatever is below the surface. */
 export function cupOrigin(key, box, surf, t) {
-  const pl = CUP_PLACE[key] || { at: "bottom" }, { x, y, W, H } = box;
-  if (pl.at === "rim") return { x: x + W / 2, y, a: 0 };
+  const pl = CUP_PLACE[key] || { at: "bottom" }, { x, y, W, H } = box, k = (pl.x ?? 0.5) * 7;
+  const a = (pl.wobble ? pl.wobble * Math.sin(t * (pl.hz || 0.8) + k) : 0) + (pl.spin ? t * pl.spin : 0);
+  if (pl.at === "rim") return { x: x + W / 2, y, a };
   if (pl.at === "surface") {
-    const px = x + W * pl.x, k = pl.x * 7;
-    return { x: px, y: surf(px) + (pl.dy || 0) * W + Math.sin(t * 1.6 + k) * (pl.bob || 0),
-             a: (pl.wobble ? pl.wobble * Math.sin(t * 0.8 + k) : 0) + (pl.spin ? t * pl.spin : 0) };
+    const px = x + W * pl.x;
+    return { x: px, y: surf(px) + (pl.dy || 0) * W + Math.sin(t * 1.6 + k) * (pl.bob || 0), a };
   }
-  return { x: x + W / 2, y: y + H, a: 0 };
+  return { x: x + W / 2, y: y + H, a };
 }
+/* The glass outline goes in front of this cup item (its drawing's "behind", set in the Studio). */
+export const decorBehind = key => !!(hats["decor:" + key] || {}).behind;
+/* Water never tints it (it hangs outside the glass). */
+export const decorDry = key => !!(CUP_PLACE[key] || {}).dry;
 export function drawDecor(ctx, key, box, surf, t) {
   const h = hats["decor:" + key];
   if (!h) return;
-  const o = cupOrigin(key, box, surf, t);
+  const o = cupOrigin(key, box, surf, t), pv = (CUP_PLACE[key] || {}).pivot;
   ctx.save();
   ctx.translate(o.x, o.y);
-  if (o.a) ctx.rotate(o.a);
+  if (o.a && pv) { ctx.translate(pv[0] * box.W, pv[1] * box.W); ctx.rotate(o.a); ctx.translate(-pv[0] * box.W, -pv[1] * box.W); }
+  else if (o.a) ctx.rotate(o.a);
   drawShapes(ctx, h.shapes, box.W, 0, h.pal, false);
   ctx.restore();
 }

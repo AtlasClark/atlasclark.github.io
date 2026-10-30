@@ -13,7 +13,7 @@ import { petKindFor, ownsEquipped, graveEquipped, petHueFor, isGrave, gravesOf, 
          graveLine, petLabel, petName, petRarityOf, petBinIndex, petGridOrder, penFound,
          penOf, penKinds, pen2Open, pensOf, penAlive, penBuried,
          hashHue, hueOf, rarityLabel, undoEffect, rollOdds } from "./pets.js";
-import { crownSvg, jesterSvg, hatSvg, drawPortrait, drawCritter, drawHeadstone, drawGoldPile, drawCoin, hatKeyFor, drawMedal, holidayOn } from "./art.js";
+import { crownSvg, jesterSvg, hatSvg, drawPortrait, drawCritter, drawHeadstone, drawGoldPile, drawCoin, hatKeyFor, drawMedal, holidayOn, EVENTS, eventRange, eventDefault, setEventRanges } from "./art.js";
 import * as G from "./glass.js";
 import { diag, dir } from "./store.js";
 import { defs as petDefs, hats as petHats, petSource } from "./petdefs.js";
@@ -138,6 +138,7 @@ function buildGlasses() {
     const n = ja(p.name);
     h.push('<div class="participant-card' + (compact ? " compact" : "") + '" style="width:' + T.card + 'px" data-name="' + n + '">');
     h.push('<button type="button" class="trash-button" title="Remove ' + n + '" data-act="remove">&times;</button>');
+    h.push('<canvas class="decorc" id="de_' + i + '" hidden aria-hidden="true"></canvas>');      /* the cup decoration (glass.js) */
     h.push('<div class="crown-wrap" id="cr_' + i + '">' + crownSvg(26, 17, "crown") + '</div>');
     h.push('<div class="gwrap" style="width:' + T.gw + 'px;height:' + T.gh + 'px" data-act="bank" tabindex="0" role="button"' +
            ' aria-label="' + n + ': Enter to log water, click for gold" title="Right-click to log water &middot; click for ' + n + '&rsquo;s gold">');
@@ -148,7 +149,7 @@ function buildGlasses() {
     const sk = Math.round(T.gw * 0.56);
     h.push('<img class="skull" id="sku_' + i + '" src="img/skull.png" alt="past the cap" hidden ' +
            'style="width:' + sk + 'px;height:' + sk + 'px;margin-left:-' + (sk / 2) + 'px;margin-top:-' + (sk / 2) + 'px">');
-    h.push('<div class="shine"></div></div>');
+    h.push('</div><div class="glass-edge" style="width:' + T.gw + 'px;height:' + T.gh + 'px;border-radius:' + radius + '"><div class="shine"></div></div>');
     h.push('<canvas class="duckc" id="dc_' + i + '" style="top:-' + G.dims.head + 'px"></canvas>');
     h.push('</div>');
     h.push('<h2 class="pick" title="Click to change colour" data-act="swatches">' + esc(p.name) +
@@ -167,7 +168,7 @@ function buildGlasses() {
   G.unbindAll();
   G.bindFlight($("flightCv"));
   ordered.forEach((p, i) => {
-    G.bindCanvases(p.name, $("cv_" + i), $("dc_" + i), T.gw, T.gh);
+    G.bindCanvases(p.name, $("cv_" + i), $("dc_" + i), T.gw, T.gh, $("de_" + i));
     G.animState(p.name).hatIs = "";
   });
   G.startAnim();
@@ -973,6 +974,7 @@ function renderBrand() {
 
 export function render() {
   maskEls = [];
+  setEventRanges(S.settings.events);
   renderBrand();
   renderEventBanner();
   G.setActive(ui.tab === "today");
@@ -1285,7 +1287,22 @@ export function fillSettings() {
   $("annualVal").value = currentAnnualGoal();
   $("startVal").value = challengeStart();
   $("idleVal").value = currentIdleMax();
+  renderEvents();
   renderRoster();
+}
+
+/* Settings > Events: one row per themed holiday, its days as MM-DD (blank = the default). */
+function renderEvents() {
+  const now = holidayOn();
+  $("eventList").innerHTML = EVENTS.map(h => {
+    const r = eventRange(h), d = eventDefault(h), own = S.settings.events && S.settings.events[h.theme];
+    return '<div class="ev-row" data-ev="' + esc(h.theme) + '">' +
+      '<label class="ev-on"><input type="checkbox"' + (r.on ? ' checked' : '') + '> ' + esc(h.name) +
+      (now === h ? ' <span class="ev-now">on now</span>' : '') + '</label>' +
+      '<input class="txt md" type="text" maxlength="5" spellcheck="false" data-k="from" placeholder="' + d.from + '" value="' + (own ? esc(r.from) : '') + '" aria-label="' + esc(h.name) + ' from (MM-DD)">' +
+      '<span class="unit">to</span>' +
+      '<input class="txt md" type="text" maxlength="5" spellcheck="false" data-k="to" placeholder="' + d.to + '" value="' + (own ? esc(r.to) : '') + '" aria-label="' + esc(h.name) + ' to (MM-DD)"></div>';
+  }).join("");
 }
 
 export function renderRoster() {

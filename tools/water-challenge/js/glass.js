@@ -8,7 +8,7 @@ import * as C from "./config.js";
 import { rnd } from "./util.js";
 import { drawCritter, drawHeadstone } from "./art.js";
 import { defs as petDefs, fxSpot, anchorY, zoneOf, bodyBox, restY as restAt } from "./petdefs.js";
-import { drawDecor, drawEffect } from "./cosmetics.js";
+import { drawDecor, drawEffect, decorBehind, decorDry } from "./cosmetics.js";
 
 const clock = () => performance.now() / 1000;
 const lookOf = st => st.look || {};
@@ -20,6 +20,7 @@ export const dims = { card: 0, cols: 0, gw: 132, gh: 246, W: 124, H: 239, head: 
    glass clips it at its inside edge. At 125% or 150% screen scaling the inside edge
    falls between pixels and a canvas that stopped exactly there left a pale seam. */
 const BLEED = 2;
+const DECOR_MARGIN = 8;                   /* the decor canvas reaches this far past each card edge */
 export const stats = { errors: 0, lastError: "", fps: 0 };
 
 let active = true;              /* false while another tab is showing */
@@ -144,7 +145,7 @@ function sizeCanvas(cv, w, h) {
 /* Back to the canvas's own scale (also undoes anything a failed frame left behind). */
 const reset = ctx => ctx.setTransform(ctx._sx || 1, 0, 0, ctx._sy || 1, (ctx._ox || 0) * (ctx._sx || 1), (ctx._ox || 0) * (ctx._sy || 1));
 
-export function bindCanvases(name, glassCanvas, petCanvas, gw, gh) {
+export function bindCanvases(name, glassCanvas, petCanvas, gw, gh, decorCanvas) {
   const st = animState(name);
   st.ctx = glassCanvas ? sizeCanvas(glassCanvas, dims.W + 2 * BLEED, dims.H + 2 * BLEED) : null;
   if (glassCanvas) { glassCanvas.style.left = glassCanvas.style.top = -BLEED + "px"; st.ctx._ox = BLEED; }  /* drawn in the glass's own px */
@@ -152,9 +153,10 @@ export function bindCanvases(name, glassCanvas, petCanvas, gw, gh) {
   if (petCanvas) petCanvas.style.left = -dims.pad + "px";
   st.dcv = petCanvas || null;
   st.dW = gw + 2 * dims.pad; st.dH = gh + dims.head;
+  st.ecv = decorCanvas || null; st.ectx = null; st.eW = st.eH = 0;
 }
 
-export function unbindAll() { for (const k in anim) { anim[k].ctx = null; anim[k].dctx = null; anim[k].dcv = null; } }
+export function unbindAll() { for (const k in anim) { anim[k].ctx = null; anim[k].dctx = null; anim[k].dcv = null; anim[k].ecv = null; anim[k].ectx = null; } }
 
 const motionOn = () => C.PET_MOTION && !(reduceMotion && reduceMotion.matches);
 const depthAt = level => Math.min(Math.max(level, 0), 1) * (dims.H - C.SURFACE_BAND);
@@ -466,15 +468,36 @@ function drawStream(ctx, st, p, top, offX, offY) {
   }
 }
 
+/* The cup's decoration, on its own canvas over the whole card and DECOR_MARGIN past it,
+   so tall items are not cut at the pet layer's top. Stacked (app.css) over the glass
+   and under the crown and the pet; under the glass outline when its drawing says
+   "behind", over it otherwise. */
+function drawDecorLayer(st) {
+  const cv = st.ecv, decor = lookOf(st).decor;
+  if (!decor) { if (st.ectx) { cv.hidden = true; st.ectx = null; st.eW = st.eH = 0; } return; }
+  const card = cv.parentElement, gwrap = card && card.querySelector(".gwrap"), M = DECOR_MARGIN;
+  if (!gwrap) return;
+  const w = card.clientWidth + 2 * M, h = card.clientHeight + 2 * M;
+  if (!st.ectx || w !== st.eW || h !== st.eH) {
+    cv.hidden = false;
+    st.ectx = sizeCanvas(cv, w, h); st.eW = w; st.eH = h;
+    cv.style.left = cv.style.top = -M + "px";
+  }
+  cv.classList.toggle("front", !decorBehind(decor));
+  const ctx = st.ectx, W = dims.W, H = dims.H, offX = M + gwrap.offsetLeft + 4, offY = M + gwrap.offsetTop + 3;
+  reset(ctx);
+  ctx.clearRect(0, 0, w, h);
+  const top = surfaceY(st);
+  const surf = x => offY + (st.level > 0.01 ? top + waveAt(st, Math.max(0, Math.min(W, x - offX))) : H - 2);
+  drawDecor(ctx, decor, { x: offX, y: offY, W, H }, surf, clock());
+  if (!decorDry(decor)) tintUnderwater(ctx, st, W, H, top, offX, offY);
+}
+
 function drawPetLayer(st) {
   const ctx = st.dctx, W = dims.W, H = dims.H, offX = 4 + dims.pad, offY = dims.head + 3;
   reset(ctx);
   ctx.clearRect(0, 0, st.dW, st.dH);
-  const top = surfaceY(st), decor = lookOf(st).decor;
-  if (decor) {                                                      /* the cup's decoration, behind the pet */
-    const surf = x => offY + (st.level > 0.01 ? top + waveAt(st, Math.max(0, Math.min(W, x - offX))) : H - 2);
-    drawDecor(ctx, decor, { x: offX, y: offY, W, H }, surf, clock());
-  }
+  const top = surfaceY(st);
   drawPour(ctx, st, top, offX, offY);
   /* Above the rim anything may overhang the glass; below it, only the inside shows. */
   ctx.save();
@@ -493,7 +516,7 @@ function drawPetLayer(st) {
   const g = st.guest && anim[st.guest], v = g && g.visit;
   if (v && v.stage === "there") drawFloating(ctx, st, v.sw, W, H, top, offX, offY, r);
   ctx.restore();
-  if (st.duckState || st.guest || decor) tintUnderwater(ctx, st, W, H, top, offX, offY);
+  if (st.duckState || st.guest) tintUnderwater(ctx, st, W, H, top, offX, offY);
 }
 
 /* water: whose glass it is in (waves, surface). pet: who is drawn (its motion, kind,
@@ -906,6 +929,7 @@ function frame(now) {
       stepState(st, f);
       drawGlass(st);
       if (st.dctx) drawPetLayer(st);
+      if (st.ecv) drawDecorLayer(st);
     } catch (e) {
       stats.errors++;
       stats.lastError = k + ": " + (e.message || e);

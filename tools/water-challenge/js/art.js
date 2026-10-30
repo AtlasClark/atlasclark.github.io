@@ -3,10 +3,32 @@
 
 import * as C from "./config.js";
 import { defs, hats, drawShapes, drawHat, hatSvgFrom, medalSpot, bodyBox } from "./petdefs.js";
-import { todayKey, parseKey } from "./util.js";
+import { todayKey, parseKey, monthDayOk } from "./util.js";
 import { finishFn, finishWrap } from "./cosmetics.js";
 
-/* The holiday around a day, if any: HOLIDAY_SPAN days either side of its date. */
+/* The events whose days are set in Settings > Events: the HOLIDAY_HATS entries with a theme. */
+export const EVENTS = C.HOLIDAY_HATS.filter(h => h.theme);
+const md = d => String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+/* An event's days each year, "MM-DD" to "MM-DD" (both included; the end may fall in the
+   next year), and whether it is on: the folder's own (_settings.json "events", keyed by
+   theme), else HOLIDAY_SPAN days either side of its date. */
+let ranges = {}, rangesSig = "{}";
+export function eventDefault(h) {
+  const sp = h.span ?? C.HOLIDAY_SPAN;
+  return { from: md(new Date(2001, h.m - 1, h.d - sp)), to: md(new Date(2001, h.m - 1, h.d + sp)), on: true };
+}
+export function eventRange(h) {
+  const r = ranges[h.theme];
+  return r && monthDayOk(r.from) && monthDayOk(r.to) ? { from: r.from, to: r.to, on: r.on !== false } : eventDefault(h);
+}
+export function setEventRanges(r) {
+  const sig = JSON.stringify(r || {});
+  if (sig === rangesSig) return;
+  ranges = r || {}; rangesSig = sig; seen = { key: "", h: null };
+}
+const inRange = (m, r) => r.from <= r.to ? m >= r.from && m <= r.to : m >= r.from || m <= r.to;
+
+/* The holiday on a day, if any. */
 let seen = { key: "", h: null };                 /* asked every frame: once per day is enough */
 export function holidayOn(key = todayKey()) {
   if (key === seen.key) return seen.h;
@@ -14,6 +36,7 @@ export function holidayOn(key = todayKey()) {
   let found = null;
   if (d) {
     for (const h of C.HOLIDAY_HATS) {
+      if (h.theme) { const r = eventRange(h); if (r.on && inRange(md(d), r)) found = h; continue; }
       for (const y of [d.getFullYear() - 1, d.getFullYear(), d.getFullYear() + 1]) {
         if (Math.abs(Math.round((d - new Date(y, h.m - 1, h.d)) / 864e5)) <= (h.span ?? C.HOLIDAY_SPAN)) found = h;
       }

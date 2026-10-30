@@ -21,7 +21,8 @@ import { holidayGoal } from "./themefx.js";
 import { ui, render, setTab, setMsg, showBanner, tickMasks, relayout, forceRebuild, resetIcons,
          toggleSwatches, openBank, auditStreak, showDiag, closeOverlays, fillSettings, renderRoster,
          renderActivityNow, showUnlock, uiHooks, htaDismiss } from "./ui.js";
-import { $, esc, bus, todayKey, localStamp, fmt, fmtOz, trim, parseKey, shiftKey, clockStamp } from "./util.js";
+import { $, esc, bus, todayKey, localStamp, fmt, fmtOz, trim, parseKey, shiftKey, clockStamp, monthDayOk } from "./util.js";
+import { EVENTS, eventDefault } from "./art.js";
 
 let lastSig = "", pollTimer = 0;
 
@@ -49,10 +50,15 @@ onLive("pour", (ev, late) => { if (late < C.LIVE_SHOW_MS) G.pour(ev.name, ev.oz,
 
 /* ---- theme -------------------------------------------------------------- */
 const THEMES = ["auto", "light", "dark"];
+const sysDark = window.matchMedia ? window.matchMedia("(prefers-color-scheme: dark)") : null;
 function applyTheme(t) {
   if (t === "auto") document.documentElement.removeAttribute("data-theme");
   else document.documentElement.setAttribute("data-theme", t);
-  $("themeBtn").title = "Theme: " + t + " (click to change)";
+  /* shown at once on hover (CSS data-tip), not after the browser's title delay */
+  const tip = t === "auto" ? "Theme: Auto (" + (sysDark && sysDark.matches ? "dark" : "light") + ", from your computer)"
+                           : "Theme: " + (t === "light" ? "Light" : "Dark");
+  $("themeBtn").dataset.tip = tip + " · click to change";
+  $("themeBtn").setAttribute("aria-label", tip);
   $("themeBtn").dataset.mode = t;
 }
 function initTheme() {
@@ -64,6 +70,7 @@ function initTheme() {
     applyTheme(next);
     try { localStorage.setItem("awc-theme", next); } catch { }
   };
+  if (sysDark) sysDark.addEventListener("change", () => applyTheme($("themeBtn").dataset.mode));   /* Auto's tip follows the computer */
 }
 
 /* ---- reconcile + refresh ------------------------------------------------ */
@@ -496,14 +503,24 @@ async function applySettings() {
   const dailyChanged = g !== currentGoal(), annualChanged = a !== currentAnnualGoal();
   const startChanged = sd !== "" && sd !== challengeStart(), idleChanged = iv !== "" && Number(iv) !== currentIdleMax();
   const titleChanged = ti !== (S.settings.title || ""), tagChanged = tg !== (S.settings.tagline || "");
-  if (!dailyChanged && !annualChanged && !startChanged && !idleChanged && !titleChanged && !tagChanged) { setMsg("Nothing changed.", true); closeSettings(); return; }
+  /* Events: a row left as its default (blank or the same dates, on) is not stored */
+  const events = {};
+  for (const row of document.querySelectorAll("#eventList .ev-row")) {
+    const h = EVENTS.find(e => e.theme === row.dataset.ev), d = eventDefault(h);
+    const from = trim(row.querySelector("[data-k=from]").value) || d.from, to = trim(row.querySelector("[data-k=to]").value) || d.to;
+    const on = row.querySelector("input[type=checkbox]").checked;
+    if (!monthDayOk(from) || !monthDayOk(to)) { setMsg(h.name + " dates must be MM-DD, like " + d.from + ".", false); return; }
+    if (from !== d.from || to !== d.to || !on) events[h.theme] = on ? { from, to } : { from, to, on: false };
+  }
+  const eventsChanged = JSON.stringify(events) !== JSON.stringify(store.cleanEvents(S.settings.events || {}));
+  if (!dailyChanged && !annualChanged && !startChanged && !idleChanged && !titleChanged && !tagChanged && !eventsChanged) { setMsg("Nothing changed.", true); closeSettings(); return; }
   await store.serial(async () => {
     const old = { ...S.settings };
     S.settings.annualGoalOz = a;
     if (startChanged) S.settings.startDate = sd;
     if (idleChanged) S.settings.idleSkipDays = Number(iv);
     if (dailyChanged) S.settings.dailyGoalOz = g;
-    S.settings.title = ti; S.settings.tagline = tg;
+    S.settings.title = ti; S.settings.tagline = tg; S.settings.events = events;
     if (!(await store.saveSettings())) {
       S.settings = old;
       setMsg("Couldn't save settings. Try again.", false);
@@ -517,6 +534,7 @@ async function applySettings() {
     if (startChanged) bits.push("Year: " + sd + " to " + challengeEnd() + ".");
     if (titleChanged) bits.push("Title: " + (ti || C.DEFAULT_TITLE) + ".");
     if (tagChanged) bits.push("Tagline " + (tg ? "set." : "back to the default."));
+    if (eventsChanged) bits.push("Event days saved.");
     if (idleChanged) bits.push("Streak grace: " + currentIdleMax() + " day" + (currentIdleMax() === 1 ? "" : "s") + ".");
     setMsg(bits.join("  "), true);
     await refresh();
@@ -561,7 +579,7 @@ function wire() {
   for (const d of document.querySelectorAll("#settingsPanel .sp-card")) d.addEventListener("toggle", rememberCards);
   $("applySettings").onclick = applySettings;
   $("settingsPanel").addEventListener("keydown", e => {             /* Enter saves Challenge and Goals, not the other cards */
-    if (e.key === "Enter" && e.target.tagName === "INPUT" && e.target.closest('[data-card=challenge],[data-card=goals]')) applySettings();
+    if (e.key === "Enter" && e.target.tagName === "INPUT" && e.target.closest('[data-card=challenge],[data-card=goals],[data-card=events]')) applySettings();
   });
   $("pname").addEventListener("keydown", e => { if (e.key === "Enter") addParticipant(); });
   $("addP").onclick = addParticipant;

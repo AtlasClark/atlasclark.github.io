@@ -4,7 +4,7 @@
 
 import { drawCritter, drawPortrait, drawHeadstone, drawCoin, drawGoldPile, drawMedal } from "../js/art.js";
 import { hats, hatSvgFrom, fxSpot, anchorY, zoneOf, restY } from "../js/petdefs.js";
-import { drawEffect, drawDecor } from "../js/cosmetics.js";
+import { drawEffect, drawDecor, decorBehind } from "../js/cosmetics.js";
 import { UNDERWATER_TINT, SWIM_RANGE, WALL_GAP_R, FLOOR_GAP } from "../js/config.js";
 import { bounds } from "./geom.js";
 
@@ -30,7 +30,7 @@ export class Preview {
   }
 
   /* One glass: water to `level`, the pet drawn by fn(ctx, surfaceY), tinted below the surface. */
-  glass(x, y, w, h, level, fn, label) {
+  glass(x, y, w, h, level, fn, label, edgeUnder) {      /* edgeUnder: the outline goes under fn's drawing */
     const { ctx, lctx: L, dpr } = this;
     const surf = y + h * (1 - level), rad = Math.min(14, w * 0.12);
     ctx.save();
@@ -52,10 +52,10 @@ export class Preview {
       L.fillStyle = "#3d8fc4"; L.fillRect(x, surf, w, y + h - surf);
       L.restore();
     }
+    const edge = () => { ctx.strokeStyle = css("--line-2"); ctx.lineWidth = 2; ctx.beginPath(); ctx.roundRect(x, y, w, h, [rad * 0.5, rad * 0.5, rad, rad]); ctx.stroke(); };
+    if (edgeUnder) edge();
     ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.drawImage(this.layer, 0, 0); ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-
-    ctx.strokeStyle = css("--line-2"); ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.roundRect(x, y, w, h, [rad * 0.5, rad * 0.5, rad, rad]); ctx.stroke();
+    if (!edgeUnder) edge();
     this.label(label, x + w / 2, y + h + 14);
   }
   /* A hat: worn by a few pets in glasses, then the page's icons at their real sizes. */
@@ -95,7 +95,8 @@ export class Preview {
       [0.25, 0.6, 0.92].forEach((lv, i) => {
         if (x + gw > W - 8) return;
         const gy = top + gh - gH;
-        this.glass(x, gy, gw, gH, lv, (L, s) => drawDecor(L, key, { x: x + 4, y: gy + 3, W: gw - 8, H: gH - 7 }, () => s, t), i ? "" : "in the glass, three levels");
+        this.glass(x, gy, gw, gH, lv, (L, s) => drawDecor(L, key, { x: x + 4, y: gy + 3, W: gw - 8, H: gH - 7 }, () => s, t), i ? "" : "in the glass, three levels",
+                   !decorBehind(key));
         x += gw + 12;
       });
       return;

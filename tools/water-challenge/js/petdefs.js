@@ -79,7 +79,7 @@ function seedPens() {
   for (const [key, h] of Object.entries({ ...PROP_ART, ...HOLIDAY_ART, ...CUP_ART, ...FX_ART })) {
     const pal = {};
     for (const [n, c] of Object.entries(h.pal)) { const v = cleanColour(c); if (v) pal[n] = v; }
-    hats[key] = { pal, shapes: h.shapes.map(s => cleanShape(s, pal)).filter(Boolean) };
+    hats[key] = Object.assign({ pal, shapes: h.shapes.map(s => cleanShape(s, pal)).filter(Boolean) }, h.behind === true ? { behind: true } : {});
   }
 }
 
@@ -119,7 +119,7 @@ export function applyDefs(obj) {
     const pal = {};
     for (const [n, c] of Object.entries(h.pal || {})) { const v = cleanColour(c); if (v) pal[n] = v; }
     const shapes = (Array.isArray(h.shapes) ? h.shapes : []).map(s => cleanShape(s, pal)).filter(Boolean);
-    if (shapes.length) { hats[key] = { pal, shapes }; took.push(key); }
+    if (shapes.length) { hats[key] = Object.assign({ pal, shapes }, CUP_KEYS.includes(key) && h.behind === true ? { behind: true } : {}); took.push(key); }
   }
   return took;
 }

@@ -1,8 +1,8 @@
 /* Water Challenge (web) - constants: rules, tunables and the on-disk contract
    (FORMAT_REV, UTF-16 LE + BOM JSON, unknown fields kept). */
 
-export const REV         = "rev 1.37.2";
-export const APP_VERSION = "web 1.37.2";   /* stamped as writerVersion */
+export const REV         = "rev 1.37.6";
+export const APP_VERSION = "web 1.37.6";   /* stamped as writerVersion */
 /* Every file is written at FORMAT_REV. A file stamped higher came from a newer
    build, and the page asks for a reload. */
 export const FORMAT_REV    = 22;
@@ -83,11 +83,12 @@ export const GOAL_OZ           = 128;
 /* Holiday hats: from HOLIDAY_SPAN days before to HOLIDAY_SPAN days after each date,
    these replace the crown (goal met) and the jester hat (led, under goal) on pets and
    in every hat icon. Drawings in propart.js (HOLIDAY_ART). An entry with a "theme" also
-   gives the page that holiday's colours, background and goal effect (themefx.js). */
+   gives the page that holiday's colours, background and goal effect (themefx.js), and
+   its days can be set per folder in Settings > Events (art.js eventRange). */
 export const HOLIDAY_HATS = [
   { name: "Halloween", m: 10, d: 31, crown: "witch",     jester: "pumpkin", theme: "halloween" },
-  { name: "Christmas", m: 12, d: 25, crown: "santa",     jester: "elf" },
-  { name: "New Year",  m: 1,  d: 1,  crown: "partyGold", jester: "partyStripe" },
+  { name: "Christmas", m: 12, d: 25, crown: "santa",     jester: "elf", theme: "christmas" },
+  { name: "New Year",  m: 1,  d: 1,  crown: "partyGold", jester: "partyStripe", theme: "newyear" },
   { name: "National Hydration Day", m: 6, d: 23, span: 0, crown: "dropCrown", jester: "splashHat" }
 ];
 /* National Hydration Day: a banner, a water background, a goal wave, and rewards from

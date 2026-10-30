@@ -14,7 +14,7 @@ import { Editor, TOOL_HINTS } from "./editor.js";
 import { Preview } from "./preview.js";
 import * as G from "./geom.js";
 
-const REV = "studio 1.19.0";
+const REV = "studio 1.19.1";
 const PETS_URL = "../pets/pets.json";
 const $ = id => document.getElementById(id);
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -51,7 +51,8 @@ const wears = k => k === "crown" || k === "jester" || HOLIDAY_KEYS.includes(k);
 const isCup = k => CUP_KEYS.includes(k), isFx = k => FX_KEYS.includes(k);
 const hued = k => !isHat(k) || k === "grave" || isFx(k);
 for (const k of CUP_KEYS) HAT_NAMES[k] = COSMETICS[k].name;
-for (const k of FX_KEYS) HAT_NAMES[k] = { "effect:sparkles": "Sparkle", "effect:hearts": "Heart", "effect:notes": "Music note" }[k];
+for (const k of FX_KEYS) HAT_NAMES[k] = { "effect:sparkles": "Sparkle", "effect:hearts": "Heart", "effect:notes": "Music note",
+                                          "effect:stars": "Orbiting star", "effect:rain": "Rain cloud" }[k];
 const CUP_AT = { bottom: "the middle of the glass bottom", rim: "the middle of the rim", surface: "the water surface" };
 /* The inside of the glass around a cup item's origin, in widths (surface items: water at 60%). */
 function cupFrame(k) {
@@ -63,7 +64,8 @@ function cupFrame(k) {
 const ITEMS = () => [...Array(C.PET_MAX).keys(), ...HAT_KEYS];
 function baseName(k) { return isHat(k) ? HAT_NAMES[k] : C.PET_BASE_NAMES[k]; }
 function itemName(k) { return isHat(k) ? HAT_NAMES[k] : C.PET_NAMES[k]; }
-function hatDef(h) { return { name: "", crown: [0, 0], pal: h.pal, swim: h.shapes, portrait: null }; }
+/* behind: a cup item the glass outline is drawn over (kept only for cup items, only when true). */
+function hatDef(h) { return Object.assign({ name: "", crown: [0, 0], pal: h.pal, swim: h.shapes, portrait: null }, h.behind === true ? { behind: true } : {}); }
 function resetItems() {
   for (const k of ITEMS()) W.pets[k] = { def: G.clone(W.builtin[k]), edited: false };
 }
@@ -168,7 +170,7 @@ function syncDefs() {
   for (const key of HAT_KEYS) {
     const p = W.pets[key];
     const b = p && p.edited && p.def.swim.length ? p.def : W.builtin[key];
-    if (b) hats[key] = { pal: b.pal, shapes: b.swim };
+    if (b) hats[key] = Object.assign({ pal: b.pal, shapes: b.swim }, isCup(key) && b.behind ? { behind: true } : {});
   }
 }
 
@@ -374,7 +376,7 @@ function loadFileObj(obj) {
   }
   for (const key of HAT_KEYS) {
     const h = obj.hats && obj.hats[key];
-    if (h && Array.isArray(h.shapes)) W.pets[key] = { def: hatDef({ pal: h.pal || {}, shapes: h.shapes }), edited: true };
+    if (h && Array.isArray(h.shapes)) W.pets[key] = { def: hatDef({ pal: h.pal || {}, shapes: h.shapes, behind: isCup(key) && h.behind === true }), edited: true };
   }
 }
 
@@ -459,7 +461,7 @@ function petsJson() {
     out.push("  },", '  "hats": {');
     hs.forEach((k, n) => {
       const d = W.pets[k].def;
-      out.push('    "' + k + '": {\n      "pal": {\n' + Object.entries(d.pal).map(([key, c]) => "        " + JSON.stringify(key) + ": " + tidy(c)).join(",\n") +
+      out.push('    "' + k + '": {\n' + (isCup(k) && d.behind ? '      "behind": true,\n' : '') + '      "pal": {\n' + Object.entries(d.pal).map(([key, c]) => "        " + JSON.stringify(key) + ": " + tidy(c)).join(",\n") +
                '\n      },\n      "shapes": ' + list(d.swim) + "\n    }" + (n < hs.length - 1 ? "," : ""));
     });
   }
@@ -565,7 +567,7 @@ async function withSaveLock(fn) {
    save; an item changed on both sides keeps this studio's version, and Save asks. */
 const WATCH_MS = 4000;
 let saving = false;
-const canon = (k, def) => JSON.stringify(isHat(k) ? hatDef({ pal: def.pal || {}, shapes: def.swim || [] }) : normalize(def));
+const canon = (k, def) => JSON.stringify(isHat(k) ? hatDef({ pal: def.pal || {}, shapes: def.swim || [], behind: isCup(k) && def.behind === true }) : normalize(def));
 function itemsOf(obj) {
   const out = {};
   for (const [key, p] of Object.entries((obj && obj.pets) || {})) {
@@ -574,7 +576,7 @@ function itemsOf(obj) {
   }
   for (const key of HAT_KEYS) {
     const h = obj && obj.hats && obj.hats[key];
-    if (h && Array.isArray(h.shapes) && h.shapes.length) out[key] = canon(key, { pal: h.pal, swim: h.shapes });
+    if (h && Array.isArray(h.shapes) && h.shapes.length) out[key] = canon(key, { pal: h.pal, swim: h.shapes, behind: h.behind });
   }
   return out;
 }
@@ -1014,10 +1016,14 @@ function hatTab() {
   }[k] || (HOLIDAY_OF[k] ? "Worn in place of the " + (HOLIDAY_OF[k].role === "crown" ? "crown (leader who met their goal)" : "jester hat (leader still under goal)") +
     " from the day before " + esc(HOLIDAY_OF[k].h.name) + " to the day after. The origin is each pet&rsquo;s crown spot; the same drawing makes the small hat icons."
     : isCup(k) ? "Style shop cup item. Units are the glass&rsquo;s inside width; the origin is " + CUP_AT[(CUP_PLACE[k.slice(6)] || {}).at || "bottom"] +
-      ", and the dashed box is the inside of the glass. Anything past the walls is cut off on the page. Fixed colours."
+      ", and the dashed box is the inside of the glass. On the page it may reach just past the card. Fixed colours."
     : isFx(k) ? "One particle of the " + esc(COSMETICS[k].name) + " effect, in units of the pet&rsquo;s size, centred on the origin. The effect moves and fades it; " +
       "pet colours follow the colour the effect gives each particle." : "");
   return '<h4>' + esc(HAT_NAMES[k]) + '</h4><p class="note">' + about + '</p>' +
+    (isCup(k) ? '<div class="row"><label>Glass outline</label><select data-f="behind">' +
+      '<option value="0"' + (p.def.behind ? '' : ' selected') + '>Behind the item</option>' +
+      '<option value="1"' + (p.def.behind ? ' selected' : '') + '>In front of the item</option></select></div>' +
+      '<p class="note">In front: the item looks inside the glass. Behind: it sits over the glass.</p>' : '') +
     (wears(k) || k === "medal" ? '<div class="row"><label>Try on</label><select data-f="tryon">' + [...Array(C.PET_MAX).keys()].map(i =>
       '<option value="' + i + '"' + (i === W.tryOn ? " selected" : "") + '>' + esc(C.PET_NAMES[i]) + '</option>').join("") + '</select></div>' : '') +
     '<div class="sep"></div><h4>Start over</h4><div class="btns">' +
@@ -1270,6 +1276,7 @@ function wire() {
     if (t.dataset.f === "hue") return;
     if (t.dataset.f === "w" || t.dataset.f === "fo" || t.dataset.f === "so") { commit(); return; }
     if (t.dataset.f === "tryon") { W.tryOn = Number(t.value); editor.redraw(); return; }
+    if (t.dataset.f === "behind") { change(() => { if (t.value === "1") app.def.behind = true; else delete app.def.behind; }); return; }
     if (t.dataset.f === "name") { const v = t.value.trim(); change(() => { if (v && v !== baseName(W.kind)) app.def.name = v.slice(0, 24); else app.def.name = ""; }); return; }
     if (t.dataset.f === "zone") { change(() => { app.def.zone = ZONES.includes(t.value) && t.value !== "surface" ? t.value : undefined; }); return; }
     if (t.dataset.f === "range") { const n = Number(t.value); if (isFinite(n)) change(() => { app.def.range = Math.max(0, Math.min(1, n / 100)); }); return; }

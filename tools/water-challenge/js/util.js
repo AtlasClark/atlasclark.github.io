@@ -27,6 +27,11 @@ export function dateKey(d) {
 }
 export function todayKey() { return dateKey(new Date()); }
 
+/* A month and day "MM-DD" that exists in some year (02-29 included). */
+export function monthDayOk(s) {
+  const m = /^(\d\d)-(\d\d)$/.exec(String(s || ""));
+  return !!m && +m[1] >= 1 && +m[1] <= 12 && +m[2] >= 1 && +m[2] <= new Date(2000, +m[1], 0).getDate();
+}
 export function parseKey(k) {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(k || ""));
   return m ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])) : null;
