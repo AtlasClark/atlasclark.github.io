@@ -13,7 +13,7 @@ import { petKindFor, ownsEquipped, graveEquipped, petHueFor, isGrave, gravesOf, 
          graveLine, petLabel, petName, petRarityOf, petBinIndex, petGridOrder, penFound,
          penOf, penKinds, pen2Open, pensOf, penAlive, penBuried,
          hashHue, hueOf, rarityLabel, undoEffect, rollOdds } from "./pets.js";
-import { crownSvg, jesterSvg, hatSvg, drawPortrait, drawCritter, drawHeadstone, drawGoldPile, drawCoin, hatKeyFor, drawMedal } from "./art.js";
+import { crownSvg, jesterSvg, hatSvg, drawPortrait, drawCritter, drawHeadstone, drawGoldPile, drawCoin, hatKeyFor, drawMedal, holidayOn } from "./art.js";
 import * as G from "./glass.js";
 import { diag, dir } from "./store.js";
 import { defs as petDefs, hats as petHats, petSource } from "./petdefs.js";
@@ -22,6 +22,7 @@ import { balance, spentTotal, spendsOn, earnedTotal, chestWinnings, shopDay, loo
 import { COSMETICS, drawShell } from "./cosmetics.js";
 import { isHydrationDay, teamSplash } from "./hydration.js";
 import { setHydrationDay } from "./hydfx.js";
+import { setHolidayTheme } from "./themefx.js";
 import { $, esc, fmt, fmtOz, fmtGal, todayKey, dateKey, prettyTime, clockStamp, has, parseKey, shiftKey, aAn } from "./util.js";
 
 /* Set by app.js: the Shop tab renders from shopui.js, which imports this module. */
@@ -399,8 +400,9 @@ export function htaDismiss() {
    the team goal (hydration.js, hydfx.js). */
 let evHtml = "", evTimer = 0;
 function renderEventBanner() {
-  const on = isHydrationDay(), el = $("eventBanner");
+  const on = isHydrationDay(), el = $("eventBanner"), hol = holidayOn();
   setHydrationDay(on);
+  setHolidayTheme(!on && hol ? hol.theme : "");
   if (!on) { el.hidden = true; evHtml = ""; clearInterval(evTimer); evTimer = 0; return; }
   ensureIcons();
   const H = C.HYD_DAY, t = teamSplash(), pct = t.goal ? Math.min(100, Math.round(t.total / t.goal * 100)) : 0;
@@ -586,8 +588,8 @@ function renderHistory() {
 
   h.push('<div class="panel-title">Star chart<span class="sub-note"> &middot; last ' + days.length + ' logged days</span></div>');
   h.push('<div class="chart-legend"><span><i class="sw goal"></i>reached the goal</span>' +
-         '<span><i class="sw crown">' + crownSvg(15, 10, "lc") + '</i>won the day</span>' +
-         '<span><i class="sw crown">' + jesterSvg(15, 10, "lc") + '</i>led, but under goal</span>' +
+         '<span><i class="sw crown">' + crownSvg(18, 12, "lc") + '</i>won the day</span>' +
+         '<span><i class="sw crown">' + jesterSvg(18, 12, "lc") + '</i>led, but under goal</span>' +
          '<span><i class="sw cap"></i>hit the cap</span><span><i class="sw over"></i>went past it</span>' +
          '<span><i class="sw some"></i>logged something</span></div>');
   h.push('<div class="chart-scroll"><table class="star-chart"><tr><th class="who"></th>');
@@ -609,7 +611,7 @@ function renderHistory() {
       else if (atCap(tot, pp, key)) cls += " cap";
       else if (metGoal(tot, personalGoal(pp, key))) cls += " goal";
       else cls += " some";
-      if (won && tot > 0 && !pastCap(tot, pp, key)) glyph = hatSvg(15, 10, "lc", !metGoal(tot, personalGoal(pp, key)));
+      if (won && tot > 0 && !pastCap(tot, pp, key)) glyph = hatSvg(18, 12, "lc", !metGoal(tot, personalGoal(pp, key)));
       h.push('<td class="' + cls + '" title="' + esc(name) + ' &middot; ' + esc(key) + ' &middot; ' + fmt(tot) + ' fl oz' +
              (won ? ' &middot; won the day' : '') + '">' + glyph + '</td>');
     }
@@ -753,7 +755,7 @@ function recapHtml() {
   const head = !leaders.length ? "Nobody poured"
              : leaders.length > 1 ? esc(leaders.join(" & ")) + " tied for the day" : esc(leaders[0]) + " won the day";
   const h = ['<section class="recap"><div class="recap-head"><p class="eyebrow">' + (yest ? "Yesterday" : "Last day played") +
-             ' &middot; ' + esc(date) + '</p><h3>' + (leaders.length ? hatSvg(26, 17, "rc-crown", !goalers.some(g => leaders.includes(g.name))) : "") +
+             ' &middot; ' + esc(date) + '</p><h3>' + (leaders.length ? hatSvg(32, 21, "rc-crown", !goalers.some(g => leaders.includes(g.name))) : "") +
              head + '</h3>' + (winners.length ? '<p class="recap-prize"><i class="medalico"></i>' + esc(winners.join(" & ")) + ' ' +
              (winners.length > 1 ? 'take ' + winShare(winners.length) + ' shells each' : 'takes ' + winShare(1) + ' shells') +
              (yest ? ' and wear' + (winners.length > 1 ? '' : 's') + ' the medal today' : '') + '</p>' : '') + '<p class="recap-sub">' + played.length + ' played &middot; ' + goalers.length + ' reached their goal &middot; ' +
@@ -871,7 +873,7 @@ function weekRecapHtml() {
   const goalDays = played.reduce((a, r) => a + r.goalDays, 0);
   const head = champs.length > 1 ? esc(champs.map(r => r.name).join(" & ")) + " shared the week" : esc(lead.name) + " won the week";
   const h = ['<section class="recap week"><div class="recap-head"><p class="eyebrow">Last week &middot; ' + esc(shortDate(w.start)) +
-             ' &ndash; ' + esc(shortDate(w.end)) + '</p><h3>' + hatSvg(26, 17, "rc-crown", false) + head +
+             ' &ndash; ' + esc(shortDate(w.end)) + '</p><h3>' + hatSvg(32, 21, "rc-crown", false) + head +
              '</h3><p class="recap-sub">' + played.length + ' played &middot; ' + plural(goalDays, "goal day") + ' &middot; ' +
              fmtOz(w.team) + ' fl oz together' +
              (w.prevTeam > 0 ? ' <span class="' + (w.team >= w.prevTeam ? "up" : "down") + '">' + (w.team >= w.prevTeam ? "&#9650; " : "&#9660; ") +

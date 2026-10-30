@@ -91,7 +91,7 @@ export class PlinkoBoard {
 
   /* Read from the theme's CSS once per theme, not every frame. */
   colors() {
-    const key = (document.documentElement.dataset.theme || "") + "|" + (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches);
+    const key = (document.documentElement.dataset.theme || "") + "|" + (document.documentElement.dataset.holiday || "") + "|" + (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches);
     if (this._ck === key && this._c) return this._c;
     this._ck = key;
     const cs = getComputedStyle(this.cv);

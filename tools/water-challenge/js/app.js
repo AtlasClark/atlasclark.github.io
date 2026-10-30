@@ -17,6 +17,7 @@ import { initShop, renderShop, shopTabChanged } from "./shopui.js";
 import { shellsEarned, earnedTotal } from "./shop.js";
 import { isHydrationDay } from "./hydration.js";
 import { goalWave } from "./hydfx.js";
+import { holidayGoal } from "./themefx.js";
 import { ui, render, setTab, setMsg, showBanner, tickMasks, relayout, forceRebuild, resetIcons,
          toggleSwatches, openBank, auditStreak, showDiag, closeOverlays, fillSettings, renderRoster,
          renderActivityNow, showUnlock, uiHooks, htaDismiss } from "./ui.js";
@@ -37,7 +38,7 @@ function playUnlock(info) {
   if (cardsShown.has(key)) { if (info.msg) setMsg(info.msg, true); return; }
   cardsShown.add(key);
   if (!info.bought) rollCardQueued(info.name);       /* the roll stays hidden until the card closes */
-  if (!info.bought && isHydrationDay()) goalWave();  /* someone reached their goal */
+  if (!info.bought) { if (isHydrationDay()) goalWave(); else holidayGoal(); }   /* someone reached their goal */
   if (info.equipped) G.dropIn(info.name, 12);       /* held off-screen until the card closes */
   setTimeout(() => showUnlock(info), G.pourLeft(info.name) * 1000 + 150);
 }
