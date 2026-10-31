@@ -22,7 +22,7 @@ import { balance, spentTotal, spendsOn, earnedTotal, chestWinnings, shopDay, loo
 import { COSMETICS, drawShell } from "./cosmetics.js";
 import { isHydrationDay, teamSplash } from "./hydration.js";
 import { setHydrationDay } from "./hydfx.js";
-import { setHolidayTheme } from "./themefx.js";
+import { setHolidayTheme, seasonsOn, seasonOf } from "./themefx.js";
 import { $, esc, fmt, fmtOz, fmtGal, todayKey, dateKey, prettyTime, clockStamp, has, parseKey, shiftKey, aAn } from "./util.js";
 
 /* Set by app.js: the Shop tab renders from shopui.js, which imports this module. */
@@ -222,7 +222,8 @@ function petVisual(p, st, danger, key) {
 }
 
 function updateGlasses() {
-  const key = todayKey(), holidayHats = !!holidayOn(key);
+  const key = todayKey(), hol = holidayOn(key), holidayHats = !!hol;
+  const gfx = hol ? C.GOAL_FX[hol.theme || (isHydrationDay() ? "hydration" : "")] : null;   /* event-day goal glasses */
   let best = 0;
   for (const p of ordered) best = Math.max(best, dayScoreFor(totalOn(p, key), p, key));
   ordered.forEach((p, i) => {
@@ -230,9 +231,11 @@ function updateGlasses() {
     const over = metGoal(total, goal), danger = pastCap(total, p, key);
     petVisual(p, st, danger, key);
     st.target = Math.min(Math.max(total / goal * 100, 0), 100) / 100;
-    st.color = danger ? C.DANGER_COLOR : (over ? C.OVERFILL_COLOR : p.color);
-    setEl("gl_" + i, null, danger ? "glass glass-danger" : (over ? "glass glass-overfill" : "glass"));
-    setEl("ha_" + i, null, danger ? "halo red" : (over ? "halo gold" : "halo"));
+    const fx = over && !danger && gfx ? gfx : null;
+    st.color = danger ? C.DANGER_COLOR : (over ? (fx ? fx.color : C.OVERFILL_COLOR) : p.color);
+    st.goalFx = fx ? fx.fx : "";
+    setEl("gl_" + i, null, danger ? "glass glass-danger" : (over ? "glass glass-overfill" + (fx ? " fx-" + fx.fx : "") : "glass"));
+    setEl("ha_" + i, null, danger ? "halo red" : (over ? "halo gold" + (fx ? " fx-" + fx.fx : "") : "halo"));
     show("go_" + i, over || danger);
     show("sku_" + i, danger);
     /* The leader wears the crown (goal met) or the jester hat (still under goal). On a
@@ -407,7 +410,8 @@ let evHtml = "", evTimer = 0;
 function renderEventBanner() {
   const on = isHydrationDay(), el = $("eventBanner"), hol = holidayOn();
   setHydrationDay(on);
-  setHolidayTheme(!on && hol ? hol.theme : "");
+  /* a holiday's theme, else (unless this browser turned seasons off) the season's */
+  setHolidayTheme(on ? "" : hol && hol.theme ? hol.theme : seasonsOn() ? seasonOf(todayKey()) : "");
   if (!on) { el.hidden = true; evHtml = ""; clearInterval(evTimer); evTimer = 0; return; }
   ensureIcons();
   const H = C.HYD_DAY, t = teamSplash(), pct = t.goal ? Math.min(100, Math.round(t.total / t.goal * 100)) : 0;

@@ -227,6 +227,14 @@ test("holiday hats: the day before to the day after, in place of the crown and j
   for (const h of web_C().HOLIDAY_HATS) for (const k of [h.crown, h.jester]) assert.ok(P.hats[k] && P.hats[k].shapes.length, k + " is drawn");
 });
 
+test("seasons: by month, spring March to May, summer June to August, autumn September to November, winter the rest", async () => {
+  const T = await import(pathToFileURL(JS + "themefx.js"));
+  const want = ["winter", "winter", "spring", "spring", "spring", "summer", "summer", "summer", "autumn", "autumn", "autumn", "winter"];
+  for (let m = 1; m <= 12; m++) assert.equal(T.seasonOf("2026-" + String(m).padStart(2, "0") + "-15"), want[m - 1], "month " + m);
+  assert.equal(C.GOAL_FX.halloween.fx, "potion");
+  for (const h of C.HOLIDAY_HATS) if (h.theme) assert.ok(C.GOAL_FX[h.theme], h.name + " has a goal glass");
+});
+
 test("glass hat icon: a tall holiday hat gets more height, so it is drawn about as wide as the crown", () => {
   const size = (jester, key) => { const s = A.glassHatSvg(jester, key), [, w, h] = /width="(\d+)" height="(\d+)"/.exec(s).map(Number);
     const vb = /viewBox="([^"]+)"/.exec(s)[1].split(" ").map(Number);

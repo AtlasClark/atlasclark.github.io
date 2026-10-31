@@ -17,7 +17,7 @@ import { initShop, renderShop, shopTabChanged } from "./shopui.js";
 import { shellsEarned, earnedTotal } from "./shop.js";
 import { isHydrationDay } from "./hydration.js";
 import { goalWave } from "./hydfx.js";
-import { holidayGoal } from "./themefx.js";
+import { holidayGoal, seasonsOn, setSeasonsOn, seasonOf } from "./themefx.js";
 import { ui, render, setTab, setMsg, showBanner, tickMasks, relayout, forceRebuild, resetIcons,
          toggleSwatches, openBank, auditStreak, showDiag, closeOverlays, fillSettings, renderRoster,
          renderActivityNow, showUnlock, uiHooks, htaDismiss } from "./ui.js";
@@ -71,6 +71,26 @@ function initTheme() {
     try { localStorage.setItem("awc-theme", next); } catch { }
   };
   if (sysDark) sysDark.addEventListener("change", () => applyTheme($("themeBtn").dataset.mode));   /* Auto's tip follows the computer */
+}
+
+/* ---- seasonal theme: on or off for this browser --------------------------- */
+const SEASON_ICON = {
+  spring: '<circle cx="8" cy="4.2" r="2.4"/><circle cx="11.6" cy="6.8" r="2.4"/><circle cx="10.2" cy="11" r="2.4"/><circle cx="5.8" cy="11" r="2.4"/><circle cx="4.4" cy="6.8" r="2.4"/><circle cx="8" cy="8" r="1.8" style="fill:var(--solid)"/>',
+  summer: '<circle cx="8" cy="8" r="3.3"/><path d="M8 1v2.2M8 12.8V15M1 8h2.2M12.8 8H15M3 3l1.6 1.6M11.4 11.4L13 13M3 13l1.6-1.6M11.4 4.6L13 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>',
+  autumn: '<path d="M8 1.5C12.5 4 13 9 8 13.2 3 9 3.5 4 8 1.5z"/><path d="M8 4v11" style="stroke:var(--solid)" stroke-width="1.1" stroke-linecap="round"/>',
+  winter: '<path d="M8 1.5v13M2.4 4.75l11.2 6.5M2.4 11.25l11.2-6.5M6.3 2.6L8 4.2l1.7-1.6M6.3 13.4L8 11.8l1.7 1.6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" fill="none"/>'
+};
+function applySeasonBtn() {
+  const on = seasonsOn(), s = seasonOf(todayKey()), name = s.charAt(0).toUpperCase() + s.slice(1), b = $("seasonBtn");
+  b.innerHTML = '<svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor" aria-hidden="true">' + SEASON_ICON[s] + '</svg>';
+  b.dataset.on = on ? "1" : "0";
+  b.dataset.tip = "Seasonal theme: " + (on ? "on (" + s + ")" : "off") + " \u00b7 click to turn " + (on ? "off" : "on");
+  b.setAttribute("aria-label", name + " theme " + (on ? "on" : "off"));
+  b.setAttribute("aria-pressed", on ? "true" : "false");
+}
+function initSeason() {
+  applySeasonBtn();
+  $("seasonBtn").onclick = () => { setSeasonsOn(!seasonsOn()); applySeasonBtn(); render(); };
 }
 
 /* ---- reconcile + refresh ------------------------------------------------ */
@@ -784,6 +804,7 @@ async function boot() {
   await loadPetDefs();
   await loadBottle();
   initTheme();
+  initSeason();
   wire();
   try { const a = Number(localStorage.getItem("awc-amount")); if (a > 0) ui.amount = a; } catch { }
   $("revLabel").textContent = C.REV;

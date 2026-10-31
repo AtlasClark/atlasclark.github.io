@@ -1,8 +1,8 @@
 /* Water Challenge (web) - constants: rules, tunables and the on-disk contract
    (FORMAT_REV, UTF-16 LE + BOM JSON, unknown fields kept). */
 
-export const REV         = "rev 1.37.10";
-export const APP_VERSION = "web 1.37.10";   /* stamped as writerVersion */
+export const REV         = "rev 1.37.12";
+export const APP_VERSION = "web 1.37.12";   /* stamped as writerVersion */
 /* Every file is written at FORMAT_REV. A file stamped higher came from a newer
    build, and the page asks for a reload. */
 export const FORMAT_REV    = 22;
@@ -96,6 +96,14 @@ export const HOLIDAY_HATS = [
    that day's pours (hydration.js): a shell per ozPerShell and a token per ozPerToken,
    counted up to each person's cap; goalShells for reaching the goal; teamShells for
    everyone who poured when the team splash (all pours vs all goals) is met. */
+/* A goal glass on an event day (rev 1.37.11): its water colour and what moves in it
+   (glass.js drawGoalFx), by the holiday's theme ("hydration" for Hydration Day). */
+export const GOAL_FX = {
+  halloween: { color: "#68d35a", fx: "potion" },    /* a bubbling potion */
+  christmas: { color: "#d8323f", fx: "globe" },     /* a snow globe */
+  newyear:   { color: "#f2cf6e", fx: "fizz" },      /* champagne */
+  hydration: { color: "#2ec5f2", fx: "shimmer" }    /* sunlit water */
+};
 export const HYD_DAY = { name: "National Hydration Day", m: 6, d: 23, ozPerShell: 5, ozPerToken: 10, goalShells: 10, teamShells: 5 };
 export const HOLIDAY_SPAN = 1;
 /* Shells: the Style shop's own currency, apart from goal tokens. Each day a person

@@ -1,4 +1,4 @@
-/* Holiday themes (Halloween, Christmas, New Year): over a holiday's days (HOLIDAY_HATS entries with a "theme", the
+/* Holiday and season themes. Holidays (Halloween, Christmas, New Year): over a holiday's days (HOLIDAY_HATS entries with a "theme", the
    same days as its hats) the page takes the holiday's colours (app.css, html
    data-holiday) and a moving background, and someone reaching their goal sets off the
    holiday's own effect across the screen. Still frames, no goal effect, for anyone
@@ -471,7 +471,203 @@ function newYearGoal(w, h) {
   };
 }
 
+/* ---- Seasons (rev 1.37.11): each browser can turn them off (seasonsOn). A holiday's
+   theme, and National Hydration Day, come first. By month: spring March to May, summer
+   June to August, autumn September to November, winter December to February. -------- */
+const SEASON_KEY = "awc-seasons";
+export function seasonsOn() {
+  try { return localStorage.getItem(SEASON_KEY) !== "off"; } catch { return true; }
+}
+export function setSeasonsOn(on) {
+  try { localStorage.setItem(SEASON_KEY, on ? "on" : "off"); } catch { }
+}
+export function seasonOf(key) {
+  const m = Number(String(key).slice(5, 7));
+  return m >= 3 && m <= 5 ? "spring" : m >= 6 && m <= 8 ? "summer" : m >= 9 && m <= 11 ? "autumn" : "winter";
+}
+
+/* Spring: blossom petals drifting down over green hills dotted with flowers. */
+function springScene() {
+  const rnd = seeded(303);
+  return {
+    stars: Array.from({ length: 40 }, () => ({ x: rnd(), y: rnd() * 0.5, r: 0.5 + rnd(), p: rnd() * 6.28, s: 0.5 + rnd() * 1.4 })),
+    petals: Array.from({ length: 46 }, () => ({ x: rnd(), y: rnd(), r: 3 + rnd() * 4, v: 0.02 + rnd() * 0.035, ph: rnd() * 6.28, sw: 10 + rnd() * 24, c: Math.floor(rnd() * 3) })),
+    flowers: Array.from({ length: 26 }, () => ({ x: rnd(), dy: rnd() * 30, c: Math.floor(rnd() * 3) })),
+    prev: 0
+  };
+}
+const PETAL = ["#ffc1d9", "#ffd9e8", "#f6a6c7"], FLOWER = ["#ff8fbe", "#ffe37a", "#ffffff"];
+function drawSpring(ctx, w, h, t, sc, night) {
+  const dt = Math.min(0.1, Math.max(0, t - (sc.prev || t))); sc.prev = t;
+  if (night) for (const s of sc.stars) {
+    ctx.globalAlpha = 0.25 + 0.35 * (0.5 + 0.5 * Math.sin(t * s.s + s.p));
+    ctx.fillStyle = "#f0f6ff"; ctx.beginPath(); ctx.arc(s.x * w, s.y * h, s.r, 0, 6.2832); ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+  const base = h - Math.min(80, h * 0.1);
+  ctx.fillStyle = night ? "#06120a" : "rgba(120,185,110,.22)";
+  ctx.beginPath(); ctx.moveTo(0, h); ctx.lineTo(0, base);
+  ctx.bezierCurveTo(w * 0.3, base - 40, w * 0.6, base + 10, w, base - 18); ctx.lineTo(w, h); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = night ? "#081a0f" : "rgba(110,180,100,.32)";
+  ctx.beginPath(); ctx.moveTo(0, h); ctx.lineTo(0, base + 26);
+  ctx.bezierCurveTo(w * 0.25, base + 4, w * 0.55, base + 40, w, base + 14); ctx.lineTo(w, h); ctx.closePath(); ctx.fill();
+  for (const f of sc.flowers) {
+    const x = f.x * w, y = base + 34 + f.dy + Math.sin(f.x * 9) * 6;
+    if (y > h) continue;
+    ctx.globalAlpha = night ? 0.45 : 0.85; ctx.fillStyle = FLOWER[f.c];
+    for (let i = 0; i < 5; i++) { const a = i * 1.2566; ctx.beginPath(); ctx.arc(x + Math.cos(a) * 2.4, y + Math.sin(a) * 2.4, 1.8, 0, 6.2832); ctx.fill(); }
+    ctx.fillStyle = "#f2b234"; ctx.beginPath(); ctx.arc(x, y, 1.3, 0, 6.2832); ctx.fill();
+  }
+  for (const p of sc.petals) {
+    p.y += p.v * dt; if (p.y > 1.03) { p.y = -0.03; p.x = Math.random(); }
+    const x = p.x * w + Math.sin(t * 0.8 + p.ph) * p.sw, y = p.y * h;
+    ctx.globalAlpha = night ? 0.55 : 0.85; ctx.fillStyle = PETAL[p.c];
+    ctx.save(); ctx.translate(x, y); ctx.rotate(t * 0.9 + p.ph); ctx.scale(1, 0.45 + 0.35 * Math.abs(Math.sin(t * 1.4 + p.ph)));
+    ctx.beginPath(); ctx.ellipse(0, 0, p.r, p.r * 0.62, 0, 0, 6.2832); ctx.fill(); ctx.restore();
+  }
+  ctx.globalAlpha = 1;
+}
+
+/* Summer: the sun (a moon and fireflies at night) over a sea with a sailboat. */
+function summerScene() {
+  const rnd = seeded(621);
+  return {
+    stars: Array.from({ length: 50 }, () => ({ x: rnd(), y: rnd() * 0.55, r: 0.5 + rnd(), p: rnd() * 6.28, s: 0.5 + rnd() * 1.4 })),
+    flies: Array.from({ length: 18 }, () => ({ x: rnd(), y: 0.62 + rnd() * 0.25, p: rnd() * 6.28, s: 0.4 + rnd() * 0.8 }))
+  };
+}
+function drawSummer(ctx, w, h, t, sc, night) {
+  const r = Math.max(28, Math.min(58, Math.min(w, h) * 0.065)), sx = w - Math.max(80, w * 0.12), sy = Math.max(80, h * 0.14);
+  if (night) {
+    for (const s of sc.stars) {
+      ctx.globalAlpha = 0.3 + 0.4 * (0.5 + 0.5 * Math.sin(t * s.s + s.p));
+      ctx.fillStyle = "#fff4dc"; ctx.beginPath(); ctx.arc(s.x * w, s.y * h, s.r, 0, 6.2832); ctx.fill();
+    }
+    ctx.globalAlpha = 1; ctx.fillStyle = "#fbe7b5";
+    ctx.beginPath(); ctx.arc(sx, sy, r * 0.8, 0, 6.2832); ctx.fill();
+    ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue("--page-a").trim() || "#06111f";
+    ctx.beginPath(); ctx.arc(sx + r * 0.36, sy - r * 0.18, r * 0.7, 0, 6.2832); ctx.fill();     /* a crescent */
+  } else {
+    const g = ctx.createRadialGradient(sx, sy, r * 0.6, sx, sy, r * 3.4);
+    g.addColorStop(0, "rgba(255,214,120,.55)"); g.addColorStop(1, "rgba(255,214,120,0)");
+    ctx.fillStyle = g; ctx.beginPath(); ctx.arc(sx, sy, r * 3.4, 0, 6.2832); ctx.fill();
+    ctx.strokeStyle = "rgba(255,190,80,.45)"; ctx.lineWidth = 3; ctx.lineCap = "round";
+    ctx.beginPath();
+    for (let i = 0; i < 12; i++) { const a = i * 0.5236 + t * 0.08; ctx.moveTo(sx + Math.cos(a) * r * 1.25, sy + Math.sin(a) * r * 1.25); ctx.lineTo(sx + Math.cos(a) * r * 1.6, sy + Math.sin(a) * r * 1.6); }
+    ctx.stroke();
+    ctx.fillStyle = "#ffcf5a"; ctx.beginPath(); ctx.arc(sx, sy, r, 0, 6.2832); ctx.fill();
+  }
+  /* the sea, three bands of slow waves, and a boat on the far one */
+  const sea = h - Math.min(90, h * 0.11);
+  for (let b = 0; b < 3; b++) {
+    const y0 = sea + b * 22, amp = 4 + b * 2, k = 0.012 - b * 0.002, sp = 0.5 + b * 0.25;
+    ctx.fillStyle = night ? ["rgba(30,70,110,.55)", "rgba(24,58,96,.7)", "rgba(16,44,76,.9)"][b] : ["rgba(90,180,230,.18)", "rgba(70,165,220,.24)", "rgba(50,150,210,.32)"][b];
+    ctx.beginPath(); ctx.moveTo(0, h);
+    for (let x = 0; x <= w + 10; x += 10) ctx.lineTo(x, y0 + Math.sin(x * k + t * sp + b) * amp);
+    ctx.lineTo(w, h); ctx.closePath(); ctx.fill();
+  }
+  const bx = ((t * 6) % (w + 120)) - 60, by = sea + Math.sin(bx * 0.012 + t * 0.5) * 4 - 2;
+  ctx.fillStyle = night ? "rgba(200,215,235,.35)" : "rgba(40,70,100,.4)";
+  ctx.beginPath(); ctx.moveTo(bx - 14, by); ctx.lineTo(bx + 14, by); ctx.lineTo(bx + 9, by + 6); ctx.lineTo(bx - 9, by + 6); ctx.closePath(); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(bx, by - 2); ctx.lineTo(bx, by - 26); ctx.lineTo(bx + 13, by - 4); ctx.closePath(); ctx.fill();
+  if (night) for (const f of sc.flies) {
+    const x = f.x * w + Math.sin(t * f.s + f.p) * 30, y = f.y * h + Math.cos(t * f.s * 1.3 + f.p) * 16;
+    const a = Math.max(0, Math.sin(t * 1.7 + f.p * 3));
+    const g = ctx.createRadialGradient(x, y, 0, x, y, 7);
+    g.addColorStop(0, "rgba(255,240,140," + (0.8 * a).toFixed(2) + ")"); g.addColorStop(1, "rgba(255,240,140,0)");
+    ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, 7, 0, 6.2832); ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+}
+
+/* Autumn: leaves tumbling down over a russet hill. */
+function autumnScene() {
+  const rnd = seeded(915);
+  return {
+    stars: Array.from({ length: 45 }, () => ({ x: rnd(), y: rnd() * 0.5, r: 0.5 + rnd(), p: rnd() * 6.28, s: 0.5 + rnd() * 1.4 })),
+    leaves: Array.from({ length: 30 }, () => ({ x: rnd(), y: rnd(), s: 6 + rnd() * 6, v: 0.03 + rnd() * 0.04, ph: rnd() * 6.28, sw: 16 + rnd() * 30, c: Math.floor(rnd() * 4) })),
+    prev: 0
+  };
+}
+const LEAF = ["#d9622b", "#e8a33c", "#b8401f", "#c98a2c"];
+function leaf(ctx, s) {
+  ctx.beginPath(); ctx.moveTo(0, -s);
+  ctx.quadraticCurveTo(s * 0.75, -s * 0.2, 0, s * 0.8);
+  ctx.quadraticCurveTo(-s * 0.75, -s * 0.2, 0, -s);
+  ctx.fill();
+  ctx.strokeStyle = "rgba(90,40,10,.35)"; ctx.lineWidth = 0.8;
+  ctx.beginPath(); ctx.moveTo(0, -s * 0.8); ctx.lineTo(0, s * 1.05); ctx.stroke();
+}
+function drawAutumn(ctx, w, h, t, sc, night) {
+  const dt = Math.min(0.1, Math.max(0, t - (sc.prev || t))); sc.prev = t;
+  if (night) for (const s of sc.stars) {
+    ctx.globalAlpha = 0.25 + 0.35 * (0.5 + 0.5 * Math.sin(t * s.s + s.p));
+    ctx.fillStyle = "#fff0e0"; ctx.beginPath(); ctx.arc(s.x * w, s.y * h, s.r, 0, 6.2832); ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+  const base = h - Math.min(70, h * 0.09);
+  ctx.fillStyle = night ? "#0c0704" : "rgba(170,100,50,.18)";
+  ctx.beginPath(); ctx.moveTo(0, h); ctx.lineTo(0, base + 10);
+  ctx.bezierCurveTo(w * 0.35, base - 30, w * 0.65, base + 30, w, base - 6); ctx.lineTo(w, h); ctx.closePath(); ctx.fill();
+  for (const l of sc.leaves) {
+    l.y += l.v * dt; if (l.y > 1.03) { l.y = -0.03; l.x = Math.random(); }
+    const x = l.x * w + Math.sin(t * 0.7 + l.ph) * l.sw, y = l.y * h;
+    ctx.globalAlpha = night ? 0.55 : 0.85; ctx.fillStyle = LEAF[l.c];
+    ctx.save(); ctx.translate(x, y); ctx.rotate(Math.sin(t * 1.1 + l.ph) * 1.2 + l.ph);
+    ctx.scale(0.55 + 0.45 * Math.abs(Math.cos(t * 1.3 + l.ph)), 1);
+    leaf(ctx, l.s); ctx.restore();
+  }
+  ctx.globalAlpha = 1;
+}
+
+/* Winter: light snow over snow-capped mountains. */
+function winterScene() {
+  const rnd = seeded(1221);
+  return {
+    stars: Array.from({ length: 60 }, () => ({ x: rnd(), y: rnd() * 0.55, r: 0.5 + rnd(), p: rnd() * 6.28, s: 0.5 + rnd() * 1.4 })),
+    flakes: Array.from({ length: 90 }, () => ({ x: rnd(), y: rnd(), r: 0.7 + rnd() * 1.8, v: 0.015 + rnd() * 0.03, ph: rnd() * 6.28, sw: 5 + rnd() * 10 })),
+    peaks: [[0, 0.55], [0.14, 0.2], [0.3, 0.5], [0.46, 0.1], [0.62, 0.45], [0.78, 0.18], [0.92, 0.5], [1, 0.35]],
+    prev: 0
+  };
+}
+function drawWinter(ctx, w, h, t, sc, night) {
+  const dt = Math.min(0.1, Math.max(0, t - (sc.prev || t))); sc.prev = t;
+  if (night) for (const s of sc.stars) {
+    ctx.globalAlpha = 0.3 + 0.4 * (0.5 + 0.5 * Math.sin(t * s.s + s.p));
+    ctx.fillStyle = "#eaf3ff"; ctx.beginPath(); ctx.arc(s.x * w, s.y * h, s.r, 0, 6.2832); ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+  const top = h - Math.min(150, h * 0.18), H = h - top;
+  /* two ranges: the far one higher and paler, the near one lower and shifted */
+  [[0, 0, night ? "#0b1628" : "rgba(130,160,200,.20)"], [0.09, 0.3, night ? "#0e1c32" : "rgba(150,180,215,.26)"]].forEach(([dx, dy, col]) => {
+    const pts = sc.peaks.map(([x, y]) => [(x - dx) * w * 1.1, top + (dy + y * (1 - dy)) * H]);
+    ctx.fillStyle = col; ctx.beginPath(); ctx.moveTo(-10, h);
+    for (const [x, y] of pts) ctx.lineTo(x, y);
+    ctx.lineTo(w + 10, h); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = night ? "rgba(225,238,252,.45)" : "rgba(255,255,255,.85)";            /* snow caps */
+    for (let i = 1; i < pts.length - 1; i++) {
+      const [x, y] = pts[i], [lx, ly] = pts[i - 1], [rx, ry] = pts[i + 1];
+      if (y > ly || y > ry) continue;
+      const k = 0.22;
+      ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + (lx - x) * k, y + (ly - y) * k); ctx.lineTo(x, y + Math.min(ly - y, ry - y) * k * 0.6);
+      ctx.lineTo(x + (rx - x) * k, y + (ry - y) * k); ctx.closePath(); ctx.fill();
+    }
+  });
+  ctx.fillStyle = "#ffffff";
+  for (const f of sc.flakes) {
+    f.y += f.v * dt; if (f.y > 1.02) { f.y = -0.02; f.x = Math.random(); }
+    const x = f.x * w + Math.sin(t * 0.6 + f.ph) * f.sw, y = f.y * h;
+    if (!night) { ctx.globalAlpha = 0.45; ctx.fillStyle = "#86a4c2"; ctx.beginPath(); ctx.arc(x + 0.6, y + 0.6, f.r, 0, 6.2832); ctx.fill(); ctx.fillStyle = "#ffffff"; }
+    ctx.globalAlpha = night ? 0.8 : 0.95; ctx.beginPath(); ctx.arc(x, y, f.r, 0, 6.2832); ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+}
+
 const THEMES = {
+  spring:    { scene: springScene,    draw: drawSpring },
+  summer:    { scene: summerScene,    draw: drawSummer },
+  autumn:    { scene: autumnScene,    draw: drawAutumn },
+  winter:    { scene: winterScene,    draw: drawWinter },
   halloween: { scene: halloweenScene, draw: drawHalloween, goal: halloweenGoal },
   christmas: { scene: christmasScene, draw: drawChristmas, goal: christmasGoal },
   newyear:   { scene: newYearScene,   draw: drawNewYear,   goal: newYearGoal }

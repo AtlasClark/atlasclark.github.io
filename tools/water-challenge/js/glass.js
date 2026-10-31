@@ -355,6 +355,7 @@ function drawGlass(st) {
     ctx.arc(b.x + wob, H - b.y, b.r, 0, 6.2832);
     ctx.fill();
   }
+  if (st.goalFx) drawGoalFx(ctx, st, W, H, top);
   ctx.restore();
 
   ctx.beginPath();
@@ -386,6 +387,52 @@ function drawGlass(st) {
     ctx.strokeStyle = "rgba(255,255,255," + r.a.toFixed(3) + ")";
     ctx.lineWidth = 2;
     ctx.stroke();
+  }
+}
+
+/* An event day's goal glass (ui sets st.goalFx from GOAL_FX): something themed moving in
+   the water, worked out from the clock, so nothing is stored. Inside the water's clip. */
+function drawGoalFx(ctx, st, W, H, top) {
+  const t = clock(), depth = H - top, n = Math.max(6, Math.round(W / 9));
+  if (depth < 8) return;
+  /* fixed per glass: seeding from st.phase (which moves every frame) made the particles jump */
+  if (st.fxSeed === undefined) st.fxSeed = Math.random() * 1000;
+  const rnd = i => { const x = Math.sin(i * 127.1 + st.fxSeed * 311.7) * 43758.5453; return x - Math.floor(x); };
+  if (st.goalFx === "potion") {                       /* purple and pale bubbles that swell as they rise, slowly */
+    for (let i = 0; i < n; i++) {
+      const u = (t * (7 + rnd(i) * 9) / depth + rnd(i + 50)) % 1;
+      const x = 6 + rnd(i + 9) * (W - 12) + Math.sin(t * 0.8 + i * 1.3) * 2.5, r = 1.4 + u * (1.6 + rnd(i + 3) * 2.4);
+      ctx.globalAlpha = Math.min(1, u * 8, (1 - u) * 6);          /* in at the bottom, out just under the top */
+      ctx.fillStyle = i % 3 ? "rgba(176,104,255,0.6)" : "rgba(226,255,206,0.7)";
+      ctx.beginPath(); ctx.arc(x, H - u * depth, r, 0, 6.2832); ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+  } else if (st.goalFx === "globe") {                 /* flakes swirling slowly down, as in a shaken snow globe */
+    ctx.fillStyle = "rgba(255,255,255,0.9)";
+    for (let i = 0; i < n * 1.6; i++) {
+      const u = (t * (5 + rnd(i) * 8) / depth + rnd(i + 70)) % 1;
+      const x = ((rnd(i + 20) * W + Math.sin(t * 0.9 + i * 1.7) * 8) % W + W) % W;
+      ctx.beginPath(); ctx.arc(x, top + 3 + u * (depth - 3), 0.8 + rnd(i + 5) * 1.5, 0, 6.2832); ctx.fill();
+    }
+  } else if (st.goalFx === "fizz") {                  /* fine streams of quick bubbles, sparkles on top */
+    const cols = Math.max(3, Math.round(W / 20));
+    ctx.fillStyle = "rgba(255,255,255,0.8)";
+    for (let c = 0; c < cols; c++) for (let j = 0; j < 7; j++) {
+      const x0 = (c + 0.5) * W / cols + (rnd(c) - 0.5) * 8, u = (t * (40 + rnd(c + 30) * 30) / depth + j / 7) % 1;
+      ctx.beginPath(); ctx.arc(x0 + Math.sin(u * 9 + c) * 1.2, H - u * depth, 0.6 + u * 1.1, 0, 6.2832); ctx.fill();
+    }
+    for (let k = 0; k < 4; k++) {
+      const a = Math.max(0, Math.sin(t * 3 + k * 2.1)), x = 8 + rnd(k + 90) * (W - 16), y = top + 4, s = 3.5 * a;
+      if (s < 0.5) continue;
+      ctx.strokeStyle = "rgba(255,255,255," + (0.9 * a).toFixed(2) + ")"; ctx.lineWidth = 1.2;
+      ctx.beginPath(); ctx.moveTo(x - s, y); ctx.lineTo(x + s, y); ctx.moveTo(x, y - s); ctx.lineTo(x, y + s); ctx.stroke();
+    }
+  } else if (st.goalFx === "shimmer") {               /* bands of sunlight drifting through */
+    ctx.fillStyle = "rgba(255,255,255,0.14)";
+    for (let k = 0; k < 3; k++) {
+      const x = ((t * 14 + k * W / 3) % (W + 40)) - 20;
+      ctx.beginPath(); ctx.moveTo(x, top); ctx.lineTo(x + 10, top); ctx.lineTo(x - 18, H); ctx.lineTo(x - 30, H); ctx.closePath(); ctx.fill();
+    }
   }
 }
 
