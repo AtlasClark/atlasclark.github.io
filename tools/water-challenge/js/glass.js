@@ -357,6 +357,7 @@ function drawGlass(st) {
   }
   if (st.goalFx) drawGoalFx(ctx, st, W, H, top);
   ctx.restore();
+  if (st.goalFx === "potion") drawBoil(ctx, st, W, H, top);
 
   ctx.beginPath();
   ctx.moveTo(-B, top + waveBuf[0]);
@@ -398,9 +399,9 @@ function drawGoalFx(ctx, st, W, H, top) {
   /* fixed per glass: seeding from st.phase (which moves every frame) made the particles jump */
   if (st.fxSeed === undefined) st.fxSeed = Math.random() * 1000;
   const rnd = i => { const x = Math.sin(i * 127.1 + st.fxSeed * 311.7) * 43758.5453; return x - Math.floor(x); };
-  if (st.goalFx === "potion") {                       /* purple and pale bubbles that swell as they rise, slowly */
+  if (st.goalFx === "potion") {                       /* purple and pale bubbles that swell as they rise, quicker than the glass's own */
     for (let i = 0; i < n; i++) {
-      const u = (t * (7 + rnd(i) * 9) / depth + rnd(i + 50)) % 1;
+      const u = (t * (30 + rnd(i) * 25) / depth + rnd(i + 50)) % 1;
       const x = 6 + rnd(i + 9) * (W - 12) + Math.sin(t * 0.8 + i * 1.3) * 2.5, r = 1.4 + u * (1.6 + rnd(i + 3) * 2.4);
       ctx.globalAlpha = Math.min(1, u * 8, (1 - u) * 6);          /* in at the bottom, out just under the top */
       ctx.fillStyle = i % 3 ? "rgba(176,104,255,0.6)" : "rgba(226,255,206,0.7)";
@@ -418,7 +419,7 @@ function drawGoalFx(ctx, st, W, H, top) {
     const cols = Math.max(3, Math.round(W / 20));
     ctx.fillStyle = "rgba(255,255,255,0.8)";
     for (let c = 0; c < cols; c++) for (let j = 0; j < 7; j++) {
-      const x0 = (c + 0.5) * W / cols + (rnd(c) - 0.5) * 8, u = (t * (40 + rnd(c + 30) * 30) / depth + j / 7) % 1;
+      const x0 = (c + 0.5) * W / cols + (rnd(c) - 0.5) * 8, u = (t * (55 + rnd(c + 30) * 35) / depth + j / 7) % 1;
       ctx.beginPath(); ctx.arc(x0 + Math.sin(u * 9 + c) * 1.2, H - u * depth, 0.6 + u * 1.1, 0, 6.2832); ctx.fill();
     }
     for (let k = 0; k < 4; k++) {
@@ -432,6 +433,32 @@ function drawGoalFx(ctx, st, W, H, top) {
     for (let k = 0; k < 3; k++) {
       const x = ((t * 14 + k * W / 3) % (W + 40)) - 20;
       ctx.beginPath(); ctx.moveTo(x, top); ctx.lineTo(x + 10, top); ctx.lineTo(x - 18, H); ctx.lineTo(x - 30, H); ctx.closePath(); ctx.fill();
+    }
+  }
+}
+
+/* The potion boils: bubbles swell up as domes on the surface and pop with a ring and a
+   fleck or two. Drawn after the water's clip, since a dome stands above the surface. */
+function drawBoil(ctx, st, W, H, top) {
+  if (H - top < 8) return;
+  const t = clock(), m = Math.max(3, Math.round(W / 16));
+  const rnd = i => { const x = Math.sin(i * 91.7 + st.fxSeed * 157.3) * 43758.5453; return x - Math.floor(x); };
+  for (let i = 0; i < m; i++) {
+    const per = 0.9 + rnd(i) * 0.9, c = t / per + rnd(i + 40), u = c % 1, cyc = Math.floor(c);
+    const x = 5 + ((rnd(i + 7) + cyc * 0.37) % 1) * (W - 10), y = top + waveAt(st, x), R = 2.8 + rnd(i + 3) * 3.2;
+    if (u < 0.7) {                                    /* swelling */
+      const r = R * Math.sin(u / 0.7 * Math.PI / 2);
+      ctx.fillStyle = "rgba(178,246,150,0.95)"; ctx.strokeStyle = "rgba(48,128,40,0.7)"; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.arc(x, y, r, Math.PI, 0); ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = "rgba(255,255,255,0.55)";
+      ctx.beginPath(); ctx.arc(x - r * 0.35, y - r * 0.5, r * 0.22, 0, 6.2832); ctx.fill();
+    } else {                                          /* pop */
+      const v = (u - 0.7) / 0.3, a = (1 - v).toFixed(2);
+      ctx.strokeStyle = "rgba(220,255,200," + a + ")"; ctx.lineWidth = 1.2;
+      ctx.save(); ctx.translate(x, y); ctx.scale(1, 0.35);
+      ctx.beginPath(); ctx.arc(0, 0, R * (1 + v * 1.4), 0, 6.2832); ctx.restore(); ctx.stroke();
+      ctx.fillStyle = "rgba(190,140,255," + a + ")";
+      for (const s of [-1, 1]) { ctx.beginPath(); ctx.arc(x + s * R * (0.6 + v), y - R * 2.2 * v * (1.4 - v), 0.9, 0, 6.2832); ctx.fill(); }
     }
   }
 }
