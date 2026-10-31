@@ -1,8 +1,8 @@
 /* Water Challenge (web) - constants: rules, tunables and the on-disk contract
    (FORMAT_REV, UTF-16 LE + BOM JSON, unknown fields kept). */
 
-export const REV         = "rev 1.37.9";
-export const APP_VERSION = "web 1.37.9";   /* stamped as writerVersion */
+export const REV         = "rev 1.37.10";
+export const APP_VERSION = "web 1.37.10";   /* stamped as writerVersion */
 /* Every file is written at FORMAT_REV. A file stamped higher came from a newer
    build, and the page asks for a reload. */
 export const FORMAT_REV    = 22;
@@ -157,8 +157,8 @@ export const PEN2_NAMES = [
   "Orca","Hammerhead","Anglerfish","Manatee","Polar Bear",
   "Kraken","Leafy Sea Dragon","Coelacanth","Kelpie"
 ];
-/* The third pen: kinds PEN3_FIRST .. PEN3_FIRST + 24, opened for good the first time
-   all 50 pets of the first two pens are alive at once. Mythical, from all over. Kind
+/* The third pen: kinds PEN3_FIRST .. PEN3_FIRST + 24, first opened when all 50 pets
+   of the first two pens are alive at once, and open only while they are (pets.js pen3Open). Mythical, from all over. Kind
    PEN3_FIRST + i has first-pen kind i's rarity; drawings in js/pen3art.js. */
 export const PEN3_FIRST = 52;
 export const PEN3_NAMES = [

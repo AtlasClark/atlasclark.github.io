@@ -11,7 +11,7 @@ import { S, personalGoal, capFor, totalOn, metGoal, pastCap, atCap, dayScoreFor,
          duplicateNames, isAway, openAwaySince, goalForDate, petEventTimes, allDateKeys, dayWinners, wearsMedal } from "./model.js";
 import { petKindFor, ownsEquipped, graveEquipped, petHueFor, isGrave, gravesOf, petsOwned,
          graveLine, petLabel, petName, petRarityOf, petBinIndex, petGridOrder, penFound,
-         penOf, penKinds, pen2Open, pensOf, penAlive, penBuried,
+         penOf, penKinds, pen2Open, pensOf, penAlive, penBuried, pen3Earned, pen3Open, PEN3_CLOSED,
          hashHue, hueOf, rarityLabel, undoEffect, rollOdds } from "./pets.js";
 import { crownSvg, jesterSvg, hatSvg, drawPortrait, drawCritter, drawHeadstone, drawGoldPile, drawCoin, hatKeyFor, drawMedal, holidayOn, glassHatSvg, EVENTS, eventRange, eventDefault, setEventRanges } from "./art.js";
 import * as G from "./glass.js";
@@ -497,7 +497,9 @@ function renderPets() {
   for (const p of S.participants) {
     const mine = shownKind(p), n = ja(p.name), held = hiddenPets(p);
     /* each pen gets a tab once a second one is open; until then a card shows one pen */
-    const pens = pensOf(p), open = pens.length > 1, pen = pens.includes(ui.petPen[p.name]) ? ui.petPen[p.name] : pens.at(-1), order = petGridOrder(pen);
+    /* a closed third pen keeps its tab, greyed, with its pets out of reach */
+    const pens = pen3Earned(p) && !pen3Open(p) ? [...pensOf(p), 3] : pensOf(p), open = pens.length > 1;
+    const pen = pens.includes(ui.petPen[p.name]) ? ui.petPen[p.name] : pensOf(p).at(-1), order = petGridOrder(pen), shut = pen === 3 && !pen3Open(p);
     const inPen = k => penOf(k) === pen, heldHere = [...held.keys()].filter(inPen);
     const alive = penAlive(p, pen) - heldHere.length, buried = penBuried(p, pen) + heldHere.filter(k => held.get(k)).length;
     h.push('<div class="pet-card" data-name="' + n + '">');
@@ -506,23 +508,25 @@ function renderPets() {
            (buried ? '<b class="graven"> &middot; ' + buried + ' buried</b>' : '') + '</span></div>');
     if (open) {
       h.push('<div class="pen-tabs" role="tablist">' + pens.map(x =>
-        '<button type="button" role="tab" class="pen-tab' + (x === pen ? ' on' : '') + '" aria-selected="' + (x === pen) + '" data-act="pen" data-pen="' + x + '">' +
+        '<button type="button" role="tab" class="pen-tab' + (x === pen ? ' on' : '') + (x === 3 && !pen3Open(p) ? ' closed' : '') +
+        '" aria-selected="' + (x === pen) + '" data-act="pen" data-pen="' + x + '"' + (x === 3 && !pen3Open(p) ? ' title="Closed"' : '') + '>' +
         C.PEN_LABELS[x] + ' <b>' + penAlive(p, x) + '</b></button>').join("") + '</div>');
     }
-    h.push('<div class="pet-grid">');
+    h.push('<div class="pet-grid' + (shut ? ' closed' : '') + '">');
     for (const k of order) {
       const rar = petRarityOf(k), buried = isGrave(p, k) || held.get(k) === true, owned = !buried && has(p.pets, k) && !held.has(k);
       const cls = "pc r" + petBinIndex(k) + (buried ? " buried" : owned ? "" : " locked") +
                   (mine === k && (owned || buried) ? " equipped" : "");
       const title = buried ? esc(C.PET_NAMES[k]) + " &middot; " + esc(graveLine(k))
                   : owned ? esc(C.PET_NAMES[k]) + " &middot; " + esc(rar.name) : "Locked &middot; " + esc(rar.name);
-      h.push('<div class="' + cls + '"' + ((owned || buried) ? ' data-act="equip" data-kind="' + k + '" role="button" tabindex="0"' : '') +
+      h.push('<div class="' + cls + '"' + ((owned || buried) && !shut ? ' data-act="equip" data-kind="' + k + '" role="button" tabindex="0"' : '') +
              ' title="' + title + '"><i class="pi pi-' + (buried ? "grave" : k) + '"></i>' +
              '<span class="pn">' + (buried || owned ? esc(C.PET_NAMES[k]) : "???") + '</span></div>');
     }
     h.push('</div>');
     if (pen > 1) {
-      h.push('<p class="pen-note">Opened ' + esc(prettyDate(pen === 3 ? p.pen3 : p.pen2)) + '.' + (pen === pens.at(-1) ? ' New pets come from here now.' : '') + '</p></div>');
+      h.push('<p class="pen-note' + (shut ? ' closed' : '') + '">' + (shut ? esc(PEN3_CLOSED) + ' Its pets wait here.'
+        : 'Opened ' + esc(prettyDate(pen === 3 ? p.pen3 : p.pen2)) + '.' + (pen === pensOf(p).at(-1) ? ' New pets come from here now.' : '')) + '</p></div>');
       continue;
     }
     const got = has(p.pets, C.HOMUNCULUS_KIND);

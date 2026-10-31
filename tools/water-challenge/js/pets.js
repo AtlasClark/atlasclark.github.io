@@ -61,7 +61,13 @@ export const penKinds = pen => Array.from({ length: C.PET_COUNT }, (_, i) => C.P
 export const binsFor = pen => pen === 3 ? C.PEN3_BINS : pen === 2 ? C.PEN2_BINS : C.PET_BINS;
 /* Open for good once earned. */
 export const pen2Open = p => !!(p && p.pen2);
-export const pen3Open = p => !!(p && p.pen2 && p.pen3);
+export const PEN3_CLOSED = "The third pen is closed until all " + (2 * C.PET_COUNT) + " pets of the first two pens are alive.";
+/* The third pen, once earned (p.pen3 = the day it first opened), is open only while all
+   50 pets of the first two pens are alive (rev 1.37.10, user decision): lose one and it
+   closes. Its pets stay, out of reach (not worn, not drowned, none rolled or brought in),
+   until the 50 are whole again. */
+export const pen3Earned = p => !!(p && p.pen2 && p.pen3);
+export const pen3Open = p => pen3Earned(p) && penAlive(p, 1) >= C.PET_COUNT && penAlive(p, 2) >= C.PET_COUNT;
 /* The pens a person can see, in order. */
 export const pensOf = p => pen3Open(p) ? [1, 2, 3] : pen2Open(p) ? [1, 2] : [1];
 /* The pen new pets come from: the newest one open. */
@@ -159,12 +165,13 @@ export function todaysPet(p) {
 function petsList(p) {
   return Object.keys(p.pets || {}).map(Number).sort((a, b) => a - b);
 }
-const drownable = k => penOf(k) > 0;
+const drownable = (p, k) => penOf(k) > 0 && (penOf(k) < 3 || pen3Open(p));
 
 /* Same victim on every machine: a hash of name and date, not Math.random. Any pen
-   pet may go, rarer ones more likely (DROWN_WEIGHTS by rarity). */
+   pet may go, rarer ones more likely (DROWN_WEIGHTS by rarity); a closed third pen's
+   pets are out of reach. */
 export function pickVictim(p, day = todayKey()) {
-  const list = petsList(p).filter(drownable);
+  const list = petsList(p).filter(k => drownable(p, k));
   if (!list.length) return C.PET_NO_PET;
   const w = list.map(k => C.DROWN_WEIGHTS[petBinIndex(k)] || 1), sum = w.reduce((a, b) => a + b, 0);
   let at = dayRng(p.name, day + "|drown")() * sum;
@@ -329,12 +336,24 @@ export async function syncHomunculus(p) {
   return false;
 }
 
-/* The third pen opens, for good, the first time all 50 of the first two pens are alive at once. */
+/* The third pen opens the first time all 50 of the first two pens are alive at once
+   (p.pen3 keeps that day); after that it is open whenever they are (pen3Open). */
 export async function openPen3(p) {
   if (p.pen3 || !p.pen2 || penAlive(p, 1) < C.PET_COUNT || penAlive(p, 2) < C.PET_COUNT) return false;
   p.pen3 = todayKey();
   if (!(await saveParticipant(p, null))) { delete p.pen3; return false; }
   bus.msg(p.name + " opened the third pen: " + C.PET_COUNT + " creatures of legend to find. Rolls and Plinko come from it now.", true);
+  return true;
+}
+
+/* A closed third pen's pet can't be worn: put it away. Returns true when it changed. */
+async function settlePen3(p) {
+  const k = petKindFor(p);
+  if (!pen3Earned(p) || pen3Open(p) || penOf(k) !== 3) return false;
+  p.equippedPet = C.PET_NO_PET;
+  if (!(await saveParticipant(p, null))) return false;
+  bus.msg("The third pen closed for " + p.name + ": the " + petLabel(k) + " waits there until all " + (2 * C.PET_COUNT) +
+          " pets of the first two pens are alive again.", false);
   return true;
 }
 
@@ -370,6 +389,7 @@ export async function reconcilePets() {
     }
     if (await syncHomunculus(p)) bus.petReset(p.name);
     await openPen2(p);
+    if (await settlePen3(p)) bus.petReset(p.name);
   }
 }
 
@@ -379,6 +399,7 @@ export async function equipPet(name, kind) {
   if (!p) return;
   const buried = isGrave(p, kind), label = petLabel(kind);
   if (!buried && !has(p.pets, kind)) { bus.msg("That one is still locked for " + p.name + ".", false); return; }
+  if (penOf(kind) === 3 && !pen3Open(p)) { bus.msg(PEN3_CLOSED, false); return; }
   if (petKindFor(p) === kind) {
     p.equippedPet = C.PET_NO_PET;
     const drop = kind === C.MYSTERY_KIND ? releaseMystery(p) : null;
