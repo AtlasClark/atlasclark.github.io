@@ -11,9 +11,9 @@ import { S, personalGoal, capFor, totalOn, metGoal, pastCap, atCap, dayScoreFor,
          duplicateNames, isAway, openAwaySince, goalForDate, petEventTimes, allDateKeys, dayWinners, wearsMedal } from "./model.js";
 import { petKindFor, ownsEquipped, graveEquipped, petHueFor, isGrave, gravesOf, petsOwned,
          graveLine, petLabel, petName, petRarityOf, petBinIndex, petGridOrder, penFound,
-         penOf, penKinds, pen2Open, pensOf, penAlive, penBuried,
+         penOf, penKinds, pen2Open, pensOf, penAlive, penBuried, pen3Earned, pen3Open, PEN3_CLOSED,
          hashHue, hueOf, rarityLabel, undoEffect, rollOdds } from "./pets.js";
-import { crownSvg, jesterSvg, hatSvg, drawPortrait, drawCritter, drawHeadstone, drawGoldPile, drawCoin, hatKeyFor, drawMedal } from "./art.js";
+import { crownSvg, jesterSvg, hatSvg, drawPortrait, drawCritter, drawHeadstone, drawGoldPile, drawCoin, hatKeyFor, drawMedal, holidayOn, glassHatSvg, EVENTS, eventRange, eventDefault, setEventRanges } from "./art.js";
 import * as G from "./glass.js";
 import { diag, dir, cloud, sourceName } from "./store.js";
 import { defs as petDefs, hats as petHats, petSource } from "./petdefs.js";
@@ -22,6 +22,7 @@ import { balance, spentTotal, spendsOn, earnedTotal, chestWinnings, shopDay, loo
 import { COSMETICS, drawShell } from "./cosmetics.js";
 import { isHydrationDay, teamSplash } from "./hydration.js";
 import { setHydrationDay } from "./hydfx.js";
+import { setHolidayTheme, seasonsOn, seasonOf } from "./themefx.js";
 import { $, esc, fmt, fmtOz, fmtGal, todayKey, dateKey, prettyTime, clockStamp, has, parseKey, shiftKey, aAn } from "./util.js";
 
 /* Set by app.js: the Shop tab renders from shopui.js, which imports this module. */
@@ -138,7 +139,8 @@ function buildGlasses() {
     const n = ja(p.name);
     h.push('<div class="participant-card' + (compact ? " compact" : "") + '" style="width:' + T.card + 'px" data-name="' + n + '">');
     h.push('<button type="button" class="trash-button" title="Remove ' + n + '" data-act="remove">&times;</button>');
-    h.push('<div class="crown-wrap" id="cr_' + i + '">' + crownSvg(26, 17, "crown") + '</div>');
+    h.push('<canvas class="decorc" id="de_' + i + '" hidden aria-hidden="true"></canvas>');      /* the cup decoration (glass.js) */
+    h.push('<div class="crown-wrap" id="cr_' + i + '">' + glassHatSvg(false) + '</div>');
     h.push('<div class="gwrap" style="width:' + T.gw + 'px;height:' + T.gh + 'px" data-act="bank" tabindex="0" role="button"' +
            ' aria-label="' + n + ': Enter to log water, click for gold" title="Right-click to log water &middot; click for ' + n + '&rsquo;s gold">');
     h.push('<div class="halo" id="ha_' + i + '" style="border-radius:' + radius + '"></div>');
@@ -148,7 +150,7 @@ function buildGlasses() {
     const sk = Math.round(T.gw * 0.56);
     h.push('<img class="skull" id="sku_' + i + '" src="img/skull.png" alt="past the cap" hidden ' +
            'style="width:' + sk + 'px;height:' + sk + 'px;margin-left:-' + (sk / 2) + 'px;margin-top:-' + (sk / 2) + 'px">');
-    h.push('<div class="shine"></div></div>');
+    h.push('</div><div class="glass-edge" style="width:' + T.gw + 'px;height:' + T.gh + 'px;border-radius:' + radius + '"><div class="shine"></div></div>');
     h.push('<canvas class="duckc" id="dc_' + i + '" style="top:-' + G.dims.head + 'px"></canvas>');
     h.push('</div>');
     h.push('<h2 class="pick" title="Click to change colour" data-act="swatches">' + esc(p.name) +
@@ -167,7 +169,7 @@ function buildGlasses() {
   G.unbindAll();
   G.bindFlight($("flightCv"));
   ordered.forEach((p, i) => {
-    G.bindCanvases(p.name, $("cv_" + i), $("dc_" + i), T.gw, T.gh);
+    G.bindCanvases(p.name, $("cv_" + i), $("dc_" + i), T.gw, T.gh, $("de_" + i));
     G.animState(p.name).hatIs = "";
   });
   G.startAnim();
@@ -221,7 +223,8 @@ function petVisual(p, st, danger, key) {
 }
 
 function updateGlasses() {
-  const key = todayKey();
+  const key = todayKey(), hol = holidayOn(key), holidayHats = !!hol;
+  const gfx = hol ? C.GOAL_FX[hol.theme || (isHydrationDay() ? "hydration" : "")] : null;   /* event-day goal glasses */
   let best = 0;
   for (const p of ordered) best = Math.max(best, dayScoreFor(totalOn(p, key), p, key));
   ordered.forEach((p, i) => {
@@ -229,18 +232,24 @@ function updateGlasses() {
     const over = metGoal(total, goal), danger = pastCap(total, p, key);
     petVisual(p, st, danger, key);
     st.target = Math.min(Math.max(total / goal * 100, 0), 100) / 100;
-    st.color = danger ? C.DANGER_COLOR : (over ? C.OVERFILL_COLOR : p.color);
-    setEl("gl_" + i, null, danger ? "glass glass-danger" : (over ? "glass glass-overfill" : "glass"));
-    setEl("ha_" + i, null, danger ? "halo red" : (over ? "halo gold" : "halo"));
+    const fx = over && !danger && gfx ? gfx : null;
+    st.color = danger ? C.DANGER_COLOR : (over ? (fx ? fx.color : C.OVERFILL_COLOR) : p.color);
+    st.goalFx = fx ? fx.fx : "";
+    setEl("gl_" + i, null, danger ? "glass glass-danger" : (over ? "glass glass-overfill" + (fx ? " fx-" + fx.fx : "") : "glass"));
+    setEl("ha_" + i, null, danger ? "halo red" : (over ? "halo gold" + (fx ? " fx-" + fx.fx : "") : "halo"));
     show("go_" + i, over || danger);
     show("sku_" + i, danger);
-    st.duckCrown = best > 0 && dayScoreFor(total, p, key) >= best - C.RATIO_EPSILON;
-    st.duckJester = st.duckCrown && !over;
+    /* The leader wears the crown (goal met) or the jester hat (still under goal). On a
+       holiday with its own hats, every other pet wears that holiday's jester hat too; the
+       icon over the glass still marks only the leader. */
+    const lead = best > 0 && dayScoreFor(total, p, key) >= best - C.RATIO_EPSILON, leadJester = lead && !over;
+    st.duckCrown = lead || holidayHats;
+    st.duckJester = lead ? leadJester : holidayHats;
     st.duckMedal = wearsMedal(p, key);
-    const hat = st.duckJester ? "j" : "c";
-    if (st.hatIs !== hat) { st.hatIs = hat; setEl("cr_" + i, hatSvg(26, 17, "crown", st.duckJester), null); }
-    setEl("cr_" + i, null, st.duckCrown ? "crown-wrap on" : "crown-wrap");
-    setTitle("cr_" + i, st.duckJester ? "Leading, but still short of your goal" : "Leading the day, goal met");
+    const hat = leadJester ? "j" : "c";
+    if (st.hatIs !== hat) { st.hatIs = hat; setEl("cr_" + i, glassHatSvg(leadJester), null); }
+    setEl("cr_" + i, null, lead ? "crown-wrap on" : "crown-wrap");
+    setTitle("cr_" + i, leadJester ? "Leading, but still short of your goal" : "Leading the day, goal met");
     const real = fmt(total) + " / " + fmt(goal) + " fl oz";
     if (danger) {
       setEl("sb_" + i, maskSpan("ozm_" + i, fmt(total)) + " / " + fmt(goal) + " fl oz", "sub");
@@ -400,8 +409,10 @@ export function htaDismiss() {
    the team goal (hydration.js, hydfx.js). */
 let evHtml = "", evTimer = 0;
 function renderEventBanner() {
-  const on = isHydrationDay(), el = $("eventBanner");
+  const on = isHydrationDay(), el = $("eventBanner"), hol = holidayOn();
   setHydrationDay(on);
+  /* a holiday's theme, else (unless this browser turned seasons off) the season's */
+  setHolidayTheme(on ? "" : hol && hol.theme ? hol.theme : seasonsOn() ? seasonOf(todayKey()) : "");
   if (!on) { el.hidden = true; evHtml = ""; clearInterval(evTimer); evTimer = 0; return; }
   ensureIcons();
   const H = C.HYD_DAY, t = teamSplash(), pct = t.goal ? Math.min(100, Math.round(t.total / t.goal * 100)) : 0;
@@ -491,7 +502,9 @@ function renderPets() {
   for (const p of S.participants) {
     const mine = shownKind(p), n = ja(p.name), held = hiddenPets(p);
     /* each pen gets a tab once a second one is open; until then a card shows one pen */
-    const pens = pensOf(p), open = pens.length > 1, pen = pens.includes(ui.petPen[p.name]) ? ui.petPen[p.name] : pens.at(-1), order = petGridOrder(pen);
+    /* a closed third pen keeps its tab, greyed, with its pets out of reach */
+    const pens = pen3Earned(p) && !pen3Open(p) ? [...pensOf(p), 3] : pensOf(p), open = pens.length > 1;
+    const pen = pens.includes(ui.petPen[p.name]) ? ui.petPen[p.name] : pensOf(p).at(-1), order = petGridOrder(pen), shut = pen === 3 && !pen3Open(p);
     const inPen = k => penOf(k) === pen, heldHere = [...held.keys()].filter(inPen);
     const alive = penAlive(p, pen) - heldHere.length, buried = penBuried(p, pen) + heldHere.filter(k => held.get(k)).length;
     h.push('<div class="pet-card" data-name="' + n + '">');
@@ -500,23 +513,25 @@ function renderPets() {
            (buried ? '<b class="graven"> &middot; ' + buried + ' buried</b>' : '') + '</span></div>');
     if (open) {
       h.push('<div class="pen-tabs" role="tablist">' + pens.map(x =>
-        '<button type="button" role="tab" class="pen-tab' + (x === pen ? ' on' : '') + '" aria-selected="' + (x === pen) + '" data-act="pen" data-pen="' + x + '">' +
+        '<button type="button" role="tab" class="pen-tab' + (x === pen ? ' on' : '') + (x === 3 && !pen3Open(p) ? ' closed' : '') +
+        '" aria-selected="' + (x === pen) + '" data-act="pen" data-pen="' + x + '"' + (x === 3 && !pen3Open(p) ? ' title="Closed"' : '') + '>' +
         C.PEN_LABELS[x] + ' <b>' + penAlive(p, x) + '</b></button>').join("") + '</div>');
     }
-    h.push('<div class="pet-grid">');
+    h.push('<div class="pet-grid' + (shut ? ' closed' : '') + '">');
     for (const k of order) {
       const rar = petRarityOf(k), buried = isGrave(p, k) || held.get(k) === true, owned = !buried && has(p.pets, k) && !held.has(k);
       const cls = "pc r" + petBinIndex(k) + (buried ? " buried" : owned ? "" : " locked") +
                   (mine === k && (owned || buried) ? " equipped" : "");
       const title = buried ? esc(C.PET_NAMES[k]) + " &middot; " + esc(graveLine(k))
                   : owned ? esc(C.PET_NAMES[k]) + " &middot; " + esc(rar.name) : "Locked &middot; " + esc(rar.name);
-      h.push('<div class="' + cls + '"' + ((owned || buried) ? ' data-act="equip" data-kind="' + k + '" role="button" tabindex="0"' : '') +
+      h.push('<div class="' + cls + '"' + ((owned || buried) && !shut ? ' data-act="equip" data-kind="' + k + '" role="button" tabindex="0"' : '') +
              ' title="' + title + '"><i class="pi pi-' + (buried ? "grave" : k) + '"></i>' +
              '<span class="pn">' + (buried || owned ? esc(C.PET_NAMES[k]) : "???") + '</span></div>');
     }
     h.push('</div>');
     if (pen > 1) {
-      h.push('<p class="pen-note">Opened ' + esc(prettyDate(pen === 3 ? p.pen3 : p.pen2)) + '.' + (pen === pens.at(-1) ? ' New pets come from here now.' : '') + '</p></div>');
+      h.push('<p class="pen-note' + (shut ? ' closed' : '') + '">' + (shut ? esc(PEN3_CLOSED) + ' Its pets wait here.'
+        : 'Opened ' + esc(prettyDate(pen === 3 ? p.pen3 : p.pen2)) + '.' + (pen === pensOf(p).at(-1) ? ' New pets come from here now.' : '')) + '</p></div>');
       continue;
     }
     const got = has(p.pets, C.HOMUNCULUS_KIND);
@@ -587,8 +602,8 @@ function renderHistory() {
 
   h.push('<div class="panel-title">Star chart<span class="sub-note"> &middot; last ' + days.length + ' logged days</span></div>');
   h.push('<div class="chart-legend"><span><i class="sw goal"></i>reached the goal</span>' +
-         '<span><i class="sw crown">' + crownSvg(15, 10, "lc") + '</i>won the day</span>' +
-         '<span><i class="sw crown">' + jesterSvg(15, 10, "lc") + '</i>led, but under goal</span>' +
+         '<span><i class="sw crown">' + crownSvg(18, 12, "lc") + '</i>won the day</span>' +
+         '<span><i class="sw crown">' + jesterSvg(18, 12, "lc") + '</i>led, but under goal</span>' +
          '<span><i class="sw cap"></i>hit the cap</span><span><i class="sw over"></i>went past it</span>' +
          '<span><i class="sw some"></i>logged something</span></div>');
   h.push('<div class="chart-scroll"><table class="star-chart"><tr><th class="who"></th>');
@@ -610,7 +625,7 @@ function renderHistory() {
       else if (atCap(tot, pp, key)) cls += " cap";
       else if (metGoal(tot, personalGoal(pp, key))) cls += " goal";
       else cls += " some";
-      if (won && tot > 0 && !pastCap(tot, pp, key)) glyph = hatSvg(15, 10, "lc", !metGoal(tot, personalGoal(pp, key)));
+      if (won && tot > 0 && !pastCap(tot, pp, key)) glyph = hatSvg(18, 12, "lc", !metGoal(tot, personalGoal(pp, key)));
       h.push('<td class="' + cls + '" title="' + esc(name) + ' &middot; ' + esc(key) + ' &middot; ' + fmt(tot) + ' fl oz' +
              (won ? ' &middot; won the day' : '') + '">' + glyph + '</td>');
     }
@@ -755,7 +770,7 @@ function recapHtml() {
   const head = !leaders.length ? "Nobody poured"
              : leaders.length > 1 ? esc(leaders.join(" & ")) + " tied for the day" : esc(leaders[0]) + " won the day";
   const h = ['<section class="recap"><div class="recap-head"><p class="eyebrow">' + (yest ? "Yesterday" : "Last day played") +
-             ' &middot; ' + esc(date) + '</p><h3>' + (leaders.length ? hatSvg(26, 17, "rc-crown", !goalers.some(g => leaders.includes(g.name))) : "") +
+             ' &middot; ' + esc(date) + '</p><h3>' + (leaders.length ? hatSvg(32, 21, "rc-crown", !goalers.some(g => leaders.includes(g.name))) : "") +
              head + '</h3>' + (winners.length ? '<p class="recap-prize"><i class="medalico"></i>' + esc(winners.join(" & ")) + ' ' +
              (winners.length > 1 ? 'take ' + winShare(winners.length) + ' shells each' : 'takes ' + winShare(1) + ' shells') +
              (yest ? ' and wear' + (winners.length > 1 ? '' : 's') + ' the medal today' : '') + '</p>' : '') + '<p class="recap-sub">' + played.length + ' played &middot; ' + goalers.length + ' reached their goal &middot; ' +
@@ -873,7 +888,7 @@ function weekRecapHtml() {
   const goalDays = played.reduce((a, r) => a + r.goalDays, 0);
   const head = champs.length > 1 ? esc(champs.map(r => r.name).join(" & ")) + " shared the week" : esc(lead.name) + " won the week";
   const h = ['<section class="recap week"><div class="recap-head"><p class="eyebrow">Last week &middot; ' + esc(shortDate(w.start)) +
-             ' &ndash; ' + esc(shortDate(w.end)) + '</p><h3>' + hatSvg(26, 17, "rc-crown", false) + head +
+             ' &ndash; ' + esc(shortDate(w.end)) + '</p><h3>' + hatSvg(32, 21, "rc-crown", false) + head +
              '</h3><p class="recap-sub">' + played.length + ' played &middot; ' + plural(goalDays, "goal day") + ' &middot; ' +
              fmtOz(w.team) + ' fl oz together' +
              (w.prevTeam > 0 ? ' <span class="' + (w.team >= w.prevTeam ? "up" : "down") + '">' + (w.team >= w.prevTeam ? "&#9650; " : "&#9660; ") +
@@ -973,6 +988,7 @@ function renderBrand() {
 
 export function render() {
   maskEls = [];
+  setEventRanges(S.settings.events);
   renderBrand();
   renderEventBanner();
   G.setActive(ui.tab === "today");
@@ -1298,7 +1314,22 @@ export function fillSettings() {
   $("annualVal").value = currentAnnualGoal();
   $("startVal").value = challengeStart();
   $("idleVal").value = currentIdleMax();
+  renderEvents();
   renderRoster();
+}
+
+/* Settings > Events: one row per themed holiday, its days as MM-DD (blank = the default). */
+function renderEvents() {
+  const now = holidayOn();
+  $("eventList").innerHTML = EVENTS.map(h => {
+    const r = eventRange(h), d = eventDefault(h), own = S.settings.events && S.settings.events[h.theme];
+    return '<div class="ev-row" data-ev="' + esc(h.theme) + '">' +
+      '<label class="ev-on"><input type="checkbox"' + (r.on ? ' checked' : '') + '> ' + esc(h.name) +
+      (now === h ? ' <span class="ev-now">on now</span>' : '') + '</label>' +
+      '<input class="txt md" type="text" maxlength="5" spellcheck="false" data-k="from" placeholder="' + d.from + '" value="' + (own ? esc(r.from) : '') + '" aria-label="' + esc(h.name) + ' from (MM-DD)">' +
+      '<span class="unit">to</span>' +
+      '<input class="txt md" type="text" maxlength="5" spellcheck="false" data-k="to" placeholder="' + d.to + '" value="' + (own ? esc(r.to) : '') + '" aria-label="' + esc(h.name) + ' to (MM-DD)"></div>';
+  }).join("");
 }
 
 export function renderRoster() {

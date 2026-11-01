@@ -334,3 +334,126 @@ test("custom tables: paste parsing, saved shape, sheet 1 at its spot or flowed o
   assert.ok(!s2.groups.some(x => x.id === "blk:wires"), "wire list stays on sheet 1");
   assert.ok(CD.scene(p, { sheet: 1 }).groups.some(x => x.id === "blk:wires"));
 });
+
+test("text and tables scale as a whole: size baseline times the handle scale", () => {
+  const p = CD.example();
+  const t = CD.newTable(300, 450, { title: "Scale test", cols: [{ h: "A", align: "left" }, { h: "B", align: "left" }], rows: [["one", "two"]] });
+  const k = CD.newCallout(100, 500, { text: "Check twist" });
+  p.tables.push(t); p.callouts.push(k);
+  const grab = () => { const s = CD.scene(p, { sheet: 1 }); const g = id => s.groups.find(x => x.id === id); return { t: g("tbl:" + t.id), k: g("k:" + k.id), w: g("blk:wires"), n: g("blk:notes") }; };
+  const big = o => Math.max(...o.prims.filter(q => q.t === "text").map(q => q.size));
+  const a = grab();
+  assert.equal(big(a.k), 7, "medium text note draws as before (7 pt)");
+  t.k = 2; k.k = 2; p.blk.wires.k = 1.5; p.blk.notes.size = "l";
+  const b = grab();
+  assert.ok(Math.abs(b.t.box.w - a.t.box.w * 2) < 0.5 && Math.abs(b.t.box.h - a.t.box.h * 2) < 0.5, "table doubles, text included");
+  assert.ok(Math.abs(big(b.t) - big(a.t) * 2) < 1e-9);
+  assert.equal(big(b.k), 14);
+  assert.ok(Math.abs(b.w.box.w - a.w.box.w * 1.5) < 1);
+  assert.ok(Math.abs(big(b.n) - big(a.n) * 9 / 7) < 1e-9, "Large notes = 9/7 of Medium");
+  t.size = "l";
+  assert.ok(Math.abs(big(grab().t) - big(a.t) * 2 * 9 / 5.8) < 1e-9, "Large table text = 9/5.8 of Small, times the scale");
+  const back = CD.normalize(JSON.parse(JSON.stringify(Object.assign(p, { blk: { wires: { size: "x", k: 99 } } }))));
+  assert.equal(back.tables.find(x => x.id === t.id).k, 2);
+  assert.equal(back.callouts.find(x => x.id === k.id).k, 2);
+  assert.deepEqual(plain(back.blk.wires), { size: "s", k: 6, wrap: true, colW: 0 }, "unknown size falls back, scale is capped");
+  assert.deepEqual(plain(back.blk.notes), { size: "m", k: 1 });
+});
+
+test("cable and wire profiles: cable parameters only, no labels, sleeving, lengths or ends", () => {
+  const p = CD.example();
+  const w1 = p.cables[0];
+  w1.desc = "2 pair shielded test cable";
+  const part = CD.partFromCable(p, w1, "Test 2-pair");
+  assert.equal(part.type, "cable");
+  assert.equal(part.conductors.length, 5);
+  assert.deepEqual(plain(part.conductors.map(c => c.color)), ["WH", "BN", "GN", "YE", "BARE"]);
+  assert.deepEqual(plain(part.groups.map(g => [g.wires, g.lay])), [[[0, 1], "1.00"], [[2, 3], "1.50"]]);
+  assert.equal(part.cable.shield, "foil"); assert.equal(part.cable.mpn, "EX-CBL-2P24S"); assert.equal(part.cable.od, "0.22");
+  const text = JSON.stringify(part);
+  for (const gone of ["36.00", "1.50\",\"stripB", "P1 / P2", "EX-LBL-WHT", "EX-HS-3/8", "pigtail", "float"]) assert.ok(!text.includes(gone), "left out: " + gone);
+  assert.ok(!("len" in part.cable) && !("marks" in part.cable) && !("stripA" in part.cable));
+  // through a .cdparts round trip and back onto a drawing
+  const back = CD.normPart(JSON.parse(text));
+  const q = CD.blankProject();
+  const c = CD.cableFromPart(q, back, 10, 20);
+  const list = CD.conductors(q, c);
+  assert.equal(list.length, 5); assert.ok(list.every(w => !w.a && !w.b && !w.ref));
+  assert.equal(c.len, ""); assert.equal(c.marks.length, 0); assert.equal(c.groups.length, 2);
+  assert.deepEqual(plain(c.shield), { type: "foil", a: "none", b: "none" });
+  assert.equal(c.ref, "W1");
+  assert.equal(CD.normPart({ type: "cable", conductors: [] }), null);
+  // wire profile
+  const gw = p.wires.find(w => w.color === "GNYE");
+  gw.spec = "UL1015"; gw.mpn = "EX-W20-GY";
+  const wp = CD.normPart(JSON.parse(JSON.stringify(CD.partFromWire(gw))));
+  assert.equal(wp.type, "wire"); assert.equal(wp.name, "20 AWG GNYE PVC UL1015");
+  assert.ok(!("len" in wp.wire) && !("a" in wp.wire) && !("ref" in wp.wire));
+  const tgt = CD.newWire(q, { len: "12", sig: "X", ref: "9" });
+  CD.applyWirePart(tgt, wp);
+  assert.deepEqual([tgt.gauge, tgt.color, tgt.spec, tgt.mpn, tgt.len, tgt.sig, tgt.ref], ["20", "GNYE", "UL1015", "EX-W20-GY", "12", "X", "9"]);
+  assert.equal(CD.normPart({ type: "wire", wire: { color: "<b>", gu: "x" } }).wire.color, "BK");
+});
+
+test("markings: fixed order and spacing whatever order they were added in", () => {
+  const p = CD.example();
+  const c = p.cables[0];
+  c.marks.push(CD.newMark({ kind: "sleeve", end: "all", text: "Braided sleeve", mpn: "EX-SLV-1" }), CD.newMark({ kind: "label", end: "A", text: "P1", mpn: "EX-LBL-A" }));
+  const order = CD.markRows(c.marks).map(m => m.end + ":" + m.kind);
+  assert.deepEqual(plain(order), ["A:label", "both:label", "all:sleeve", "B:heatshrink"]);
+  const balloons = () => CD.scene(p, { sheet: 1 }).groups.find(g => g.id === "w:" + c.id).prims.filter(o => o.t === "circle" && o.r === 6).map(o => o.cy).sort((a, b) => a - b);
+  const ys = balloons();
+  const gaps = ys.slice(1).map((y, i) => y - ys[i]).filter(g => g > 0.5);
+  assert.ok(gaps.every(g => g >= 12), "marking balloons never overlap: " + gaps.join(", "));
+  const before = JSON.stringify(balloons());
+  c.marks.reverse();
+  assert.equal(JSON.stringify(balloons()), before, "same layout in any order");
+});
+
+test("table text wrapping: on wraps at the set width, off keeps one line per cell", () => {
+  const p = CD.blankProject();
+  const long = "A long description that will not fit in a narrow column at all";
+  const t = CD.newTable(100, 100, { cols: [{ h: "Step", align: "left" }, { h: "Description", align: "left" }], rows: [["1", long]] });
+  p.tables.push(t);
+  const g = () => CD.scene(p, { sheet: 1 }).groups.find(x => x.id === "tbl:" + t.id);
+  const lines = () => g().prims.filter(o => o.t === "text" && o.s.length > 1 && long.includes(o.s)).length;
+  t.colW = 80;
+  const narrow = g().box.w, wrapped = lines();
+  assert.ok(wrapped >= 3, "wraps at 80 pt");
+  t.colW = 0;
+  assert.ok(g().box.w > narrow && lines() < wrapped, "auto width wraps less");
+  t.wrap = false;
+  assert.equal(lines(), 1, "off: one line");
+  assert.ok(g().prims.some(o => o.t === "text" && o.s === long));
+  const back = CD.normalize(JSON.parse(JSON.stringify(Object.assign(p, { tables: [Object.assign({}, t, { colW: 5 })] }))));
+  assert.equal(back.tables[0].wrap, false); assert.equal(back.tables[0].colW, 30, "width kept within 30-600 pt");
+});
+
+test("sleeving, heat-shrink and tape are bought by length; labels and ties by count", () => {
+  const p = CD.example();
+  const c = p.cables[0];   // 36.00 in long
+  const row = mpn => CD.bom(p).rows.find(r => r.mpn === mpn);
+  c.marks.push(CD.newMark({ kind: "sleeve", end: "all", mpn: "EX-SLV", desc: "Braided sleeve" }));
+  assert.deepEqual([row("EX-SLV").qty, row("EX-SLV").unit, !!row("EX-SLV").tbd], [36, "in", false], "full length = cable length");
+  c.marks.push(CD.newMark({ kind: "tape", end: "both", mpn: "EX-TAPE", desc: "Tape", len: "2", qty: "5" }));
+  assert.deepEqual([row("EX-TAPE").qty, row("EX-TAPE").unit], [4, "in"], "2 in at both ends, qty ignored");
+  c.marks.push(CD.newMark({ kind: "heatshrink", end: "mid", mpn: "EX-HS-MID", desc: "Heat-shrink" }));
+  const hs = row("EX-HS-MID");
+  assert.equal(hs.unit, "in"); assert.ok(hs.tbd); assert.equal(CD.bomCells(hs, p.meta)[1], "TBD");
+  assert.ok(CD.checks(p).some(k => /W1: heat-shrink at middle has no cut length/.test(k.msg)));
+  c.marks.push(CD.newMark({ kind: "tie", end: "mid", mpn: "EX-TIE", desc: "Cable tie", qty: "3", len: "9" }));
+  assert.deepEqual([row("EX-TIE").qty, row("EX-TIE").unit], [3, "ea"], "ties are counted, length ignored");
+  assert.deepEqual([row("EX-LBL-WHT").qty, row("EX-LBL-WHT").unit], [2, "ea"], "labels stay counted");
+  c.len = "";
+  assert.ok(row("EX-SLV").tbd, "full length with no cable length = TBD");
+});
+
+test("Legal sheet: 14 x 8.5 in landscape, title block says LEGAL and fits its cell", () => {
+  const p = CD.example();
+  p.meta.size = "Legal";
+  const s = CD.scene(p, { sheet: 1 });
+  assert.deepEqual([s.W, s.H], [1008, 612]);
+  const t = s.groups.find(g => g.id === "frame").prims.find(o => o.t === "text" && o.s === "LEGAL");
+  assert.ok(t && CD.textWidth("LEGAL", t.size, true) <= 29, "fits the 34 pt SIZE cell");
+  assert.equal(CD.normalize(JSON.parse(JSON.stringify(p))).meta.size, "Legal");
+});

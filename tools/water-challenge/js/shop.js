@@ -8,7 +8,7 @@ import * as C from "./config.js";
 import { S, tokensEarned, capBonus, dayWinners } from "./model.js";
 import { saveParticipant, petKindFor, setSpendCheck } from "./store.js";
 import { has, todayKey, localStamp, shiftKey, parseKey, aAn } from "./util.js";
-import { applyRoll, dayRng, grantHomunculus, isGrave, petBinIndex, penOf, binsFor, rollPen, pen2Open, pen3Open } from "./pets.js";
+import { applyRoll, dayRng, grantHomunculus, isGrave, petBinIndex, penOf, binsFor, rollPen, pen2Open, pen3Open, pen3Earned, PEN3_CLOSED } from "./pets.js";
 import { COSMETICS, SLOTS, PAINT_COST } from "./cosmetics.js";
 import { hydrationEarned } from "./hydration.js";
 
@@ -221,7 +221,7 @@ export const shardsText = (n, tier) => (n === 1 ? aAn(C.PET_BINS[tier].name) + "
 export function pickBlock(p, k) {
   if (penOf(k) === 0) return "Not in the pen.";
   if (penOf(k) === 2 && !pen2Open(p)) return "Opens with the second pen.";
-  if (penOf(k) === 3 && !pen3Open(p)) return "Opens with the third pen.";
+  if (penOf(k) === 3 && !pen3Open(p)) return pen3Earned(p) ? PEN3_CLOSED : "Opens with the third pen.";
   if (has(p.pets, k)) return "Already alive.";
   const t = petBinIndex(k);
   if (shards(p)[t] < shardCost(k)) return "Needs " + shardsText(shardCost(k), t) + ".";

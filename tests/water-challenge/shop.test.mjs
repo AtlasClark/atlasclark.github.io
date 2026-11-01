@@ -442,7 +442,7 @@ test("second pen: opens for good once all 25 are alive; rolls, Plinko and the sh
 });
 
 
-test("third pen: opens for good once all 50 of the first two pens are alive; rolls, Plinko and the shop follow it", { skip: skipReason }, async () => {
+test("third pen: opens once all 50 of the first two pens are alive; rolls, Plinko and the shop follow it", { skip: skipReason }, async () => {
   const { S, day, M, mem } = await fresh();
   const p = S.participants.find(x => M.isActive(x)), P = web.pets;
   const fill = start => { for (let k = start; k < start + C.PET_COUNT; k++) { p.pets[String(k)] = p.pets[String(k)] ?? 100; delete p.graves[String(k)]; } };
@@ -473,14 +473,44 @@ test("third pen: opens for good once all 50 of the first two pens are alive; rol
   }
   assert.equal(C.PET_NAMES[C.PEN3_FIRST + 5], "Mimic", "the Mimic is the third pen's ???");
   assert.notEqual(shop.pickBlock(p, C.PEN3_FIRST + 1), "Opens with the third pen.", "no longer locked: a shard can bring one in");
+
+  /* closes when a pet of the first two pens is lost; its pets stay, out of reach */
+  p.pets[String(C.PEN3_FIRST + 2)] = 50; p.pets[String(C.PEN3_FIRST + 7)] = 80;
+  p.equippedPet = C.PEN3_FIRST + 2;
+  delete p.pets[String(C.PEN2_FIRST + 4)]; p.graves[String(C.PEN2_FIRST + 4)] = 1;
+  await web.store.saveParticipant(p, null, [String(C.PEN2_FIRST + 4)]);
+  await web.pets.reconcilePets();
+  assert.ok(!P.pen3Open(p) && P.pen3Earned(p), "closed, still earned");
+  assert.equal(p.pen3, day, "the day it first opened is kept");
+  assert.deepEqual(P.pensOf(p), [1, 2]);
+  assert.equal(P.rollPen(p), 2, "new pets come from the second pen");
+  assert.equal(p.equippedPet, C.PET_NO_PET, "the worn third-pen pet is put away");
+  assert.ok(web.store.petKindFor(p) === C.PET_NO_PET);
+  assert.ok(web.util.has(p.pets, C.PEN3_FIRST + 2) && web.util.has(p.pets, C.PEN3_FIRST + 7), "its pets stay");
+  for (let i = 0; i < 300; i++) { const d = shop.plinkoDrop(p); if (!d.chest && d.kind >= 0) assert.notEqual(P.penOf(d.kind), 3, "no third-pen pets from Plinko"); }
+  assert.notEqual(P.penOf(P.todaysPet(p)), 3, "nor from the daily roll");
+  assert.equal(shop.pickBlock(p, C.PEN3_FIRST + 1), P.PEN3_CLOSED, "nor brought in with shards");
+  for (let d = 0; d < 200; d++) assert.notEqual(P.penOf(P.pickVictim(p, web.util.shiftKey(day, d))), 3, "nor drowned");
+  await P.equipPet(p.name, C.PEN3_FIRST + 7);
+  assert.equal(p.equippedPet, C.PET_NO_PET, "nor worn");
+
+  /* the 50 whole again: it reopens */
+  p.pets[String(C.PEN2_FIRST + 4)] = 1; delete p.graves[String(C.PEN2_FIRST + 4)];
+  await web.store.saveParticipant(p, null, null, [String(C.PEN2_FIRST + 4)]);
+  await web.pets.reconcilePets();
+  assert.ok(P.pen3Open(p), "reopened");
+  assert.deepEqual(P.pensOf(p), [1, 2, 3]);
+  assert.equal(p.pen3, day);
 });
 
 test("shard prices by pen (rev 1.37.0): first pen 1, second 2, third 3; older spends count 1", () => {
   const p = { name: "x", pets: {}, graves: {}, pen2: "2026-01-01", pen3: "2026-02-01", rollLog: {}, spends: [] };
+  for (const s of [0, C.PEN2_FIRST]) for (let k = s; k < s + C.PET_COUNT; k++) p.pets[String(k)] = 1;   /* all 50 alive: the third pen is open */
   for (let i = 0; i < 6; i++) p.rollLog["2000-01-0" + (i + 1)] = { k: 0, n: 0 };            /* six Common shards */
   const t = web.pets.petBinIndex(1);
   assert.deepEqual([1, C.PEN2_FIRST + 1, C.PEN3_FIRST + 1].map(shop.shardCost), [1, 2, 3]);
   assert.equal(shop.pickBlock(p, C.PEN3_FIRST + 1), "", "6 Common shards buy a third-pen Common");
+  delete p.pets["2"]; delete p.pets[String(C.PEN2_FIRST + 2)];                             /* two to bring back */
   p.spends.push({ id: "a", at: "2026-03-01T10:00:00", kind: "shard", cost: 3, pet: C.PEN3_FIRST + 1, tier: t });
   p.spends.push({ id: "b", at: "2026-03-01T10:01:00", kind: "shard", cost: 2, pet: C.PEN2_FIRST + 1, tier: t });
   assert.equal(shop.shards(p)[t], 1, "3 + 2 spent, 1 left");

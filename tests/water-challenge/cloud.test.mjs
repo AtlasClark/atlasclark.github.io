@@ -241,3 +241,18 @@ test("folder moved to the cloud: its pages stop writing", async () => {
   assert.deepEqual((await store.folderFiles(d)).map(f => f.name), ["Pat Test.json"], "nor imported");
   store.setDir(null);
 });
+
+test("cloud settings: an admin's Event days (rev 1.38.2, from main 1.37.4) save and read back", async () => {
+  const me = await cloud.start({ url: URL0, code: OWNER }, {});
+  assert.equal(me.admin, true);
+  store.setCloud(cloud);
+  M.S.me = me.user;
+  await store.loadSettings();
+  M.S.settings.events = { halloween: { from: "10-20", to: "11-02" }, christmas: { from: "12-01", to: "12-26", on: false } };
+  assert.ok(await store.saveSettings(), "the Worker takes the events field");
+  M.S.settings.events = {};
+  await store.loadSettings();
+  assert.deepEqual(M.S.settings.events, { halloween: { from: "10-20", to: "11-02" }, christmas: { from: "12-01", to: "12-26", on: false } });
+  cloud.stop();
+  store.setCloud(null);
+});

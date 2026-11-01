@@ -227,6 +227,60 @@ test("holiday hats: the day before to the day after, in place of the crown and j
   for (const h of web_C().HOLIDAY_HATS) for (const k of [h.crown, h.jester]) assert.ok(P.hats[k] && P.hats[k].shapes.length, k + " is drawn");
 });
 
+test("seasons: by month, spring March to May, summer June to August, autumn September to November, winter the rest", async () => {
+  const T = await import(pathToFileURL(JS + "themefx.js"));
+  const want = ["winter", "winter", "spring", "spring", "spring", "summer", "summer", "summer", "autumn", "autumn", "autumn", "winter"];
+  for (let m = 1; m <= 12; m++) assert.equal(T.seasonOf("2026-" + String(m).padStart(2, "0") + "-15"), want[m - 1], "month " + m);
+  assert.equal(C.GOAL_FX.halloween.fx, "potion");
+  for (const h of C.HOLIDAY_HATS) if (h.theme) assert.ok(C.GOAL_FX[h.theme], h.name + " has a goal glass");
+});
+
+test("glass hat icon: a tall holiday hat gets more height, so it is drawn about as wide as the crown", () => {
+  const size = (jester, key) => { const s = A.glassHatSvg(jester, key), [, w, h] = /width="(\d+)" height="(\d+)"/.exec(s).map(Number);
+    const vb = /viewBox="([^"]+)"/.exec(s)[1].split(" ").map(Number);
+    return { h, drawnW: vb[2] * Math.min(w / vb[2], h / vb[3]) }; };
+  assert.equal(size(false, "2026-06-15").h, 17, "the crown keeps 26 x 17");
+  for (const [jester, key] of [[false, "2026-10-31"], [true, "2026-12-25"], [false, "2027-01-01"], [true, "2027-01-01"]]) {
+    const s = size(jester, key);
+    assert.ok(s.h >= 17 && s.h <= 30, key + ": slot " + s.h + " px tall");
+    assert.ok(s.drawnW >= 17, key + ": drawn " + s.drawnW.toFixed(1) + " px wide");
+  }
+});
+
+test("events: a folder's own days and off switch replace the default, Hydration Day stays fixed", async () => {
+  const U = await import(pathToFileURL(JS + "util.js"));
+  const on = k => (A.holidayOn(k) || {}).name || "";
+  try {
+    A.setEventRanges({ halloween: { from: "10-01", to: "10-31" }, christmas: { from: "12-20", to: "12-25", on: false },
+                       newyear: { from: "12-30", to: "01-05" } });
+    for (const [k, want] of [["2026-09-30", ""], ["2026-10-01", "Halloween"], ["2026-10-31", "Halloween"], ["2026-11-01", ""],
+                             ["2026-12-24", ""], ["2026-12-30", "New Year"], ["2027-01-05", "New Year"], ["2027-01-06", ""],
+                             ["2027-06-23", "National Hydration Day"], ["2027-06-24", ""]]) assert.equal(on(k), want, k);
+    assert.equal(A.hatKeyFor(false, "2026-10-05"), "witch");
+    A.setEventRanges({ halloween: { from: "13-01", to: "10-31" } });
+    assert.equal(on("2026-10-05"), "", "a bad date falls back to the default");
+  } finally { A.setEventRanges({}); }
+  assert.equal(on("2026-10-30"), "Halloween");
+  assert.deepEqual(A.eventDefault(A.EVENTS.find(h => h.theme === "newyear")), { from: "12-31", to: "01-02", on: true });
+  for (const [s, ok] of [["02-29", true], ["02-30", false], ["12-31", true], ["00-10", false], ["4-01", false], ["", false]]) assert.equal(U.monthDayOk(s), ok, s);
+});
+
+test("cup items: the glass outline over seaweed and the sandcastle, under the rest; a saved file sets it", () => {
+  const behind = k => COS.decorBehind(k);
+  assert.deepEqual(["seaweed", "castle", "straw", "lights", "flag"].map(behind), [true, true, false, false, false]);
+  const tri = { pal: { gold: { c: "#f0b429" } }, shapes: [{ t: "path", d: [["M", -0.3, 0], ["L", 0, -0.4], ["L", 0.3, 0], ["Z"]], fill: "gold" }] };
+  try {
+    P.applyDefs({ format: 1, pets: {}, hats: { "decor:straw": { ...tri, behind: true }, "decor:seaweed": tri, crown: { ...tri, behind: true } } });
+    assert.equal(behind("straw"), true, "the file's own setting");
+    assert.equal(behind("seaweed"), false, "a saved item without it has the outline under it");
+    assert.equal(P.hats.crown.behind, undefined, "cup items only");
+  } finally { P.applyDefs({ format: 1, pets: {} }); }
+  assert.equal(behind("seaweed"), true);
+  const box = { x: 0, y: 0, W: 100, H: 190 }, at = t => COS.cupOrigin("flag", box, () => 120, t);
+  assert.notEqual(at(0.3).a, at(1.1).a, "the flag sways");
+  assert.deepEqual([at(0.3).x, at(0.3).y], [50, 0], "from the rim");
+});
+
 test("hats: the page's icons use a redrawn hat, and drop it again", () => {
   const built = A.crownSvg(26, 17, "crown"), jester = A.jesterSvg(26, 17, "crown"), key = A.hatKeyFor(false);   /* a holiday's hat on those days */
   P.applyDefs({ format: 1, pets: {}, hats: { [key]: { pal: { gold: { c: "#f0b429" } },

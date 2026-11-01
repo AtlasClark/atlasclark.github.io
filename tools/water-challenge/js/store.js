@@ -17,7 +17,7 @@ import * as C from "./config.js";
 import { S, dataChanged, currentGoalFor, currentGoal, currentAnnualGoal, currentIdleMax,
          goalTunables, legacyFlat, challengeStart, forceLegacyStamps, personalGoal,
          defaultSettings } from "./model.js";
-import { todayKey, dateKey, localStamp, parseKey, has, shiftKey } from "./util.js";
+import { todayKey, dateKey, localStamp, parseKey, has, shiftKey, monthDayOk } from "./util.js";
 
 export let dir = null;          /* FileSystemDirectoryHandle of the data folder */
 export let cloud = null;        /* cloud.js, while signed in with an access code */
@@ -409,12 +409,23 @@ export async function loadSettings() {
     if (Number(o.legacyGoalOz) > 0) s.legacyGoalOz = Number(o.legacyGoalOz);
     if (typeof o.title === "string") s.title = o.title.trim().slice(0, C.TITLE_MAX);
     if (typeof o.tagline === "string") s.tagline = o.tagline.trim().slice(0, C.TAGLINE_MAX);
+    if (o.events && typeof o.events === "object") s.events = cleanEvents(o.events);
     if ((!cloud || cloud.isAdmin()) &&                 /* in the cloud only an admin may write settings */
         (o.minGoalOz === undefined || o.goalFactor === undefined || o.minGoalDays === undefined ||
          o.dropTopDay === undefined || o.goalWindowDays === undefined || o.legacyFlatUntil === undefined)) {
       await saveSettings();
     }
   } catch (e) { note("settings unreadable: " + (e.message || e)); }
+}
+
+/* Settings > Events: only themed events, with real dates; on is kept only when off. */
+export function cleanEvents(o) {
+  const out = {};
+  for (const h of C.HOLIDAY_HATS) {
+    const e = h.theme && o[h.theme];
+    if (e && monthDayOk(e.from) && monthDayOk(e.to)) out[h.theme] = e.on === false ? { from: e.from, to: e.to, on: false } : { from: e.from, to: e.to };
+  }
+  return out;
 }
 
 export async function saveSettings() {
@@ -434,6 +445,7 @@ export async function saveSettings() {
     ',\n  "formatRev": ' + C.FORMAT_REV +
     (S.settings.title ? ',\n  "title": ' + q(S.settings.title) : '') +
     (S.settings.tagline ? ',\n  "tagline": ' + q(S.settings.tagline) : '') +
+    (Object.keys(S.settings.events || {}).length ? ',\n  "events": ' + JSON.stringify(cleanEvents(S.settings.events)) : '') +
     ',\n  "updatedBy": ' + q(S.me) +
     ',\n  "updatedAt": ' + q(localStamp(new Date())) + '\n}\n';
   try {

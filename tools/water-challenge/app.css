@@ -80,6 +80,382 @@
   color-scheme: dark;
 }
 
+/* Seasons (themefx.js, rev 1.37.11): the same three rules as the holidays; a holiday comes first. */
+/* Spring. Light: fresh green and blossom. Dark: a garden at night. */
+:root[data-holiday="spring"] {
+  --page-a: #e9f6e6; --page-b: #fbfdf7; --page-c: #fde8ef;
+  --ink: #1f3a2b; --ink-2: #2f5640; --muted: #5d8069; --faint: #7a9483; --fainter: #a9bcae;
+  --head: #c23d78; --title: #2f6b46;
+  --line: #e3eee2; --line-2: #cfe2cf;
+  --card: rgba(255,255,255,.66); --card-edge: rgba(255,255,255,.95);
+  --panel: rgba(255,255,255,.9); --solid: #ffffff; --solid-2: #f2f8f0;
+  --shadow: 0 16px 44px rgba(70,120,80,.13);
+  --accent: #d24f86; --accent-ink: #a83566; --accent-soft: #fdebf3; --chip-line: #ecbfd2;
+  --input: #ffffff; --input-line: #c9dfc9;
+  --glass-edge: rgba(150,200,160,.8);
+  --track: #dcebd9; --pace: #2f6b46;
+  --cell: #eef6ec; --cell-none: #f6faf4; --cell-some: #cfe2cf;
+  --pc-bg: #eef6ec; --pc-hover: #e2efe0; --pc-locked: #f4f9f2;
+}
+@media (prefers-color-scheme: dark) {
+  :root[data-holiday="spring"]:not([data-theme="light"]) {
+    --page-a: #08130c; --page-b: #0d1c13; --page-c: #1a1019;
+    --ink: #e6f3ea; --ink-2: #cde6d6; --muted: #95c0a4; --faint: #80a28c; --fainter: #4f705b;
+    --head: #ff8fbe; --title: #c3ead0;
+    --line: #15301f; --line-2: #1e432b;
+    --card: rgba(22,52,34,.55); --card-edge: rgba(160,220,180,.16);
+    --panel: rgba(12,34,22,.9); --solid: #102a1b; --solid-2: #143322;
+    --shadow: 0 18px 48px rgba(0,0,0,.45);
+    --accent: #e25b97; --accent-ink: #ffb0d2; --accent-soft: #3a1428; --chip-line: #2c5a3c;
+    --input: #0b2316; --input-line: #2c5a3c;
+    --glass-edge: rgba(180,235,200,.5); --glass-fill: rgba(180,235,200,.06); --glass-inner: rgba(200,240,215,.16);
+    --track: #15301f; --pace: #ffb0d2;
+    --cell: #143322; --cell-none: #0d2618; --cell-some: #24503a;
+    --pc-bg: #10291b; --pc-hover: #183d28; --pc-locked: #0b2316;
+    --scrim: rgba(0,10,4,.62);
+    color-scheme: dark;
+  }
+}
+:root[data-holiday="spring"][data-theme="dark"] {
+  --page-a: #08130c; --page-b: #0d1c13; --page-c: #1a1019;
+  --ink: #e6f3ea; --ink-2: #cde6d6; --muted: #95c0a4; --faint: #80a28c; --fainter: #4f705b;
+  --head: #ff8fbe; --title: #c3ead0;
+  --line: #15301f; --line-2: #1e432b;
+  --card: rgba(22,52,34,.55); --card-edge: rgba(160,220,180,.16);
+  --panel: rgba(12,34,22,.9); --solid: #102a1b; --solid-2: #143322;
+  --shadow: 0 18px 48px rgba(0,0,0,.45);
+  --accent: #e25b97; --accent-ink: #ffb0d2; --accent-soft: #3a1428; --chip-line: #2c5a3c;
+  --input: #0b2316; --input-line: #2c5a3c;
+  --glass-edge: rgba(180,235,200,.5); --glass-fill: rgba(180,235,200,.06); --glass-inner: rgba(200,240,215,.16);
+  --track: #15301f; --pace: #ffb0d2;
+  --cell: #143322; --cell-none: #0d2618; --cell-some: #24503a;
+  --pc-bg: #10291b; --pc-hover: #183d28; --pc-locked: #0b2316;
+  --scrim: rgba(0,10,4,.62);
+  color-scheme: dark;
+}
+[data-holiday="spring"] h1 { text-shadow: 0 0 22px rgba(226,91,151,.22); }
+/* Summer. Light: sky, sun and sand. Dark: a warm night by the sea. */
+:root[data-holiday="summer"] {
+  --page-a: #dcf2ff; --page-b: #fffcef; --page-c: #ffe8c4;
+  --ink: #183247; --ink-2: #26506d; --muted: #4f7896; --faint: #7593a8; --fainter: #a2b5c2;
+  --head: #e36b12; --title: #155f8f;
+  --line: #e6eef2; --line-2: #d6e2ea;
+  --card: rgba(255,255,255,.64); --card-edge: rgba(255,255,255,.95);
+  --panel: rgba(255,255,255,.9); --solid: #ffffff; --solid-2: #f4f8f9;
+  --shadow: 0 16px 44px rgba(60,120,160,.14);
+  --accent: #1a8fd6; --accent-ink: #1670a8; --accent-soft: #e3f3fd; --chip-line: #b9d6ea;
+  --input: #ffffff; --input-line: #c4dbe8;
+  --glass-edge: rgba(110,190,235,.8);
+  --track: #dbe9f0; --pace: #155f8f;
+  --cell: #eef5f8; --cell-none: #f6fafb; --cell-some: #d0e2ec;
+  --pc-bg: #eef5f8; --pc-hover: #e2eef5; --pc-locked: #f4f8fa;
+}
+@media (prefers-color-scheme: dark) {
+  :root[data-holiday="summer"]:not([data-theme="light"]) {
+    --page-a: #06111f; --page-b: #0b1b2d; --page-c: #1f1a29;
+    --ink: #e2eef8; --ink-2: #c7dcec; --muted: #93b6cf; --faint: #7c9bb3; --fainter: #546f86;
+    --head: #ffb557; --title: #bfe0f7;
+    --line: #16304a; --line-2: #1f4361;
+    --card: rgba(20,44,70,.55); --card-edge: rgba(140,190,235,.18);
+    --panel: rgba(13,31,52,.88); --solid: #0f2638; --solid-2: #132f45;
+    --shadow: 0 18px 48px rgba(0,0,0,.45);
+    --accent: #34a8ef; --accent-ink: #9ad6ff; --accent-soft: #11314a; --chip-line: #23506f;
+    --input: #0b2131; --input-line: #23506f;
+    --glass-edge: rgba(130,200,245,.55); --glass-fill: rgba(150,200,240,.07); --glass-inner: rgba(170,215,250,.18);
+    --track: #15324a; --pace: #ffc27a;
+    --cell: #13304a; --cell-none: #0e2638; --cell-some: #24506f;
+    --pc-bg: #10293d; --pc-hover: #183a55; --pc-locked: #0c2232;
+    --scrim: rgba(0,0,0,.6);
+    color-scheme: dark;
+  }
+}
+:root[data-holiday="summer"][data-theme="dark"] {
+  --page-a: #06111f; --page-b: #0b1b2d; --page-c: #1f1a29;
+  --ink: #e2eef8; --ink-2: #c7dcec; --muted: #93b6cf; --faint: #7c9bb3; --fainter: #546f86;
+  --head: #ffb557; --title: #bfe0f7;
+  --line: #16304a; --line-2: #1f4361;
+  --card: rgba(20,44,70,.55); --card-edge: rgba(140,190,235,.18);
+  --panel: rgba(13,31,52,.88); --solid: #0f2638; --solid-2: #132f45;
+  --shadow: 0 18px 48px rgba(0,0,0,.45);
+  --accent: #34a8ef; --accent-ink: #9ad6ff; --accent-soft: #11314a; --chip-line: #23506f;
+  --input: #0b2131; --input-line: #23506f;
+  --glass-edge: rgba(130,200,245,.55); --glass-fill: rgba(150,200,240,.07); --glass-inner: rgba(170,215,250,.18);
+  --track: #15324a; --pace: #ffc27a;
+  --cell: #13304a; --cell-none: #0e2638; --cell-some: #24506f;
+  --pc-bg: #10293d; --pc-hover: #183a55; --pc-locked: #0c2232;
+  --scrim: rgba(0,0,0,.6);
+  color-scheme: dark;
+}
+[data-holiday="summer"] h1 { text-shadow: 0 0 22px rgba(255,170,70,.28); }
+/* Autumn. Light: russet and amber. Dark: a bonfire night. */
+:root[data-holiday="autumn"] {
+  --page-a: #fbeedd; --page-b: #fff9f1; --page-c: #f4dcc2;
+  --ink: #3a2516; --ink-2: #57361f; --muted: #8a6248; --faint: #9a7a64; --fainter: #c4ab98;
+  --head: #b6460f; --title: #6b3a1a;
+  --line: #f2e4d6; --line-2: #e6d0bb;
+  --card: rgba(255,252,248,.66); --card-edge: rgba(255,255,255,.95);
+  --panel: rgba(255,252,248,.92); --solid: #fffcf8; --solid-2: #f8efe5;
+  --shadow: 0 16px 44px rgba(140,80,40,.14);
+  --accent: #c85a1c; --accent-ink: #9c4410; --accent-soft: #fdeee2; --chip-line: #ebc7a8;
+  --input: #fffdfb; --input-line: #e3cbb5;
+  --glass-edge: rgba(205,150,100,.8);
+  --track: #efe0d1; --pace: #6b3a1a;
+  --cell: #f6ece2; --cell-none: #fbf6f0; --cell-some: #e6d0bb;
+  --pc-bg: #f6ece2; --pc-hover: #f0e1d2; --pc-locked: #f9f3ec;
+}
+@media (prefers-color-scheme: dark) {
+  :root[data-holiday="autumn"]:not([data-theme="light"]) {
+    --page-a: #120b07; --page-b: #1a120c; --page-c: #22140c;
+    --ink: #f4e7da; --ink-2: #e3cfbc; --muted: #c2a084; --faint: #a48a74; --fainter: #6e5a4a;
+    --head: #ff9d50; --title: #f2d2b4;
+    --line: #2e1f14; --line-2: #44301f;
+    --card: rgba(56,36,22,.55); --card-edge: rgba(240,180,120,.16);
+    --panel: rgba(34,22,14,.9); --solid: #24170e; --solid-2: #2e1d12;
+    --shadow: 0 18px 48px rgba(0,0,0,.5);
+    --accent: #e8762e; --accent-ink: #ffb985; --accent-soft: #3d2212; --chip-line: #5c3e26;
+    --input: #1c120b; --input-line: #5c3e26;
+    --glass-edge: rgba(245,180,120,.5); --glass-fill: rgba(245,190,140,.06); --glass-inner: rgba(250,205,160,.15);
+    --track: #2e1f14; --pace: #ffb985;
+    --cell: #2e1d12; --cell-none: #22160e; --cell-some: #4a3020;
+    --pc-bg: #26180f; --pc-hover: #352216; --pc-locked: #1c120b;
+    --scrim: rgba(10,4,0,.64);
+    color-scheme: dark;
+  }
+}
+:root[data-holiday="autumn"][data-theme="dark"] {
+  --page-a: #120b07; --page-b: #1a120c; --page-c: #22140c;
+  --ink: #f4e7da; --ink-2: #e3cfbc; --muted: #c2a084; --faint: #a48a74; --fainter: #6e5a4a;
+  --head: #ff9d50; --title: #f2d2b4;
+  --line: #2e1f14; --line-2: #44301f;
+  --card: rgba(56,36,22,.55); --card-edge: rgba(240,180,120,.16);
+  --panel: rgba(34,22,14,.9); --solid: #24170e; --solid-2: #2e1d12;
+  --shadow: 0 18px 48px rgba(0,0,0,.5);
+  --accent: #e8762e; --accent-ink: #ffb985; --accent-soft: #3d2212; --chip-line: #5c3e26;
+  --input: #1c120b; --input-line: #5c3e26;
+  --glass-edge: rgba(245,180,120,.5); --glass-fill: rgba(245,190,140,.06); --glass-inner: rgba(250,205,160,.15);
+  --track: #2e1f14; --pace: #ffb985;
+  --cell: #2e1d12; --cell-none: #22160e; --cell-some: #4a3020;
+  --pc-bg: #26180f; --pc-hover: #352216; --pc-locked: #1c120b;
+  --scrim: rgba(10,4,0,.64);
+  color-scheme: dark;
+}
+[data-holiday="autumn"] h1 { text-shadow: 0 0 22px rgba(232,118,46,.28); }
+/* Winter. Light: frost blue. Dark: a clear winter night. */
+:root[data-holiday="winter"] {
+  --page-a: #e6f0fa; --page-b: #f8fbfe; --page-c: #e3ecf6;
+  --ink: #1b2f45; --ink-2: #2a4866; --muted: #587592; --faint: #7790a8; --fainter: #a6b6c6;
+  --head: #2a68a6; --title: #234a70;
+  --line: #e1e9f2; --line-2: #ccdaea;
+  --card: rgba(255,255,255,.66); --card-edge: rgba(255,255,255,.95);
+  --panel: rgba(255,255,255,.92); --solid: #ffffff; --solid-2: #f1f5fa;
+  --shadow: 0 16px 44px rgba(60,90,130,.14);
+  --accent: #3b80c4; --accent-ink: #2b63a0; --accent-soft: #e6f0fb; --chip-line: #bed3ea;
+  --input: #ffffff; --input-line: #c6d6e8;
+  --glass-edge: rgba(150,185,225,.85);
+  --track: #dbe5ef; --pace: #234a70;
+  --cell: #edf2f8; --cell-none: #f5f8fb; --cell-some: #ccdaea;
+  --pc-bg: #edf2f8; --pc-hover: #e1eaf4; --pc-locked: #f3f6fa;
+}
+@media (prefers-color-scheme: dark) {
+  :root[data-holiday="winter"]:not([data-theme="light"]) {
+    --page-a: #050b15; --page-b: #0a1322; --page-c: #0f1a2c;
+    --ink: #e3eefa; --ink-2: #c8d9ec; --muted: #93aecb; --faint: #7d95b0; --fainter: #506884;
+    --head: #a8d6ff; --title: #cfe4fa;
+    --line: #16263c; --line-2: #203654;
+    --card: rgba(24,40,66,.55); --card-edge: rgba(170,200,240,.16);
+    --panel: rgba(14,24,42,.9); --solid: #111e33; --solid-2: #16253e;
+    --shadow: 0 18px 48px rgba(0,0,0,.5);
+    --accent: #5ba6ee; --accent-ink: #b3d9ff; --accent-soft: #142a46; --chip-line: #2a4466;
+    --input: #0c1729; --input-line: #2a4466;
+    --glass-edge: rgba(170,210,250,.55); --glass-fill: rgba(180,215,250,.07); --glass-inner: rgba(200,225,250,.17);
+    --track: #16263c; --pace: #b3d9ff;
+    --cell: #16253e; --cell-none: #0f1b2e; --cell-some: #2a4466;
+    --pc-bg: #12203a; --pc-hover: #1b2d4c; --pc-locked: #0c1729;
+    --scrim: rgba(0,4,12,.64);
+    color-scheme: dark;
+  }
+}
+:root[data-holiday="winter"][data-theme="dark"] {
+  --page-a: #050b15; --page-b: #0a1322; --page-c: #0f1a2c;
+  --ink: #e3eefa; --ink-2: #c8d9ec; --muted: #93aecb; --faint: #7d95b0; --fainter: #506884;
+  --head: #a8d6ff; --title: #cfe4fa;
+  --line: #16263c; --line-2: #203654;
+  --card: rgba(24,40,66,.55); --card-edge: rgba(170,200,240,.16);
+  --panel: rgba(14,24,42,.9); --solid: #111e33; --solid-2: #16253e;
+  --shadow: 0 18px 48px rgba(0,0,0,.5);
+  --accent: #5ba6ee; --accent-ink: #b3d9ff; --accent-soft: #142a46; --chip-line: #2a4466;
+  --input: #0c1729; --input-line: #2a4466;
+  --glass-edge: rgba(170,210,250,.55); --glass-fill: rgba(180,215,250,.07); --glass-inner: rgba(200,225,250,.17);
+  --track: #16263c; --pace: #b3d9ff;
+  --cell: #16253e; --cell-none: #0f1b2e; --cell-some: #2a4466;
+  --pc-bg: #12203a; --pc-hover: #1b2d4c; --pc-locked: #0c1729;
+  --scrim: rgba(0,4,12,.64);
+  color-scheme: dark;
+}
+[data-holiday="winter"] h1 { text-shadow: 0 0 22px rgba(120,180,240,.28); }
+/* Halloween (themefx.js sets html data-holiday over the holiday's days). Light: a dusk
+   sky, plum ink, pumpkin accents. Dark: a haunted night. Same order of rules as above. */
+:root[data-holiday="halloween"] {
+  --page-a: #eadcf7; --page-b: #fbeee6; --page-c: #ffdcbc;
+  --ink: #2e1a40; --ink-2: #43285a; --muted: #7a5a8f; --faint: #8d7799; --fainter: #b3a1bd;
+  --head: #c2560c; --title: #5a2f7a;
+  --line: #efe3f2; --line-2: #e2cfe8;
+  --card: rgba(255,250,246,.66); --card-edge: rgba(255,255,255,.95);
+  --panel: rgba(255,251,247,.92); --solid: #fffaf5; --solid-2: #f8eef6;
+  --shadow: 0 16px 44px rgba(110,60,140,.15);
+  --accent: #e36a12; --accent-ink: #b34f08; --accent-soft: #fff0e2; --chip-line: #efc9a6;
+  --input: #fffdfb; --input-line: #e2c3dd;
+  --glass-edge: rgba(168,128,196,.8);
+  --track: #eadcf0; --pace: #5a2f7a;
+  --cell: #f4ecf6; --cell-none: #faf5fa; --cell-some: #e2cfe8;
+  --pc-bg: #f6eef7; --pc-hover: #f0e2f3; --pc-locked: #f8f2f8;
+}
+@media (prefers-color-scheme: dark) {
+  :root[data-holiday="halloween"]:not([data-theme="light"]) {
+    --page-a: #0b0614; --page-b: #150b22; --page-c: #1e0f1d;
+    --ink: #efe4f9; --ink-2: #dccbef; --muted: #b496d0; --faint: #9a82b0; --fainter: #6c587e;
+    --head: #ff9a3c; --title: #e9c8ff;
+    --line: #2a1a3c; --line-2: #3a2552;
+    --card: rgba(40,22,60,.58); --card-edge: rgba(190,140,240,.16);
+    --panel: rgba(26,14,40,.9); --solid: #1d1030; --solid-2: #26163d;
+    --shadow: 0 18px 48px rgba(0,0,0,.5);
+    --accent: #ff8a1f; --accent-ink: #ffb26b; --accent-soft: #3a2010; --chip-line: #5a3a6e;
+    --input: #170c26; --input-line: #4a2f63;
+    --glass-edge: rgba(200,160,255,.5); --glass-fill: rgba(190,150,255,.06); --glass-inner: rgba(210,180,255,.16);
+    --track: #2a1a3c; --pace: #ffb26b;
+    --cell: #24143a; --cell-none: #1a0e2a; --cell-some: #3d2658;
+    --pc-bg: #1f1232; --pc-hover: #2c1a46; --pc-locked: #170c26;
+    --scrim: rgba(6,2,12,.66);
+    color-scheme: dark;
+  }
+}
+:root[data-holiday="halloween"][data-theme="dark"] {
+  --page-a: #0b0614; --page-b: #150b22; --page-c: #1e0f1d;
+  --ink: #efe4f9; --ink-2: #dccbef; --muted: #b496d0; --faint: #9a82b0; --fainter: #6c587e;
+  --head: #ff9a3c; --title: #e9c8ff;
+  --line: #2a1a3c; --line-2: #3a2552;
+  --card: rgba(40,22,60,.58); --card-edge: rgba(190,140,240,.16);
+  --panel: rgba(26,14,40,.9); --solid: #1d1030; --solid-2: #26163d;
+  --shadow: 0 18px 48px rgba(0,0,0,.5);
+  --accent: #ff8a1f; --accent-ink: #ffb26b; --accent-soft: #3a2010; --chip-line: #5a3a6e;
+  --input: #170c26; --input-line: #4a2f63;
+  --glass-edge: rgba(200,160,255,.5); --glass-fill: rgba(190,150,255,.06); --glass-inner: rgba(210,180,255,.16);
+  --track: #2a1a3c; --pace: #ffb26b;
+  --cell: #24143a; --cell-none: #1a0e2a; --cell-some: #3d2658;
+  --pc-bg: #1f1232; --pc-hover: #2c1a46; --pc-locked: #170c26;
+  --scrim: rgba(6,2,12,.66);
+  color-scheme: dark;
+}
+[data-holiday="halloween"] h1 { text-shadow: 0 0 22px rgba(255,138,31,.35); }
+/* Christmas. Light: a snowy morning, pine ink, cranberry accents. Dark: a silent night. */
+:root[data-holiday="christmas"] {
+  --page-a: #e9f4f7; --page-b: #f7fbfc; --page-c: #e4f1ea;
+  --ink: #173a2c; --ink-2: #21503d; --muted: #4f7a68; --faint: #6f8f81; --fainter: #a0b8ad;
+  --head: #b3202e; --title: #1d5a40;
+  --line: #e0ece6; --line-2: #cfe2d8;
+  --card: rgba(255,255,255,.66); --card-edge: rgba(255,255,255,.95);
+  --panel: rgba(255,255,255,.9); --solid: #ffffff; --solid-2: #f0f7f3;
+  --shadow: 0 16px 44px rgba(40,100,80,.13);
+  --accent: #c62f3a; --accent-ink: #a3222c; --accent-soft: #fdecee; --chip-line: #e8b9bd;
+  --input: #ffffff; --input-line: #c7ddd2;
+  --glass-edge: rgba(120,180,160,.8);
+  --track: #d9e9e0; --pace: #1d5a40;
+  --cell: #eef6f1; --cell-none: #f5faf7; --cell-some: #cfe2d8;
+  --pc-bg: #eef6f1; --pc-hover: #e2efe8; --pc-locked: #f3f8f5;
+}
+@media (prefers-color-scheme: dark) {
+  :root[data-holiday="christmas"]:not([data-theme="light"]) {
+    --page-a: #061512; --page-b: #0a1f1b; --page-c: #0e1a24;
+    --ink: #e8f4ee; --ink-2: #cfe6da; --muted: #8fbca7; --faint: #7fa392; --fainter: #4f7464;
+    --head: #ff6f73; --title: #bfe8d2;
+    --line: #143329; --line-2: #1d4637;
+    --card: rgba(18,50,40,.55); --card-edge: rgba(140,210,180,.16);
+    --panel: rgba(10,32,26,.9); --solid: #0e2a22; --solid-2: #12352b;
+    --shadow: 0 18px 48px rgba(0,0,0,.45);
+    --accent: #e8434d; --accent-ink: #ffa3a8; --accent-soft: #3a1418; --chip-line: #2a5a48;
+    --input: #0a231c; --input-line: #2a5a48;
+    --glass-edge: rgba(170,230,205,.5); --glass-fill: rgba(170,230,205,.06); --glass-inner: rgba(190,240,215,.16);
+    --track: #143329; --pace: #ffd27a;
+    --cell: #12352b; --cell-none: #0c261f; --cell-some: #22513f;
+    --pc-bg: #0f2c24; --pc-hover: #173f33; --pc-locked: #0a231c;
+    --scrim: rgba(0,10,6,.62);
+    color-scheme: dark;
+  }
+}
+:root[data-holiday="christmas"][data-theme="dark"] {
+  --page-a: #061512; --page-b: #0a1f1b; --page-c: #0e1a24;
+  --ink: #e8f4ee; --ink-2: #cfe6da; --muted: #8fbca7; --faint: #7fa392; --fainter: #4f7464;
+  --head: #ff6f73; --title: #bfe8d2;
+  --line: #143329; --line-2: #1d4637;
+  --card: rgba(18,50,40,.55); --card-edge: rgba(140,210,180,.16);
+  --panel: rgba(10,32,26,.9); --solid: #0e2a22; --solid-2: #12352b;
+  --shadow: 0 18px 48px rgba(0,0,0,.45);
+  --accent: #e8434d; --accent-ink: #ffa3a8; --accent-soft: #3a1418; --chip-line: #2a5a48;
+  --input: #0a231c; --input-line: #2a5a48;
+  --glass-edge: rgba(170,230,205,.5); --glass-fill: rgba(170,230,205,.06); --glass-inner: rgba(190,240,215,.16);
+  --track: #143329; --pace: #ffd27a;
+  --cell: #12352b; --cell-none: #0c261f; --cell-some: #22513f;
+  --pc-bg: #0f2c24; --pc-hover: #173f33; --pc-locked: #0a231c;
+  --scrim: rgba(0,10,6,.62);
+  color-scheme: dark;
+}
+[data-holiday="christmas"] h1 { text-shadow: 0 0 22px rgba(232,67,77,.25); }
+/* New Year. Light: champagne, indigo ink, violet accents. Dark: midnight with gold. */
+:root[data-holiday="newyear"] {
+  --page-a: #f6efe0; --page-b: #fffaf0; --page-c: #efe7fb;
+  --ink: #262040; --ink-2: #3a3160; --muted: #6a5f8f; --faint: #857b9f; --fainter: #b4abc6;
+  --head: #a8740a; --title: #3a2f7a;
+  --line: #ece6f2; --line-2: #ddd3ea;
+  --card: rgba(255,253,248,.68); --card-edge: rgba(255,255,255,.95);
+  --panel: rgba(255,253,248,.92); --solid: #fffdf8; --solid-2: #f5f0fa;
+  --shadow: 0 16px 44px rgba(90,70,150,.14);
+  --accent: #5b3fd1; --accent-ink: #4a31b0; --accent-soft: #efeaff; --chip-line: #cfc2f2;
+  --input: #fffefb; --input-line: #d6cbe9;
+  --glass-edge: rgba(190,160,90,.8);
+  --track: #e9e2f2; --pace: #3a2f7a;
+  --cell: #f3eff8; --cell-none: #f9f7fb; --cell-some: #ddd3ea;
+  --pc-bg: #f3eff8; --pc-hover: #ebe4f5; --pc-locked: #f8f5fa;
+}
+@media (prefers-color-scheme: dark) {
+  :root[data-holiday="newyear"]:not([data-theme="light"]) {
+    --page-a: #05060f; --page-b: #0b0c22; --page-c: #141033;
+    --ink: #f1efff; --ink-2: #dcd8f5; --muted: #a9a2d6; --faint: #8f89b8; --fainter: #5c5788;
+    --head: #ffd56a; --title: #d9d2ff;
+    --line: #1c1c40; --line-2: #2a2858;
+    --card: rgba(30,28,70,.55); --card-edge: rgba(200,190,255,.16);
+    --panel: rgba(16,15,42,.9); --solid: #15143a; --solid-2: #1c1a48;
+    --shadow: 0 18px 48px rgba(0,0,0,.5);
+    --accent: #8a6cff; --accent-ink: #c9b8ff; --accent-soft: #241d52; --chip-line: #3d3878;
+    --input: #0e0d2a; --input-line: #3d3878;
+    --glass-edge: rgba(255,214,120,.5); --glass-fill: rgba(255,214,120,.05); --glass-inner: rgba(255,224,150,.15);
+    --track: #1c1c40; --pace: #ffd56a;
+    --cell: #1c1a48; --cell-none: #131236; --cell-some: #302d68;
+    --pc-bg: #17163e; --pc-hover: #221f55; --pc-locked: #0e0d2a;
+    --scrim: rgba(3,3,12,.66);
+    color-scheme: dark;
+  }
+}
+:root[data-holiday="newyear"][data-theme="dark"] {
+  --page-a: #05060f; --page-b: #0b0c22; --page-c: #141033;
+  --ink: #f1efff; --ink-2: #dcd8f5; --muted: #a9a2d6; --faint: #8f89b8; --fainter: #5c5788;
+  --head: #ffd56a; --title: #d9d2ff;
+  --line: #1c1c40; --line-2: #2a2858;
+  --card: rgba(30,28,70,.55); --card-edge: rgba(200,190,255,.16);
+  --panel: rgba(16,15,42,.9); --solid: #15143a; --solid-2: #1c1a48;
+  --shadow: 0 18px 48px rgba(0,0,0,.5);
+  --accent: #8a6cff; --accent-ink: #c9b8ff; --accent-soft: #241d52; --chip-line: #3d3878;
+  --input: #0e0d2a; --input-line: #3d3878;
+  --glass-edge: rgba(255,214,120,.5); --glass-fill: rgba(255,214,120,.05); --glass-inner: rgba(255,224,150,.15);
+  --track: #1c1c40; --pace: #ffd56a;
+  --cell: #1c1a48; --cell-none: #131236; --cell-some: #302d68;
+  --pc-bg: #17163e; --pc-hover: #221f55; --pc-locked: #0e0d2a;
+  --scrim: rgba(3,3,12,.66);
+  color-scheme: dark;
+}
+[data-holiday="newyear"] h1 { text-shadow: 0 0 22px rgba(255,213,106,.35); }
+.holiday-bg { position: fixed; inset: 0; width: 100%; height: 100%; z-index: -1; pointer-events: none; }
+.holiday-fx { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 45; pointer-events: none; }
+
 [hidden] { display: none !important; }
 * { box-sizing: border-box; }
 html, body { margin: 0; padding: 0; min-height: 100%; }
@@ -134,6 +510,15 @@ h1 { margin: 4px 0 0; font-size: clamp(30px, 5vw, 52px); letter-spacing: -.04em;
   background: linear-gradient(90deg, currentColor 50%, transparent 50%); border: 2px solid currentColor; }
 .theme-btn[data-mode="light"] span { background: transparent; box-shadow: 0 0 0 3px var(--card), 0 0 0 4px currentColor; border-width: 2px; }
 .theme-btn[data-mode="dark"] span { background: currentColor; }
+.theme-btn, .season-btn { position: relative; }
+.season-btn svg { display: block; }
+.season-btn[data-on="0"] { opacity: .55; }
+.season-btn[data-on="0"] svg { filter: grayscale(1); }
+.theme-btn[data-tip]:hover::after, .theme-btn[data-tip]:focus-visible::after,
+.season-btn[data-tip]:hover::after, .season-btn[data-tip]:focus-visible::after {
+  content: attr(data-tip); position: absolute; top: calc(100% + 7px); left: 0; z-index: 60; white-space: nowrap; pointer-events: none;
+  padding: 5px 10px; border-radius: 8px; font-size: 12px; font-weight: 700; line-height: 1.3;
+  background: var(--solid); color: var(--ink-2); border: 1px solid var(--line-2); box-shadow: var(--shadow); }
 .sync-pill {
   padding: 7px 13px; border-radius: 999px; background: var(--card); border: 1px solid var(--line-2);
   font-size: 11px; font-weight: 700; color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums;
@@ -166,6 +551,12 @@ h1 { margin: 4px 0 0; font-size: clamp(30px, 5vw, 52px); letter-spacing: -.04em;
 .sp-card .btn { margin-top: 8px; }
 .sp-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .sp-wide { width: 100%; margin-bottom: 6px; }
+.ev-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto auto; align-items: center; gap: 6px; margin-top: 10px; }
+.ev-on { display: flex; align-items: center; gap: 7px; font-size: 13.5px; font-weight: 700; color: var(--ink-2); min-width: 0; }
+.ev-now { white-space: nowrap; padding: 1px 7px; border-radius: 999px; font-size: 10px; font-weight: 800; text-transform: uppercase;
+  background: var(--accent-soft); color: var(--accent-ink); }
+.ev-row .txt.md { width: 66px; text-align: center; font-variant-numeric: tabular-nums; }
+.ev-row .unit { margin: 0; }
 .sp-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 18px; border-top: 1px solid var(--line); background: var(--solid); }
 .sp-foot .hint { margin: 0; }
 .btn-link { display: inline-block; text-decoration: none; }
@@ -229,24 +620,42 @@ h1 { margin: 4px 0 0; font-size: clamp(30px, 5vw, 52px); letter-spacing: -.04em;
 .participant-card:hover .trash-button, .trash-button:focus-visible { opacity: .6; }
 .trash-button:hover { opacity: 1 !important; background: var(--warn-bg); }
 .compact .trash-button { top: 6px; right: 6px; width: 22px; height: 22px; line-height: 20px; font-size: 13px; }
-.crown-wrap { height: 20px; margin: 0 0 2px; visibility: hidden; }
+/* Inside a card, back to front: glass and water (1), a cup decoration set behind the
+   outline (2), the outline and shine (3), a decoration in front of it (4), the crown (5),
+   the pet layer (6). */
+.participant-card { isolation: isolate; }
+.decorc { position: absolute; z-index: 2; pointer-events: none; }
+.decorc.front { z-index: 4; }
+.crown-wrap { position: relative; z-index: 5; height: 20px; margin: 0 0 2px; visibility: hidden;
+  display: flex; justify-content: center; align-items: flex-end; }   /* a taller hat grows upward */
 .crown-wrap.on { visibility: visible; animation: bob 2.6s ease-in-out infinite; }
 @keyframes bob { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-2px); } }
 
 .gwrap { position: relative; margin: 0 auto; cursor: pointer; }
 .glass {
-  position: absolute; left: 0; top: 0; overflow: hidden;
-  border: 4px solid var(--glass-edge); border-top-width: 3px; background: var(--glass-fill);
+  position: absolute; left: 0; top: 0; z-index: 1; overflow: hidden;
+  border: 4px solid transparent; border-top-width: 3px; background: var(--glass-fill);   /* the outline is .glass-edge */
   box-shadow: inset 0 0 22px var(--glass-inner), 0 10px 26px rgba(58,112,150,.17);
-  transition: border-color .4s;
 }
 .glass canvas { position: absolute; left: 0; top: 0; display: block; }
-.glass .shine { position: absolute; z-index: 3; top: 10px; bottom: 30px; left: 12px; width: 9px; border-radius: 999px; background: rgba(255,255,255,.5); }
-.glass-overfill { border-color: #facc15; }
-.glass-danger { border-color: #8e1420; }
+.glass-edge { position: absolute; left: 0; top: 0; z-index: 3; pointer-events: none;
+  border: 4px solid var(--glass-edge); border-top-width: 3px; transition: border-color .4s; }
+.glass-edge .shine { position: absolute; top: 10px; bottom: 30px; left: 12px; width: 9px; border-radius: 999px; background: rgba(255,255,255,.5); }
+.glass-overfill + .glass-edge { border-color: #facc15; }
+.glass-danger + .glass-edge { border-color: #8e1420; }
 .duckc { position: absolute; left: 0; pointer-events: none; z-index: 6; }
 .halo { position: absolute; inset: 0; display: none; }
 .halo.gold { display: block; box-shadow: 0 0 16px rgba(250,204,21,.65); animation: haloPulse 3.4s ease-in-out infinite; }
+/* goal glasses on event days (GOAL_FX): their own glow, edge and inner light */
+.halo.gold.fx-potion { box-shadow: 0 0 14px rgba(150,80,230,.8), 0 0 30px rgba(110,220,90,.5); }
+.halo.gold.fx-globe { box-shadow: 0 0 14px rgba(225,50,62,.75), 0 0 30px rgba(60,180,110,.55); }
+.halo.gold.fx-fizz { box-shadow: 0 0 18px rgba(255,214,110,.9), 0 0 38px rgba(255,244,210,.5); }
+.halo.gold.fx-shimmer { box-shadow: 0 0 18px rgba(60,190,240,.8), 0 0 34px rgba(160,230,255,.45); }
+.glass-overfill.fx-potion + .glass-edge { border-color: #9b5de5; }
+.glass-overfill.fx-globe + .glass-edge { border-color: #2f9e62; }
+.glass-overfill.fx-fizz + .glass-edge { border-color: #e9c46a; }
+.glass-overfill.fx-shimmer + .glass-edge { border-color: #4cc9f0; }
+.glass[class*="fx-"] .overflow-glow { display: none; }   /* its own effect moves instead; the pale glow washed the colour out */
 .halo.red { display: block; box-shadow: 0 0 18px rgba(178,24,38,.7); animation: haloPulse 2.8s ease-in-out infinite; }
 @keyframes haloPulse { 0%,100% { opacity: .3; } 50% { opacity: .75; } }
 .overflow-glow { position: absolute; inset: 0; background: #fef3c7; opacity: .3; animation: glowPulse 2s ease-in-out infinite; }
@@ -390,7 +799,7 @@ li.pour.armed .undo-x { opacity: 1; background: #c4434f; color: #fff; }
 .chart-legend .sw.cap { background: var(--cell-cap); }
 .chart-legend .sw.over { background: var(--cell-over); }
 .chart-legend .sw.some { background: var(--cell-some); }
-.chart-legend .sw.crown { background: none; width: 16px; }
+.chart-legend .sw.crown { background: none; width: 19px; }
 .chart-scroll { overflow-x: auto; padding-bottom: 6px; }
 .star-chart { border-collapse: separate; border-spacing: 3px; font-size: 11px; }
 .star-chart th { font-weight: 700; color: var(--faint); font-size: 10px; padding: 0 2px; text-align: center; }
@@ -403,7 +812,7 @@ li.pour.armed .undo-x { opacity: 1; background: #c4434f; color: #fff; }
 .star-chart td.cap { background: var(--cell-cap); }
 .star-chart td.over { background: var(--cell-over); color: #5d0f16; font-size: 12px; }
 .star-chart td.tally { background: none; font-weight: 800; color: var(--ink-2); font-size: 13px; width: auto; padding: 0 4px; }
-.lc { vertical-align: -2px; }
+.lc { vertical-align: -3px; }
 .stats-table { border-collapse: collapse; width: 100%; font-size: 13px; }
 .stats-table th { font-size: 10.5px; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; color: var(--faint); padding: 0 10px 8px; text-align: center; white-space: nowrap; }
 .stats-table th.l, .stats-table td.l { text-align: left; }
@@ -446,6 +855,9 @@ li.pour.armed .undo-x { opacity: 1; background: #c4434f; color: #fff; }
 .pen-tab b { margin-left: 3px; color: var(--ink-2); font-variant-numeric: tabular-nums; }
 .pen-tab.on { background: var(--accent-soft); border-color: var(--accent); color: var(--accent-ink); }
 .pen-note { margin: 8px 0 0; font-size: 11.5px; color: var(--faint); }
+.pen-note.closed { color: var(--warn-ink); }
+.pen-tab.closed { border-style: dashed; opacity: .7; }
+.pet-grid.closed .pc { filter: grayscale(.85); opacity: .55; }
 .pc { height: 74px; border-radius: 10px; text-align: center; background: var(--pc-bg); box-shadow: inset 0 0 0 2px var(--r0); padding-top: 2px; transition: background .12s, transform .12s; }
 .pc.r1 { box-shadow: inset 0 0 0 2px var(--r1); } .pc.r2 { box-shadow: inset 0 0 0 2px var(--r2); }
 .pc.r3 { box-shadow: inset 0 0 0 2px var(--r3); } .pc.r4 { box-shadow: inset 0 0 0 2px var(--r4); }

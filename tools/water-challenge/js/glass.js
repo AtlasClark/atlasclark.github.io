@@ -8,7 +8,7 @@ import * as C from "./config.js";
 import { rnd } from "./util.js";
 import { drawCritter, drawHeadstone } from "./art.js";
 import { defs as petDefs, fxSpot, anchorY, zoneOf, bodyBox, restY as restAt } from "./petdefs.js";
-import { drawDecor, drawEffect } from "./cosmetics.js";
+import { drawDecor, drawEffect, decorBehind, decorDry } from "./cosmetics.js";
 
 const clock = () => performance.now() / 1000;
 const lookOf = st => st.look || {};
@@ -20,6 +20,7 @@ export const dims = { card: 0, cols: 0, gw: 132, gh: 246, W: 124, H: 239, head: 
    glass clips it at its inside edge. At 125% or 150% screen scaling the inside edge
    falls between pixels and a canvas that stopped exactly there left a pale seam. */
 const BLEED = 2;
+const DECOR_MARGIN = 8;                   /* the decor canvas reaches this far past each card edge */
 export const stats = { errors: 0, lastError: "", fps: 0 };
 
 let active = true;              /* false while another tab is showing */
@@ -144,7 +145,7 @@ function sizeCanvas(cv, w, h) {
 /* Back to the canvas's own scale (also undoes anything a failed frame left behind). */
 const reset = ctx => ctx.setTransform(ctx._sx || 1, 0, 0, ctx._sy || 1, (ctx._ox || 0) * (ctx._sx || 1), (ctx._ox || 0) * (ctx._sy || 1));
 
-export function bindCanvases(name, glassCanvas, petCanvas, gw, gh) {
+export function bindCanvases(name, glassCanvas, petCanvas, gw, gh, decorCanvas) {
   const st = animState(name);
   st.ctx = glassCanvas ? sizeCanvas(glassCanvas, dims.W + 2 * BLEED, dims.H + 2 * BLEED) : null;
   if (glassCanvas) { glassCanvas.style.left = glassCanvas.style.top = -BLEED + "px"; st.ctx._ox = BLEED; }  /* drawn in the glass's own px */
@@ -152,9 +153,10 @@ export function bindCanvases(name, glassCanvas, petCanvas, gw, gh) {
   if (petCanvas) petCanvas.style.left = -dims.pad + "px";
   st.dcv = petCanvas || null;
   st.dW = gw + 2 * dims.pad; st.dH = gh + dims.head;
+  st.ecv = decorCanvas || null; st.ectx = null; st.eW = st.eH = 0;
 }
 
-export function unbindAll() { for (const k in anim) { anim[k].ctx = null; anim[k].dctx = null; anim[k].dcv = null; } }
+export function unbindAll() { for (const k in anim) { anim[k].ctx = null; anim[k].dctx = null; anim[k].dcv = null; anim[k].ecv = null; anim[k].ectx = null; } }
 
 const motionOn = () => C.PET_MOTION && !(reduceMotion && reduceMotion.matches);
 const depthAt = level => Math.min(Math.max(level, 0), 1) * (dims.H - C.SURFACE_BAND);
@@ -353,7 +355,9 @@ function drawGlass(st) {
     ctx.arc(b.x + wob, H - b.y, b.r, 0, 6.2832);
     ctx.fill();
   }
+  if (st.goalFx) drawGoalFx(ctx, st, W, H, top);
   ctx.restore();
+  if (st.goalFx === "potion") drawBoil(ctx, st, W, H, top);
 
   ctx.beginPath();
   ctx.moveTo(-B, top + waveBuf[0]);
@@ -384,6 +388,78 @@ function drawGlass(st) {
     ctx.strokeStyle = "rgba(255,255,255," + r.a.toFixed(3) + ")";
     ctx.lineWidth = 2;
     ctx.stroke();
+  }
+}
+
+/* An event day's goal glass (ui sets st.goalFx from GOAL_FX): something themed moving in
+   the water, worked out from the clock, so nothing is stored. Inside the water's clip. */
+function drawGoalFx(ctx, st, W, H, top) {
+  const t = clock(), depth = H - top, n = Math.max(6, Math.round(W / 9));
+  if (depth < 8) return;
+  /* fixed per glass: seeding from st.phase (which moves every frame) made the particles jump */
+  if (st.fxSeed === undefined) st.fxSeed = Math.random() * 1000;
+  const rnd = i => { const x = Math.sin(i * 127.1 + st.fxSeed * 311.7) * 43758.5453; return x - Math.floor(x); };
+  if (st.goalFx === "potion") {                       /* purple and pale bubbles that swell as they rise, quicker than the glass's own */
+    for (let i = 0; i < n; i++) {
+      const u = (t * (30 + rnd(i) * 25) / depth + rnd(i + 50)) % 1;
+      const x = 6 + rnd(i + 9) * (W - 12) + Math.sin(t * 0.8 + i * 1.3) * 2.5, r = 1.4 + u * (1.6 + rnd(i + 3) * 2.4);
+      ctx.globalAlpha = Math.min(1, u * 8, (1 - u) * 6);          /* in at the bottom, out just under the top */
+      ctx.fillStyle = i % 3 ? "rgba(176,104,255,0.6)" : "rgba(226,255,206,0.7)";
+      ctx.beginPath(); ctx.arc(x, H - u * depth, r, 0, 6.2832); ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+  } else if (st.goalFx === "globe") {                 /* flakes swirling slowly down, as in a shaken snow globe */
+    ctx.fillStyle = "rgba(255,255,255,0.9)";
+    for (let i = 0; i < n * 1.6; i++) {
+      const u = (t * (5 + rnd(i) * 8) / depth + rnd(i + 70)) % 1;
+      const x = ((rnd(i + 20) * W + Math.sin(t * 0.9 + i * 1.7) * 8) % W + W) % W;
+      ctx.beginPath(); ctx.arc(x, top + 3 + u * (depth - 3), 0.8 + rnd(i + 5) * 1.5, 0, 6.2832); ctx.fill();
+    }
+  } else if (st.goalFx === "fizz") {                  /* fine streams of quick bubbles, sparkles on top */
+    const cols = Math.max(3, Math.round(W / 20));
+    ctx.fillStyle = "rgba(255,255,255,0.8)";
+    for (let c = 0; c < cols; c++) for (let j = 0; j < 7; j++) {
+      const x0 = (c + 0.5) * W / cols + (rnd(c) - 0.5) * 8, u = (t * (55 + rnd(c + 30) * 35) / depth + j / 7) % 1;
+      ctx.beginPath(); ctx.arc(x0 + Math.sin(u * 9 + c) * 1.2, H - u * depth, 0.6 + u * 1.1, 0, 6.2832); ctx.fill();
+    }
+    for (let k = 0; k < 4; k++) {
+      const a = Math.max(0, Math.sin(t * 3 + k * 2.1)), x = 8 + rnd(k + 90) * (W - 16), y = top + 4, s = 3.5 * a;
+      if (s < 0.5) continue;
+      ctx.strokeStyle = "rgba(255,255,255," + (0.9 * a).toFixed(2) + ")"; ctx.lineWidth = 1.2;
+      ctx.beginPath(); ctx.moveTo(x - s, y); ctx.lineTo(x + s, y); ctx.moveTo(x, y - s); ctx.lineTo(x, y + s); ctx.stroke();
+    }
+  } else if (st.goalFx === "shimmer") {               /* bands of sunlight drifting through */
+    ctx.fillStyle = "rgba(255,255,255,0.14)";
+    for (let k = 0; k < 3; k++) {
+      const x = ((t * 14 + k * W / 3) % (W + 40)) - 20;
+      ctx.beginPath(); ctx.moveTo(x, top); ctx.lineTo(x + 10, top); ctx.lineTo(x - 18, H); ctx.lineTo(x - 30, H); ctx.closePath(); ctx.fill();
+    }
+  }
+}
+
+/* The potion boils: bubbles swell up as domes on the surface and pop with a ring and a
+   fleck or two. Drawn after the water's clip, since a dome stands above the surface. */
+function drawBoil(ctx, st, W, H, top) {
+  if (H - top < 8) return;
+  const t = clock(), m = Math.max(3, Math.round(W / 16));
+  const rnd = i => { const x = Math.sin(i * 91.7 + st.fxSeed * 157.3) * 43758.5453; return x - Math.floor(x); };
+  for (let i = 0; i < m; i++) {
+    const per = 0.9 + rnd(i) * 0.9, c = t / per + rnd(i + 40), u = c % 1, cyc = Math.floor(c);
+    const x = 5 + ((rnd(i + 7) + cyc * 0.37) % 1) * (W - 10), y = top + waveAt(st, x), R = 2.8 + rnd(i + 3) * 3.2;
+    if (u < 0.7) {                                    /* swelling */
+      const r = R * Math.sin(u / 0.7 * Math.PI / 2);
+      ctx.fillStyle = "rgba(178,246,150,0.95)"; ctx.strokeStyle = "rgba(48,128,40,0.7)"; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.arc(x, y, r, Math.PI, 0); ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = "rgba(255,255,255,0.55)";
+      ctx.beginPath(); ctx.arc(x - r * 0.35, y - r * 0.5, r * 0.22, 0, 6.2832); ctx.fill();
+    } else {                                          /* pop */
+      const v = (u - 0.7) / 0.3, a = (1 - v).toFixed(2);
+      ctx.strokeStyle = "rgba(220,255,200," + a + ")"; ctx.lineWidth = 1.2;
+      ctx.save(); ctx.translate(x, y); ctx.scale(1, 0.35);
+      ctx.beginPath(); ctx.arc(0, 0, R * (1 + v * 1.4), 0, 6.2832); ctx.restore(); ctx.stroke();
+      ctx.fillStyle = "rgba(190,140,255," + a + ")";
+      for (const s of [-1, 1]) { ctx.beginPath(); ctx.arc(x + s * R * (0.6 + v), y - R * 2.2 * v * (1.4 - v), 0.9, 0, 6.2832); ctx.fill(); }
+    }
   }
 }
 
@@ -466,15 +542,36 @@ function drawStream(ctx, st, p, top, offX, offY) {
   }
 }
 
+/* The cup's decoration, on its own canvas over the whole card and DECOR_MARGIN past it,
+   so tall items are not cut at the pet layer's top. Stacked (app.css) over the glass
+   and under the crown and the pet; under the glass outline when its drawing says
+   "behind", over it otherwise. */
+function drawDecorLayer(st) {
+  const cv = st.ecv, decor = lookOf(st).decor;
+  if (!decor) { if (st.ectx) { cv.hidden = true; st.ectx = null; st.eW = st.eH = 0; } return; }
+  const card = cv.parentElement, gwrap = card && card.querySelector(".gwrap"), M = DECOR_MARGIN;
+  if (!gwrap) return;
+  const w = card.clientWidth + 2 * M, h = card.clientHeight + 2 * M;
+  if (!st.ectx || w !== st.eW || h !== st.eH) {
+    cv.hidden = false;
+    st.ectx = sizeCanvas(cv, w, h); st.eW = w; st.eH = h;
+    cv.style.left = cv.style.top = -M + "px";
+  }
+  cv.classList.toggle("front", !decorBehind(decor));
+  const ctx = st.ectx, W = dims.W, H = dims.H, offX = M + gwrap.offsetLeft + 4, offY = M + gwrap.offsetTop + 3;
+  reset(ctx);
+  ctx.clearRect(0, 0, w, h);
+  const top = surfaceY(st);
+  const surf = x => offY + (st.level > 0.01 ? top + waveAt(st, Math.max(0, Math.min(W, x - offX))) : H - 2);
+  drawDecor(ctx, decor, { x: offX, y: offY, W, H }, surf, clock());
+  if (!decorDry(decor)) tintUnderwater(ctx, st, W, H, top, offX, offY);
+}
+
 function drawPetLayer(st) {
   const ctx = st.dctx, W = dims.W, H = dims.H, offX = 4 + dims.pad, offY = dims.head + 3;
   reset(ctx);
   ctx.clearRect(0, 0, st.dW, st.dH);
-  const top = surfaceY(st), decor = lookOf(st).decor;
-  if (decor) {                                                      /* the cup's decoration, behind the pet */
-    const surf = x => offY + (st.level > 0.01 ? top + waveAt(st, Math.max(0, Math.min(W, x - offX))) : H - 2);
-    drawDecor(ctx, decor, { x: offX, y: offY, W, H }, surf, clock());
-  }
+  const top = surfaceY(st);
   drawPour(ctx, st, top, offX, offY);
   /* Above the rim anything may overhang the glass; below it, only the inside shows. */
   ctx.save();
@@ -493,7 +590,7 @@ function drawPetLayer(st) {
   const g = st.guest && anim[st.guest], v = g && g.visit;
   if (v && v.stage === "there") drawFloating(ctx, st, v.sw, W, H, top, offX, offY, r);
   ctx.restore();
-  if (st.duckState || st.guest || decor) tintUnderwater(ctx, st, W, H, top, offX, offY);
+  if (st.duckState || st.guest) tintUnderwater(ctx, st, W, H, top, offX, offY);
 }
 
 /* water: whose glass it is in (waves, surface). pet: who is drawn (its motion, kind,
@@ -906,6 +1003,7 @@ function frame(now) {
       stepState(st, f);
       drawGlass(st);
       if (st.dctx) drawPetLayer(st);
+      if (st.ecv) drawDecorLayer(st);
     } catch (e) {
       stats.errors++;
       stats.lastError = k + ": " + (e.message || e);

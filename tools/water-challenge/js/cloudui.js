@@ -25,7 +25,7 @@ export function applyRole() {
   ui.admin = admin;
   document.body.classList.toggle("cloud", c);
   document.body.classList.toggle("not-admin", !admin);
-  for (const k of ["challenge", "goals"]) document.querySelector('.sp-card[data-card="' + k + '"]').hidden = !admin;
+  for (const k of ["challenge", "goals", "events"]) document.querySelector('.sp-card[data-card="' + k + '"]').hidden = !admin;
   document.querySelector('.sp-card[data-card="pets"]').hidden = !art;
   $("spFoot").hidden = !admin;
   $("codesCard").hidden = $("cloudCard").hidden = !(c && admin);

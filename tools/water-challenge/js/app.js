@@ -20,10 +20,12 @@ import { initShop, renderShop, shopTabChanged } from "./shopui.js";
 import { shellsEarned, earnedTotal } from "./shop.js";
 import { isHydrationDay } from "./hydration.js";
 import { goalWave } from "./hydfx.js";
+import { holidayGoal, seasonsOn, setSeasonsOn, seasonOf } from "./themefx.js";
 import { ui, render, setTab, setMsg, showBanner, tickMasks, relayout, forceRebuild, resetIcons,
          toggleSwatches, openBank, auditStreak, showDiag, closeOverlays, fillSettings, renderRoster,
          renderActivityNow, showUnlock, uiHooks, htaDismiss } from "./ui.js";
-import { $, esc, bus, todayKey, localStamp, fmt, fmtOz, trim, parseKey, shiftKey, clockStamp } from "./util.js";
+import { $, esc, bus, todayKey, localStamp, fmt, fmtOz, trim, parseKey, shiftKey, clockStamp, monthDayOk } from "./util.js";
+import { EVENTS, eventDefault } from "./art.js";
 
 let lastSig = "", pollTimer = 0, pollFails = 0;
 
@@ -40,7 +42,7 @@ function playUnlock(info) {
   if (cardsShown.has(key)) { if (info.msg) setMsg(info.msg, true); return; }
   cardsShown.add(key);
   if (!info.bought) rollCardQueued(info.name);       /* the roll stays hidden until the card closes */
-  if (!info.bought && isHydrationDay()) goalWave();  /* someone reached their goal */
+  if (!info.bought) { if (isHydrationDay()) goalWave(); else holidayGoal(); }   /* someone reached their goal */
   if (info.equipped) G.dropIn(info.name, 12);       /* held off-screen until the card closes */
   setTimeout(() => showUnlock(info), G.pourLeft(info.name) * 1000 + 150);
 }
@@ -51,10 +53,15 @@ onLive("pour", (ev, late) => { if (late < C.LIVE_SHOW_MS) G.pour(ev.name, ev.oz,
 
 /* ---- theme -------------------------------------------------------------- */
 const THEMES = ["auto", "light", "dark"];
+const sysDark = window.matchMedia ? window.matchMedia("(prefers-color-scheme: dark)") : null;
 function applyTheme(t) {
   if (t === "auto") document.documentElement.removeAttribute("data-theme");
   else document.documentElement.setAttribute("data-theme", t);
-  $("themeBtn").title = "Theme: " + t + " (click to change)";
+  /* shown at once on hover (CSS data-tip), not after the browser's title delay */
+  const tip = t === "auto" ? "Theme: Auto (" + (sysDark && sysDark.matches ? "dark" : "light") + ", from your computer)"
+                           : "Theme: " + (t === "light" ? "Light" : "Dark");
+  $("themeBtn").dataset.tip = tip + " · click to change";
+  $("themeBtn").setAttribute("aria-label", tip);
   $("themeBtn").dataset.mode = t;
 }
 function initTheme() {
@@ -66,6 +73,27 @@ function initTheme() {
     applyTheme(next);
     try { localStorage.setItem("awc-theme", next); } catch { }
   };
+  if (sysDark) sysDark.addEventListener("change", () => applyTheme($("themeBtn").dataset.mode));   /* Auto's tip follows the computer */
+}
+
+/* ---- seasonal theme: on or off for this browser --------------------------- */
+const SEASON_ICON = {
+  spring: '<circle cx="8" cy="4.2" r="2.4"/><circle cx="11.6" cy="6.8" r="2.4"/><circle cx="10.2" cy="11" r="2.4"/><circle cx="5.8" cy="11" r="2.4"/><circle cx="4.4" cy="6.8" r="2.4"/><circle cx="8" cy="8" r="1.8" style="fill:var(--solid)"/>',
+  summer: '<circle cx="8" cy="8" r="3.3"/><path d="M8 1v2.2M8 12.8V15M1 8h2.2M12.8 8H15M3 3l1.6 1.6M11.4 11.4L13 13M3 13l1.6-1.6M11.4 4.6L13 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>',
+  autumn: '<path d="M8 1.5C12.5 4 13 9 8 13.2 3 9 3.5 4 8 1.5z"/><path d="M8 4v11" style="stroke:var(--solid)" stroke-width="1.1" stroke-linecap="round"/>',
+  winter: '<path d="M8 1.5v13M2.4 4.75l11.2 6.5M2.4 11.25l11.2-6.5M6.3 2.6L8 4.2l1.7-1.6M6.3 13.4L8 11.8l1.7 1.6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" fill="none"/>'
+};
+function applySeasonBtn() {
+  const on = seasonsOn(), s = seasonOf(todayKey()), name = s.charAt(0).toUpperCase() + s.slice(1), b = $("seasonBtn");
+  b.innerHTML = '<svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor" aria-hidden="true">' + SEASON_ICON[s] + '</svg>';
+  b.dataset.on = on ? "1" : "0";
+  b.dataset.tip = "Seasonal theme: " + (on ? "on (" + s + ")" : "off") + " \u00b7 click to turn " + (on ? "off" : "on");
+  b.setAttribute("aria-label", name + " theme " + (on ? "on" : "off"));
+  b.setAttribute("aria-pressed", on ? "true" : "false");
+}
+function initSeason() {
+  applySeasonBtn();
+  $("seasonBtn").onclick = () => { setSeasonsOn(!seasonsOn()); applySeasonBtn(); render(); };
 }
 
 /* ---- reconcile + refresh ------------------------------------------------ */
@@ -581,14 +609,24 @@ async function applySettings() {
   const dailyChanged = g !== currentGoal(), annualChanged = a !== currentAnnualGoal();
   const startChanged = sd !== "" && sd !== challengeStart(), idleChanged = iv !== "" && Number(iv) !== currentIdleMax();
   const titleChanged = ti !== (S.settings.title || ""), tagChanged = tg !== (S.settings.tagline || "");
-  if (!dailyChanged && !annualChanged && !startChanged && !idleChanged && !titleChanged && !tagChanged) { setMsg("Nothing changed.", true); closeSettings(); return; }
+  /* Events: a row left as its default (blank or the same dates, on) is not stored */
+  const events = {};
+  for (const row of document.querySelectorAll("#eventList .ev-row")) {
+    const h = EVENTS.find(e => e.theme === row.dataset.ev), d = eventDefault(h);
+    const from = trim(row.querySelector("[data-k=from]").value) || d.from, to = trim(row.querySelector("[data-k=to]").value) || d.to;
+    const on = row.querySelector("input[type=checkbox]").checked;
+    if (!monthDayOk(from) || !monthDayOk(to)) { setMsg(h.name + " dates must be MM-DD, like " + d.from + ".", false); return; }
+    if (from !== d.from || to !== d.to || !on) events[h.theme] = on ? { from, to } : { from, to, on: false };
+  }
+  const eventsChanged = JSON.stringify(events) !== JSON.stringify(store.cleanEvents(S.settings.events || {}));
+  if (!dailyChanged && !annualChanged && !startChanged && !idleChanged && !titleChanged && !tagChanged && !eventsChanged) { setMsg("Nothing changed.", true); closeSettings(); return; }
   await store.serial(async () => {
     const old = { ...S.settings };
     S.settings.annualGoalOz = a;
     if (startChanged) S.settings.startDate = sd;
     if (idleChanged) S.settings.idleSkipDays = Number(iv);
     if (dailyChanged) S.settings.dailyGoalOz = g;
-    S.settings.title = ti; S.settings.tagline = tg;
+    S.settings.title = ti; S.settings.tagline = tg; S.settings.events = events;
     if (!(await store.saveSettings())) {
       S.settings = old;
       setMsg("Couldn't save settings. Try again.", false);
@@ -602,6 +640,7 @@ async function applySettings() {
     if (startChanged) bits.push("Year: " + sd + " to " + challengeEnd() + ".");
     if (titleChanged) bits.push("Title: " + (ti || C.DEFAULT_TITLE) + ".");
     if (tagChanged) bits.push("Tagline " + (tg ? "set." : "back to the default."));
+    if (eventsChanged) bits.push("Event days saved.");
     if (idleChanged) bits.push("Streak grace: " + currentIdleMax() + " day" + (currentIdleMax() === 1 ? "" : "s") + ".");
     setMsg(bits.join("  "), true);
     await refresh();
@@ -657,7 +696,7 @@ function wire() {
   for (const d of document.querySelectorAll("#settingsPanel .sp-card")) d.addEventListener("toggle", rememberCards);
   $("applySettings").onclick = applySettings;
   $("settingsPanel").addEventListener("keydown", e => {             /* Enter saves Challenge and Goals, not the other cards */
-    if (e.key === "Enter" && e.target.tagName === "INPUT" && e.target.closest('[data-card=challenge],[data-card=goals]')) applySettings();
+    if (e.key === "Enter" && e.target.tagName === "INPUT" && e.target.closest('[data-card=challenge],[data-card=goals],[data-card=events]')) applySettings();
   });
   $("pname").addEventListener("keydown", e => { if (e.key === "Enter") addParticipant(); });
   $("addP").onclick = addParticipant;
@@ -866,6 +905,7 @@ async function boot() {
   await loadPetDefs();
   await loadBottle();
   initTheme();
+  initSeason();
   wire();
   try { const a = Number(localStorage.getItem("awc-amount")); if (a > 0) ui.amount = a; } catch { }
   $("revLabel").textContent = C.REV;

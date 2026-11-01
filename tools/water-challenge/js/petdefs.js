@@ -79,7 +79,7 @@ function seedPens() {
   for (const [key, h] of Object.entries({ ...PROP_ART, ...HOLIDAY_ART, ...CUP_ART, ...FX_ART })) {
     const pal = {};
     for (const [n, c] of Object.entries(h.pal)) { const v = cleanColour(c); if (v) pal[n] = v; }
-    hats[key] = { pal, shapes: h.shapes.map(s => cleanShape(s, pal)).filter(Boolean) };
+    hats[key] = Object.assign({ pal, shapes: h.shapes.map(s => cleanShape(s, pal)).filter(Boolean) }, h.behind === true ? { behind: true } : {});
   }
 }
 
@@ -119,7 +119,7 @@ export function applyDefs(obj) {
     const pal = {};
     for (const [n, c] of Object.entries(h.pal || {})) { const v = cleanColour(c); if (v) pal[n] = v; }
     const shapes = (Array.isArray(h.shapes) ? h.shapes : []).map(s => cleanShape(s, pal)).filter(Boolean);
-    if (shapes.length) { hats[key] = { pal, shapes }; took.push(key); }
+    if (shapes.length) { hats[key] = Object.assign({ pal, shapes }, CUP_KEYS.includes(key) && h.behind === true ? { behind: true } : {}); took.push(key); }
   }
   return took;
 }
@@ -342,6 +342,8 @@ function autoFx(def) {
   return spot;
 }
 
+/* Width over height of a hat's drawing. */
+export const hatAspect = hat => { const b = hatBounds(hat.shapes); return (b.x1 - b.x0) / Math.max(1e-6, b.y1 - b.y0); };
 function hatBounds(shapes) {
   let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
   const add = (x, y, p) => { x0 = Math.min(x0, x - p); y0 = Math.min(y0, y - p); x1 = Math.max(x1, x + p); y1 = Math.max(y1, y + p); };

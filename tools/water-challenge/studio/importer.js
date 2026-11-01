@@ -27,7 +27,7 @@ export function importBuiltin(k) {
 /* A built-in hat or prop ("crown", "jester", "grave", "coin", a holiday hat, a cup item or an effect particle). */
 export function importHat(key) {
   const a = copy(PROP_ART[key] || HOLIDAY_ART[key] || CUP_ART[key] || FX_ART[key]);
-  return { pal: a.pal, shapes: a.shapes };
+  return Object.assign({ pal: a.pal, shapes: a.shapes }, a.behind ? { behind: true } : {});
 }
 
 export function importAll() {
