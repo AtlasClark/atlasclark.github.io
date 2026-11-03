@@ -21,12 +21,12 @@
   const blankMeta = () => ({
     dwgNo: "", title: "", rev: "", size: "B", scale: "NTS", units: "in", tol: "", alt: false,
     drawn: "", drawnDate: today(), checked: "", checkedDate: "", approved: "", approvedDate: "",
-    company: "", notice: "", ws: "", tables: "1", showWires: true, showBom: true
+    company: "", notice: "", ws: "", tables: "1", showWires: true, showBom: true, showMold: false
   });
   const blankProject = () => ({
     format: FORMAT, v: VERSION, meta: blankMeta(),
-    pos: { wires: null, bom: null, notes: null },
-    blk: { wires: { size: "s", k: 1, wrap: true, colW: 0 }, bom: { size: "s", k: 1, wrap: true, colW: 0 }, notes: { size: "m", k: 1 } },
+    pos: { wires: null, bom: null, notes: null, mold: null },
+    blk: { wires: { size: "s", k: 1, wrap: true, colW: 0 }, bom: { size: "s", k: 1, wrap: true, colW: 0 }, notes: { size: "m", k: 1 }, mold: { size: "s", k: 1, wrap: true, colW: 0 } },
     history: [], notes: [], conns: [], cables: [], wires: [], callouts: [], ties: [], tables: []
   });
 
@@ -36,6 +36,8 @@
     for (let i = 1; ; i++) if (!used.has(prefix + i)) return prefix + i;
   }
   const part = o => Object.assign({ mfr: "", mpn: "", ipn: "", desc: "" }, o);
+  // Overmolding: mold number, shutoff number and material (Molding parameters table).
+  const normMold = m => ({ no: str(m && m.no).slice(0, 80), shutoff: str(m && m.shutoff).slice(0, 80), mat: str(m && m.mat).slice(0, 200) });
 
   function newConn(p, libKey, x, y) {
     const lib = CD.LIB[libKey] || CD.LIB.custom;
@@ -46,7 +48,7 @@
       id: uid(), ref: nextRef(p, REF_PREFIX[lib.kind] || "P"), lib: lib.key,
       gender: lib.gender ? "female" : "none", pins,
       desc: "", mfr: "", mpn: "", ipn: "",
-      term: part(), seal: part(), acc: [],
+      term: part(), seal: part(), acc: [], mold: normMold(),
       face: !!(lib.face && lib.face.t !== "none"), faceFrom: "mate",
       custom: lib.custom ? { rows: 1, order: "rows" } : null, layout: null,
       strip: "", note: "", x: Math.round(x || 0), y: Math.round(y || 0),
@@ -193,7 +195,7 @@
   }
 
   // ---------- saved parts ("My parts") ----------
-  const PART_KEYS = ["lib", "gender", "desc", "mfr", "mpn", "ipn", "term", "seal", "acc", "face", "faceFrom", "custom", "layout", "board", "strip", "note"];
+  const PART_KEYS = ["lib", "gender", "desc", "mfr", "mpn", "ipn", "term", "seal", "acc", "mold", "face", "faceFrom", "custom", "layout", "board", "strip", "note"];
   function partFromConn(c, name) {
     const o = { id: uid(), type: "conn", name: str(name) || c.desc || c.mpn || CD.libOf(c).name };
     PART_KEYS.forEach(k => { o[k] = JSON.parse(JSON.stringify(c[k] == null ? null : c[k])); });
@@ -400,6 +402,7 @@
       o.layout = CD.normLayout(c.layout, o.pins.length);
       o.board = CD.libOf(o).kind === "board" ? normBoard(c.board || { pins: boardPins(o.pins.length) }, o.pins.length) : null;
       o.acc = arr(c.acc).map(a => Object.assign(part(), a, { qty: str(a.qty || "1") }));
+      o.mold = normMold(c.mold);
       return o;
     });
     p.cables = arr(d.cables).map(c => {
@@ -416,7 +419,7 @@
     }));
     p.callouts = arr(d.callouts).map(c => Object.assign(newCallout(c.x || 0, c.y || 0, c), sizeOf(c, "m")));
     const bk = d.blk || {};
-    p.blk = { wires: Object.assign(sizeOf(bk.wires, "s"), wrapOf(bk.wires)), bom: Object.assign(sizeOf(bk.bom, "s"), wrapOf(bk.bom)), notes: sizeOf(bk.notes, "m") };
+    p.blk = { wires: Object.assign(sizeOf(bk.wires, "s"), wrapOf(bk.wires)), bom: Object.assign(sizeOf(bk.bom, "s"), wrapOf(bk.bom)), notes: sizeOf(bk.notes, "m"), mold: Object.assign(sizeOf(bk.mold, "s"), wrapOf(bk.mold)) };
     const ends = ["a", "b"];
     p.ties = arr(d.ties).filter(t => t && t.a && t.b && ends.includes(t.a.end)).map(t => ({
       id: str(t.id) || uid(), a: { cable: str(t.a.cable), end: t.a.end },
@@ -502,6 +505,15 @@
       const c = byId(p.cables, t.a.cable);
       return { id: t.id, tie: true, cells: [(c ? c.ref : "?") + "-SH", c ? c.ref : "", "", "SHIELD", "", shieldText(p, t.a.cable, t.a.end), tieTargetText(p, t.b), "", "shield tie", ""] };
     }));
+  }
+
+  // ---------- molding parameters ----------
+  // One row per connector with any molding entry, in reference order.
+  const MOLD_COLS = ["Connector", "Mold #", "Shutoff #", "Material"];
+  function moldRows(p) {
+    return p.conns.filter(c => c.mold && (c.mold.no || c.mold.shutoff || c.mold.mat))
+      .sort((a, b) => String(a.ref).localeCompare(String(b.ref), undefined, { numeric: true, sensitivity: "base" }))
+      .map(c => ({ id: c.id, cells: [c.ref, c.mold.no, c.mold.shutoff, c.mold.mat] }));
   }
 
   // ---------- BOM ----------
@@ -692,7 +704,7 @@
     blankProject, normalize, newConn, setPinCount, reorderPins, removePins, addPins, spaceBoardPins, boardPins,
     addTie, tiesOf, pruneTies, newTable, normTable, parseGrid, scaleK, colWOf, shieldText, tieTargetText, insertBoard, partFromConn, normPart, connFromPart, partFromCable, cableFromPart, partFromWire, applyWirePart, wireProfile, newCable, newWire, newGroup, newMark, newCallout, cablePreset, nextWireNo,
     byId, libOf, groupOf, conductors, wireRef, endText, sigOf, isDrain, colorText, gaugeText,
-    markLen, UNIT, fmtLen, fmtTol, wireLen, WIRE_COLS, wireRows, BOM_COLS, bom, bomCells, checks,
+    markLen, MOLD_COLS, moldRows, normMold, UNIT, fmtLen, fmtTol, wireLen, WIRE_COLS, wireRows, BOM_COLS, bom, bomCells, checks,
     csvCell, wireCsv, bomCsv, connectCable, example
   });
 })(typeof window !== "undefined" ? window : globalThis);

@@ -457,3 +457,26 @@ test("Legal sheet: 14 x 8.5 in landscape, title block says LEGAL and fits its ce
   assert.ok(t && CD.textWidth("LEGAL", t.size, true) <= 29, "fits the 34 pt SIZE cell");
   assert.equal(CD.normalize(JSON.parse(JSON.stringify(p))).meta.size, "Legal");
 });
+
+test("molding parameters: rows from connectors with entries, saved in parts, drawn when shown", () => {
+  const p = CD.blankProject();
+  const a = CD.newConn(p, "de9", 0, 0); a.ref = "P2"; p.conns.push(a);
+  const b = CD.newConn(p, "m12a5", 300, 0); b.ref = "P1"; p.conns.push(b);
+  const c = CD.newConn(p, "custom", 600, 0); c.ref = "P10"; p.conns.push(c);
+  Object.assign(a.mold, { no: "EX-M-01", shutoff: "EX-S-01", mat: "PVC 90A" });
+  Object.assign(c.mold, { mat: "TPU" });
+  assert.deepEqual(plain(CD.moldRows(p).map(r => r.cells)), [["P2", "EX-M-01", "EX-S-01", "PVC 90A"], ["P10", "", "", "TPU"]]);
+  const q = CD.normalize(plain(p));
+  assert.deepEqual(plain(q.conns[0].mold), { no: "EX-M-01", shutoff: "EX-S-01", mat: "PVC 90A" });
+  assert.deepEqual(plain(CD.normalize({ conns: [{ lib: "de9", pins: [] }] }).conns[0].mold), { no: "", shutoff: "", mat: "" });
+  const part = CD.normPart(plain(CD.partFromConn(a, "EX D9 molded")));
+  assert.equal(CD.connFromPart(CD.blankProject(), part, 0, 0).mold.no, "EX-M-01");
+  const texts = sc => sc.groups.filter(g => g.id === "blk:mold").flatMap(g => g.prims.filter(x => x.t === "text").map(x => x.s));
+  assert.equal(CD.scene(p, { sheet: 1 }).groups.some(g => g.id === "blk:mold"), false);
+  p.meta.showMold = true;
+  const t = texts(CD.scene(p, { sheet: 1 })).join("|");
+  ["MOLDING PARAMETERS", "CONNECTOR", "MOLD #", "SHUTOFF #", "MATERIAL", "EX-S-01", "TPU"].forEach(s => assert.ok(t.includes(s), s));
+  p.meta.tables = "2";
+  assert.equal(CD.sheetsOf(p), 2);
+  assert.ok(CD.scene(p, { sheet: 2 }).groups.some(g => g.id === "blk:mold"));
+});

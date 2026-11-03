@@ -9,7 +9,7 @@
 (function () {
   "use strict";
   const CD = window.CD, OUT = CD.out;
-  const REV = "rev 1.9.2";
+  const REV = "rev 1.11.0";
   const LS_UI = "cableDesigner.ui";
   const $ = id => document.getElementById(id);
   const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -513,7 +513,7 @@
     }
     else if (k === "tbl" && o) { title = "Table"; html = tableForm(o); acts = IB("dup", "⧉", "Duplicate (Ctrl+D)") + IB("del", "✕", "Delete (Del)"); }
     else if (k === "k" && o) { title = "Callout"; html = calloutForm(o); acts = IB("dup", "⧉", "Duplicate (Ctrl+D)") + IB("del", "✕", "Delete (Del)"); }
-    else if (k === "blk") { title = { wires: "Wire list", bom: "Bill of materials", notes: "Notes" }[idOf(sel)] || "Table"; html = blockForm(idOf(sel)); }
+    else if (k === "blk") { title = { wires: "Wire list", bom: "Bill of materials", notes: "Notes", mold: "Molding parameters" }[idOf(sel)] || "Table"; html = blockForm(idOf(sel)); }
     else html = drawingForm();
     $("inspTitle").innerHTML = title;
     $("inspActs").innerHTML = acts;
@@ -582,6 +582,7 @@
           '<div class="r3">' + F("Mfr", I(ao, "mfr", a.mfr)) + F("Mfr part no.", I(ao, "mpn", a.mpn)) + F("Part no.", I(ao, "ipn", a.ipn)) + "</div>" +
           '<div class="r3">' + F("Qty", I(ao, "qty", a.qty)) + "</div></div>";
       }).join("") || '<p class="hint">Backshells, boots, strain reliefs, dust caps.</p>', B("accAdd", "＋ Accessory", 'data-id="' + c.id + '"'));
+      h += sec("Molding", '<div class="r3">' + F("Mold #", I(o, "mold.no", c.mold.no)) + F("Shutoff #", I(o, "mold.shutoff", c.mold.shutoff)) + F("Material", I(o, "mold.mat", c.mold.mat)) + "</div>");
       if (lib.kind === "flying" || lib.kind === "term") h += F("Strip length", I(o, "strip", c.strip, 'placeholder="e.g. 0.25"'));
       h += sec("Pins", '<table class="pins"><tbody>' + c.pins.map((pn, i) => '<tr><td>' + (i + 1) + "</td><td>" + I("pin:" + c.id + ":" + i, "n", pn.n, 'class="pn" title="Pin number as marked on the housing"') + "</td><td>" +
         I("pin:" + c.id + ":" + i, "sig", pn.sig, 'placeholder="Signal"') + '</td><td class="used" title="Wires on this pin">' + esc((used[i] || []).join(", ")) + "</td></tr>").join("") + "</tbody></table>",
@@ -707,7 +708,7 @@
     const k = kindOf(id);
     if (k === "k") return callout(idOf(id));
     if (k === "tbl") return ctable(idOf(id));
-    if (k === "blk" && ["wires", "bom", "notes"].includes(idOf(id))) return p.blk[idOf(id)];
+    if (k === "blk" && ["wires", "bom", "notes", "mold"].includes(idOf(id))) return p.blk[idOf(id)];
     return null;
   }
   function sizeCtl(o, obj) {
@@ -733,9 +734,9 @@
   }
 
   function blockForm(key) {
-    let h = '<p class="hint">' + ({ wires: "Generated from all wires and cable conductors.", bom: "Generated from connectors, contacts, seals, accessories, cables, loose wires and cable markings. Items with the same part number add up.", notes: "Edit notes in the Drawing dialog." }[key] || "") + " Drag to move it on the sheet.</p>";
+    let h = '<p class="hint">' + ({ wires: "Generated from all wires and cable conductors.", bom: "Generated from connectors, contacts, seals, accessories, cables, loose wires and cable markings. Items with the same part number add up.", notes: "Edit notes in the Drawing dialog.", mold: "Generated from connectors with a mold #, shutoff # or material." }[key] || "") + " Drag to move it on the sheet.</p>";
     if (p.blk[key]) h += sizeCtl("blk:" + key, p.blk[key]) + (key === "notes" ? "" : wrapCtl("blk:" + key, p.blk[key]));
-    h += C("meta", "showWires", p.meta.showWires, "Show wire list", 'data-re="1"') + C("meta", "showBom", p.meta.showBom, "Show bill of materials", 'data-re="1"');
+    h += C("meta", "showWires", p.meta.showWires, "Show wire list", 'data-re="1"') + C("meta", "showBom", p.meta.showBom, "Show bill of materials", 'data-re="1"') + C("meta", "showMold", p.meta.showMold, "Show molding parameters", 'data-re="1"');
     h += F("Tables on", S("meta", "tables", p.meta.tables, [["1", "Sheet 1, beside the drawing"], ["2", "Sheet 2 (continuation sheet)"]], 'data-re="1"'));
     h += '<div class="btn-row">' + B("resetPos", "Reset position", 'data-id="' + key + '"') + (key === "notes" ? B("drawing", "Edit notes…") : "") + "</div>";
     return h;
@@ -748,7 +749,7 @@
     h += C("meta", "alt", m.alt, "Show other unit in [brackets]");
     h += sec("Title block logo", logoHtml());
     h += F("Workmanship", S("meta", "ws", m.ws, [["", "Not set"], ["1", "IPC/WHMA-A-620, Class 1"], ["2", "IPC/WHMA-A-620, Class 2"], ["3", "IPC/WHMA-A-620, Class 3"]]));
-    h += sec("Tables", C("meta", "showWires", m.showWires, "Wire list") + C("meta", "showBom", m.showBom, "Bill of materials") +
+    h += sec("Tables", C("meta", "showWires", m.showWires, "Wire list") + C("meta", "showBom", m.showBom, "Bill of materials") + C("meta", "showMold", m.showMold, "Molding parameters") +
       F("Tables on", S("meta", "tables", m.tables, [["1", "Sheet 1, beside the drawing"], ["2", "Sheet 2 (continuation sheet)"]], 'data-re="1"')));
     h += '<div class="btn-row">' + B("drawing", "Title block, notes, revisions…", "", "btn-primary") + "</div>";
     const nC = p.conns.length, nW = p.wires.length;
@@ -923,7 +924,7 @@
   function removeSel() {
     const k = kindOf(sel), id = idOf(sel);
     if (!k) return;
-    if (k === "blk") { pushUndo(); if (id === "wires") p.meta.showWires = false; else if (id === "bom") p.meta.showBom = false; else { toast("Remove notes in the Drawing dialog.", "warn"); undo.pop(); return; } sel = null; changed(true); toast("Table hidden. Turn it on again under Drawing > Tables."); return; }
+    if (k === "blk") { pushUndo(); if (id === "wires") p.meta.showWires = false; else if (id === "bom") p.meta.showBom = false; else if (id === "mold") p.meta.showMold = false; else { toast("Remove notes in the Drawing dialog.", "warn"); undo.pop(); return; } sel = null; changed(true); toast("Table hidden. Turn it on again under Drawing > Tables."); return; }
     pushUndo();
     if (k === "c") {
       p.conns = p.conns.filter(c => c.id !== id);
@@ -1194,6 +1195,138 @@
   $("drawerX").addEventListener("click", () => toggleDrawer(false));
   $("addWireBtn").addEventListener("click", () => ACT.wireAdd());
 
+  // ---------- from-to list import ----------
+  // Step 1: paste or pick a file. Step 2: a type for each reference, a make for each cable. Then build and lay out.
+  let netSrc = "", netSt = null;
+  function netImport() {
+    netSt = null;
+    openModal("Import from-to list", "<p>One row per wire: From, From pin, To, To pin. Signal, Wire, Size, Colour, Cable and Length are optional.</p>" +
+      F("Paste from a spreadsheet", '<textarea id="netText" rows="10" spellcheck="false" placeholder="From&#9;From pin&#9;To&#9;To pin&#9;Signal">' + esc(netSrc) + "</textarea>") +
+      '<div class="btn-row"><button class="btn btn-xs" id="netPick">Choose CSV file…</button></div>', [
+      { label: "Cancel", onClick: closeModal },
+      { label: "Next", cls: "btn-primary", onClick: () => netRead($("netText").value) }
+    ], true);
+    $("netPick").addEventListener("click", () => $("netFile").click());
+  }
+  $("netFile").addEventListener("change", async e => { const f = e.target.files[0]; e.target.value = ""; if (f) netRead(await f.text()); });
+
+  // Select values: "lib:<key>", "part:<id>" (My parts), "have:<id>" (a connector already in the drawing).
+  const netTarget = v => {
+    const i = v.indexOf(":"), t = v.slice(0, i), id = v.slice(i + 1);
+    if (t === "part") { const x = parts.find(q => q.id === id && (q.type || "conn") === "conn"); return x ? { t, part: x } : { t: "lib", key: "custom" }; }
+    if (t === "have") return conn(id) ? { t, id } : { t: "lib", key: "custom" };
+    return { t: "lib", key: CD.LIB[id] ? id : "custom" };
+  };
+  function netDefault(ref, mode) {
+    const have = mode === "add" && p.conns.find(c => c.ref === ref);
+    if (have) return "have:" + have.id;
+    const m = (ui.netMap || {})[ref];
+    if (m && m.t === "part" && parts.some(q => q.id === m.id)) return "part:" + m.id;
+    if (m && m.t === "lib" && CD.LIB[m.key]) return "lib:" + m.key;
+    return "lib:custom";
+  }
+  function netRead(text) {
+    let net;
+    try { net = CD.parseFromTo(text); } catch (e) { toast(e.message, "err"); return; }
+    netSrc = text;
+    const mode = hasContent() ? "add" : "replace";
+    netSt = { net, mode, splice: true, map: {}, cab: {} };
+    net.refs.forEach(r => { netSt.map[r.ref] = netDefault(r.ref, mode); });
+    openModal("Import from-to list", netBody(), [
+      { label: "Back", onClick: netImport },
+      { label: "Cancel", onClick: closeModal },
+      { label: "Build drawing", cls: "btn-primary", onClick: netBuild }
+    ], "xwide");
+  }
+  function netPlanNow() {
+    const kindOfT = t => t.t === "lib" ? CD.LIB[t.key].kind : t.t === "have" ? CD.libOf(conn(t.id)).kind : (CD.LIB[t.part.lib] || {}).kind;
+    const nodes = Object.keys(netSt.map).filter(r => ["splice", "ground", "term"].includes(kindOfT(netTarget(netSt.map[r]))));
+    return CD.netPlan(netSt.net, { splice: netSt.splice, nodes });
+  }
+  function netBody() {
+    const st = netSt, net = st.net, plan = netPlanNow();
+    const groups = [];
+    CD.LIB_LIST.forEach(l => { let g = groups.find(x => x.name === l.group); if (!g) groups.push(g = { name: l.group, items: [] }); g.items.push(["lib:" + l.key, l.name]); });
+    const myConns = parts.filter(x => (x.type || "conn") === "conn").sort((a, b) => a.name.localeCompare(b.name));
+    if (myConns.length) groups.unshift({ name: "My parts", items: myConns.map(x => ["part:" + x.id, x.name]) });
+    const og = (list, v) => list.map(g => '<optgroup label="' + esc(g.name) + '">' + g.items.map(([k, n]) => '<option value="' + esc(k) + '"' + (k === v ? " selected" : "") + ">" + esc(n) + "</option>").join("") + "</optgroup>").join("");
+    const short = list => list.length > 14 ? list.slice(0, 14).join(", ") + " … +" + (list.length - 14) : list.join(", ");
+    const opt = (v, cur, label) => '<option value="' + v + '"' + (v === cur ? " selected" : "") + ">" + label + "</option>";
+    let h = '<div class="r2">' + F("Drawing", '<select data-net="mode">' + opt("replace", st.mode, "Replace connectors, cables and wires") + opt("add", st.mode, "Add to the drawing") + "</select>") +
+      F("Nets with 3 or more pins", '<select data-net="splice">' + opt("1", st.splice ? "1" : "", "Join at a splice") + opt("", st.splice ? "1" : "", "Wire as listed") + "</select>") + "</div>";
+
+    h += "<h4>Connectors (" + net.refs.length + ")</h4>" + '<table class="hist-tbl net-tbl"><thead><tr><th style="width:90px">Ref</th><th>Pins in the list</th><th style="width:300px">Type</th><th style="width:200px">Check</th></tr></thead><tbody>' +
+      net.refs.map(r => {
+        const v = st.map[r.ref], have = st.mode === "add" ? p.conns.filter(c => c.ref === r.ref) : [];
+        const list = (have.length ? [{ name: "In this drawing", items: have.map(c => ["have:" + c.id, c.ref + " · " + (c.desc || CD.libOf(c).name)]) }] : []).concat(groups);
+        const miss = CD.missingPins(p, r.ref, r.pins, netTarget(v));
+        return "<tr><td><b>" + esc(r.ref) + '</b></td><td class="net-pins">' + esc(short(r.pins.map(x => x || "—"))) + '</td><td><select data-net="ref" data-ref="' + esc(r.ref) + '">' + og(list, v) + "</select></td><td>" +
+          (miss.length ? '<span class="net-bad">No pin ' + esc(short(miss.map(x => x || "—"))) + "</span>" : '<span class="net-ok">✓ pins match</span>') + "</td></tr>";
+      }).join("") + "</tbody></table>";
+
+    const cparts = parts.filter(x => x.type === "cable").sort((a, b) => a.name.localeCompare(b.name));
+    if (plan.cables.length) {
+      h += "<h4>Cables (" + plan.cables.length + ")</h4>" + '<table class="hist-tbl net-tbl"><thead><tr><th style="width:170px">Between</th><th style="width:70px">Wires</th><th style="width:300px">Make</th><th>Check</th></tr></thead><tbody>' +
+        plan.cables.map(G => {
+          const v = st.cab[G.key] || "new", x = v.startsWith("part:") && cparts.find(q => q.id === v.slice(5));
+          const n = x ? x.conductors.filter(w => w.color !== "BARE").length : 0;
+          const opts = opt("new", v, "New cable") + opt("loose", v, "Loose wires, no cable") +
+            (cparts.length ? '<optgroup label="My parts">' + cparts.map(q => opt("part:" + esc(q.id), v, esc(q.name))).join("") + "</optgroup>" : "");
+          return "<tr><td><b>" + esc(G.label) + "</b>" + (G.file ? ' <span class="net-pins">(Cable column)</span>' : "") + "</td><td>" + G.rows.length + '</td><td><select data-net="cab" data-key="' + esc(G.key) + '">' + opts + "</select></td><td>" +
+            (x ? (n < G.rows.length ? '<span class="net-bad">' + plural(n, "conductor") + ", " + (G.rows.length - n) + " to add</span>" : '<span class="net-ok">✓ ' + plural(n, "conductor") + "</span>") : "") + "</td></tr>";
+        }).join("") + "</tbody></table>";
+    }
+    const more = [];
+    if (plan.splices.length) more.push(plural(plan.splices.length, "splice") + " (" + plan.splices.slice(0, 6).map(s => s.sig || s.ends.map(e => e.ref + ":" + e.pin).join(" ")).join("; ") + (plan.splices.length > 6 ? "; …" : "") + ")");
+    if (plan.loose.length) more.push(plural(plan.loose.length, "loose wire"));
+    if (more.length) h += "<p>Also: " + esc(more.join(", ")) + ".</p>";
+    const cols = CD.NET_FIELDS.filter(f => net.cols[f[0]] != null).map(f => f[1]);
+    h += '<p class="net-cols">Read: ' + esc(cols.join(", ")) + (net.ignored.length ? ". Not used: " + esc(net.ignored.join(", ")) : "") + ".</p>";
+    if (net.warn.length) h += "<h4>From the file (" + net.warn.length + ')</h4><ul class="net-warn">' + net.warn.slice(0, 12).map(s => "<li>" + esc(s) + "</li>").join("") + (net.warn.length > 12 ? "<li>… and " + (net.warn.length - 12) + " more</li>" : "") + "</ul>";
+    return h;
+  }
+  $("modalBody").addEventListener("change", e => {
+    const el = e.target.closest("[data-net]");
+    if (!el || !netSt) return;
+    const k = el.dataset.net;
+    if (k === "ref") netSt.map[el.dataset.ref] = el.value;
+    else if (k === "cab") netSt.cab[el.dataset.key] = el.value;
+    else if (k === "splice") netSt.splice = !!el.value;
+    else if (k === "mode") {
+      netSt.mode = el.value;
+      Object.keys(netSt.map).forEach(r => { const v = netSt.map[r]; if (v.startsWith("have:") || v === "lib:custom") netSt.map[r] = netDefault(r, el.value); });
+    }
+    const top = $("modal").scrollTop;
+    $("modalBody").innerHTML = netBody();
+    $("modal").scrollTop = top;
+  });
+  function netBuild() {
+    const st = netSt;
+    if (!st) return;
+    const map = {}, cables = {};
+    Object.keys(st.map).forEach(r => { map[r] = netTarget(st.map[r]); });
+    Object.keys(st.cab).forEach(k => {
+      const v = st.cab[k], x = v.startsWith("part:") && parts.find(q => q.id === v.slice(5) && q.type === "cable");
+      cables[k] = x ? { t: "part", part: x } : { t: v === "loose" ? "loose" : "new" };
+    });
+    pushUndo();
+    if (st.mode === "replace") { p.conns = []; p.cables = []; p.wires = []; p.ties = []; }
+    const made = CD.buildFromNetlist(p, st.net, { map, cables, splice: st.splice, wire: ui.wire });
+    CD.layoutNet(p, made);
+    const fits = CD.placeBlock(p, made).fits;
+    ui.netMap = ui.netMap || {};
+    Object.keys(map).forEach(r => { const t = map[r]; if (t.t === "lib") ui.netMap[r] = { t: "lib", key: t.key }; else if (t.t === "part") ui.netMap[r] = { t: "part", id: t.part.id }; });
+    saveUi();
+    netSt = null; sel = null; sheet = 1;
+    $("overlay").classList.remove("open");
+    changed(true); fit();
+    const msg = "Imported " + plural(st.net.rows.length, "row") + ": " + plural(made.conns.length, "connector") + ", " + plural(made.cables.length, "cable") + ", " + plural(made.wires.length, "wire") + ".";
+    if (made.warn.length || !fits) {
+      openModal("Imported, with notes", "<p>" + esc(msg) + "</p>" + (fits ? "" : "<p>The drawing is larger than the sheet. Pick a bigger sheet size in Drawing, or move items.</p>") +
+        (made.warn.length ? '<ul class="net-warn">' + made.warn.map(s => "<li>" + esc(s) + "</li>").join("") + "</ul>" : ""), [{ label: "OK", cls: "btn-primary", onClick: closeModal }], true);
+    } else toast(msg);
+  }
+
   // ---------- modal / toast ----------
   let modalClose = null, modalRefresh = null, modalSticky = false;
   function openModal(title, bodyHtml, buttons, wide) {
@@ -1381,7 +1514,7 @@
     document.addEventListener("click", e => { if (!m.hidden && !m.contains(e.target)) close(); });
     document.addEventListener("keydown", e => { if (e.key === "Escape" && !m.hidden) { close(); btn.focus(); } });
   }
-  menu("projBtn", "projMenu", a => ({ save: saveProject, open: () => $("projFile").click(), new: newDrawing, example: loadExample, keys: keysDialog })[a]());
+  menu("projBtn", "projMenu", a => ({ save: saveProject, open: () => $("projFile").click(), netlist: netImport, new: newDrawing, example: loadExample, keys: keysDialog })[a]());
   menu("expBtn", "expMenu", a => ({ pdf: exportPdf, svg: exportSvg, png: exportPng, wcsv: exportWireCsv, bcsv: exportBomCsv })[a]());
 
   // ---------- files ----------

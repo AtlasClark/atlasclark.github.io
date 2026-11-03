@@ -466,6 +466,13 @@
   .hist-tbl th { text-align: left; font: 500 10px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--text-faint); padding: 0 4px 6px; }
   .hist-tbl td { padding: 3px 4px; }
   .hist-tbl input { width: 100%; height: 30px; font-size: 12.5px; }
+  .net-tbl td { vertical-align: middle; font-size: 12.5px; }
+  .net-tbl select { width: 100%; height: 30px; font-size: 12.5px; }
+  .net-pins, .net-cols { font: 11.5px var(--mono); color: var(--text-dim); }
+  .net-ok { color: var(--green); font-size: 12px; }
+  .net-bad { color: var(--red); font-size: 12px; }
+  .net-warn { margin: 0 0 0 18px; font-size: 12.5px; color: var(--ink-2); }
+  #netText { font: 12px var(--mono); white-space: pre; }
   .note-row { display: grid; grid-template-columns: 22px 1fr auto; gap: 6px; align-items: start; }
   .note-row > span { font: 600 12px var(--mono); color: var(--text-dim); padding-top: 7px; text-align: right; }
   .note-row textarea { min-height: 34px; height: 34px; }
@@ -554,6 +561,7 @@
         <div class="menu" id="projMenu" hidden role="menu">
           <button data-act="save" role="menuitem"><span class="ic">S</span>Save project file<small>.cblproj (JSON). Ctrl+S</small></button>
           <button data-act="open" role="menuitem"><span class="ic">O</span>Open project file<small>Replaces the drawing in this browser. Ctrl+O</small></button>
+          <button data-act="netlist" role="menuitem"><span class="ic">CSV</span>Import from-to list<small>Connectors, cables and wires from a wire list</small></button>
           <hr>
           <button data-act="new" role="menuitem"><span class="ic">+</span>New drawing<small>Clears this browser's working copy</small></button>
           <button data-act="example" role="menuitem"><span class="ic">EX</span>Load example<small>Shielded twisted pair cable, fake part numbers</small></button>
@@ -666,6 +674,7 @@
   <datalist id="dlSpec"></datalist>
   <datalist id="dlAwg"></datalist>
   <input type="file" id="projFile" accept=".cblproj,.json" hidden>
+  <input type="file" id="netFile" accept=".csv,.tsv,.txt" hidden>
   <input type="file" id="boardImgFile" accept="image/png,image/jpeg,image/webp,image/gif,image/bmp,image/svg+xml" hidden>
   <input type="file" id="partsFile" accept=".cdparts,.json" hidden>
   <input type="file" id="logoFile" accept="image/png,image/jpeg,image/webp,image/svg+xml" hidden>
@@ -675,6 +684,7 @@
   <script src="js/lib.js"></script>
   <script src="js/model.js"></script>
   <script src="js/scene.js"></script>
+  <script src="js/netlist.js"></script>
   <script src="js/out.js"></script>
   <script src="js/face.js"></script>
   <script src="js/app.js"></script>

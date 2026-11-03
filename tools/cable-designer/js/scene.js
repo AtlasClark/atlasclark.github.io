@@ -340,6 +340,7 @@
 
   const WIRE_TCOLS = [{ h: "Wire", bold: true, max: 50 }, { h: "Cable", max: 40 }, { h: "Size", max: 50 }, { h: "Color", max: 40 }, { h: "Length", max: 70 }, { h: "From", max: 60 }, { h: "To", max: 60 }, { h: "Signal", max: 80 }, { h: "Twist / shield", max: 70 }, { h: "Note", max: 120 }];
   const BOM_TCOLS = [{ h: "Item", min: 20, max: 24, bold: true }, { h: "Qty", align: "right", max: 50 }, { h: "Unit", max: 26 }, { h: "Part No.", max: 80 }, { h: "Mfr", max: 80 }, { h: "Mfr Part No.", max: 100 }, { h: "Description", max: 170 }, { h: "Ref Des", max: 90 }];
+  const MOLD_TCOLS = [{ h: "Connector", bold: true, max: 60 }, { h: "Mold #", max: 80 }, { h: "Shutoff #", max: 80 }, { h: "Material", max: 150 }];
   function dropEmptyCols(cols, rows) {
     const keep = cols.map((c, i) => i === 0 || rows.some(r => r[i]));
     return { cols: cols.filter((c, i) => keep[i]), rows: rows.map(r => r.filter((v, i) => keep[i])) };
@@ -657,7 +658,7 @@
   }
 
   // ---------- scene ----------
-  function sheetsOf(p) { return (p.meta.tables === "2" && (p.meta.showWires || p.meta.showBom)) || (p.tables || []).some(t => t.sheet === 2) ? 2 : 1; }
+  function sheetsOf(p) { return (p.meta.tables === "2" && (p.meta.showWires || p.meta.showBom || p.meta.showMold)) || (p.tables || []).some(t => t.sheet === 2) ? 2 : 1; }
   const customCols = t => t.cols.map(c => ({ h: c.h, align: c.align, max: 220, min: 24 }));
   const customRows = t => t.rows.length ? t.rows : [t.cols.map(() => "")];
   function drawCustomTable(pen, t, x, y) {
@@ -684,6 +685,7 @@
 
     const wireTbl = () => { const r = CD.wireRows(p).map(x => x.cells); return dropEmptyCols(WIRE_TCOLS, r.length ? r : [WIRE_TCOLS.map(() => "")]); };
     const bomTbl = () => { const r = B.rows.map(x => CD.bomCells(x, m)); return dropEmptyCols(BOM_TCOLS, r.length ? r : [BOM_TCOLS.map(() => "")]); };
+    const moldTbl = () => { const r = CD.moldRows(p).map(x => x.cells); return { cols: MOLD_TCOLS, rows: r.length ? r : [MOLD_TCOLS.map(() => "")] }; };
 
     if (sheet === 2) {
       // flow the tables left to right, then down
@@ -699,6 +701,10 @@
       if (m.tables === "2" && m.showBom) {
         const t = bomTbl(), tf = tblOpt(p.blk && p.blk.bom, "s"), d = measureTable("BILL OF MATERIALS", t.cols, t.rows, tf);
         flow(d.w, d.h, (xx, yy) => { pen.begin("blk:bom", "table"); table(pen, xx, yy, "BILL OF MATERIALS", t.cols, t.rows, tf); pen.g.box = { x: xx, y: yy, w: d.w, h: d.h }; });
+      }
+      if (m.tables === "2" && m.showMold) {
+        const t = moldTbl(), tf = tblOpt(p.blk && p.blk.mold, "s"), d = measureTable("MOLDING PARAMETERS", t.cols, t.rows, tf);
+        flow(d.w, d.h, (xx, yy) => { pen.begin("blk:mold", "table"); table(pen, xx, yy, "MOLDING PARAMETERS", t.cols, t.rows, tf); pen.g.box = { x: xx, y: yy, w: d.w, h: d.h }; });
       }
       (p.tables || []).filter(t => t.sheet === 2).forEach(t => {
         const d = measureTable(t.title ? t.title.toUpperCase() : "", customCols(t), customRows(t), tblOpt(t, "s"));
@@ -801,9 +807,11 @@
       pen.g.box = { x: pos.x - 4, y: pos.y - 2, w: bw, h: h + 2 };
     }
     if (m.tables !== "2") {
+      let above = tb.y;   // molding parameters sit above the BOM by default
       if (m.showBom) {
         const t = bomTbl(), tf = tblOpt(p.blk && p.blk.bom, "s"), d = measureTable("BILL OF MATERIALS", t.cols, t.rows, tf);
         const pos = p.pos.bom || { x: fr.R - d.w, y: tb.y - d.h - 10 };
+        above = pos.y;
         pen.begin("blk:bom", "table");
         table(pen, pos.x, pos.y, "BILL OF MATERIALS", t.cols, t.rows, tf);
         pen.g.box = { x: pos.x, y: pos.y, w: d.w, h: d.h };
@@ -813,6 +821,13 @@
         const pos = p.pos.wires || { x: fr.L + 10, y: fr.T + 10 };
         pen.begin("blk:wires", "table");
         table(pen, pos.x, pos.y, "WIRE LIST", t.cols, t.rows, tf);
+        pen.g.box = { x: pos.x, y: pos.y, w: d.w, h: d.h };
+      }
+      if (m.showMold) {
+        const t = moldTbl(), tf = tblOpt(p.blk && p.blk.mold, "s"), d = measureTable("MOLDING PARAMETERS", t.cols, t.rows, tf);
+        const pos = p.pos.mold || { x: fr.R - d.w, y: above - d.h - 10 };
+        pen.begin("blk:mold", "table");
+        table(pen, pos.x, pos.y, "MOLDING PARAMETERS", t.cols, t.rows, tf);
         pen.g.box = { x: pos.x, y: pos.y, w: d.w, h: d.h };
       }
     }
