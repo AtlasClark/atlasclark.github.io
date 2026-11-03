@@ -460,7 +460,15 @@ function guard() {
    carry a fixed bug (rev 1.32.0 let two combines spend the same shards). */
 function shopGuard() {
   if (!guard()) return false;
-  if (ui.staleRev) { setMsg("A new version is out. Reload to use the shop.", false); return false; }
+  if (ui.staleRev) {
+    setMsg("A new version is out. Reload to use the shop.", false);
+    /* the status line and the reload banner are at the top, often out of view from the shop */
+    if (!$("confirmDialog").open) {
+      askConfirm("A new version is out", "The shop opens again once this page reloads to " + ui.staleRev +
+                 ". Your water and pets are saved.", "Reload now").then(ok => { if (ok) { $("updateBtn").disabled = true; freshReload(); } });
+    }
+    return false;
+  }
   return true;
 }
 
