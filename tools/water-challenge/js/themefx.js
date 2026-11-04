@@ -663,11 +663,145 @@ function drawWinter(ctx, w, h, t, sc, night) {
   ctx.globalAlpha = 1;
 }
 
+/* ---- Season visitors (rev 1.38.6): now and then something crosses the sky. Autumn:
+   one or two ravens. By day, spring: two butterflies; summer: gulls; winter: a cardinal.
+   On a dark page those three send a shooting star instead. None under reduced motion. */
+const VISIT_FIRST = [20, 60], VISIT_GAP = [60, 150];   /* seconds */
+const rr = (a, b) => a + Math.random() * (b - a);
+const across = (v, u, pad) => v.dir > 0 ? -pad + u * (innerWidth + pad * 2) : innerWidth + pad - u * (innerWidth + pad * 2);
+
+/* Test hook: the next frame sends a visitor. */
+export function seasonVisit() { if (scene) scene.next = 0; }
+
+function visitors(ctx, w, h, t, sc, night, launch) {
+  if (reduce()) return;
+  sc.vis = sc.vis || [];
+  if (sc.next == null) sc.next = t + rr(...VISIT_FIRST);
+  if (t > sc.next) { sc.vis.push(...launch(w, h, t, night)); sc.next = t + rr(...VISIT_GAP); }
+  sc.vis = sc.vis.filter(v => {
+    const u = (t - v.t0) / v.secs;
+    if (u > 1) return false;
+    if (u >= 0) { ctx.save(); v.draw(ctx, w, h, t, u, v, night); ctx.restore(); }
+    return true;
+  });
+}
+
+/* A bird side on, facing +x, about 1.4 long beak to tail. f = wing beat (-1 down .. 1 up).
+   Both wings show, swept back, as if seen a little from below: the far one first. */
+export const RAVEN = { body: "#1b1820", far: "#2a2630", bill: 0.22, head: 0.13, fingers: true, span: 1.2,
+  tail: [[-0.34, -0.08], [-0.74, -0.17], [-0.9, 0], [-0.74, 0.17], [-0.34, 0.08]] };          /* wedge tail */
+export const CARDINAL = { body: "#c8202c", wing: "#a3161f", far: "#7d1018", beak: "#f08a2c", mask: "#2a1416", bill: 0.12, head: 0.14, crest: true,
+  tail: [[-0.32, -0.07], [-0.88, -0.11], [-0.9, 0.08], [-0.32, 0.09]] };
+/* planform of one wing: x along the body, u = 0 at the shoulder .. 1 at the tip */
+const WING = [[0.22, 0], [0.16, 0.42], [-0.02, 0.86], [-0.14, 1]];
+const FINGERS = [[-0.2, 0.9], [-0.25, 0.97], [-0.3, 0.86], [-0.35, 0.9], [-0.4, 0.76], [-0.42, 0.7]];
+const PLAIN = [[-0.3, 0.92], [-0.4, 0.72]];
+function wing(ctx, f, L, k, dx) {
+  const lift = -(0.82 * f + 0.14) * k * (L.span || 1);                 /* how far up (or down) the tip sits */
+  const pts = WING.concat(L.fingers ? FINGERS : PLAIN, [[-0.36, 0.42], [-0.18, 0]]);
+  ctx.beginPath();
+  pts.forEach(([x, u], i) => (i ? ctx.lineTo : ctx.moveTo).call(ctx, x + dx, u * lift - 0.04));
+  ctx.closePath(); ctx.fill();
+}
+export function drawBird(ctx, x, y, s, f, dir, L) {
+  ctx.translate(x, y); ctx.scale(s * dir, s);
+  ctx.fillStyle = L.far || L.wing || L.body; wing(ctx, f, L, 0.72, 0.05);
+  ctx.fillStyle = L.body;
+  ctx.beginPath(); for (const [a, b] of L.tail) ctx.lineTo(a, b); ctx.closePath(); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(0, 0.01, 0.44, 0.155, -0.06, 0, 6.2832); ctx.fill();
+  ctx.beginPath(); ctx.arc(0.44, -0.08, L.head, 0, 6.2832); ctx.fill();
+  if (L.crest) { ctx.beginPath(); ctx.moveTo(0.34, -0.14); ctx.lineTo(0.26, -0.36); ctx.lineTo(0.5, -0.17); ctx.closePath(); ctx.fill(); }
+  if (L.mask) { ctx.fillStyle = L.mask; ctx.beginPath(); ctx.arc(0.52, -0.06, 0.06, 0, 6.2832); ctx.fill(); }
+  ctx.fillStyle = L.beak || L.body;
+  ctx.beginPath(); ctx.moveTo(0.53, -0.14); ctx.quadraticCurveTo(0.56 + L.bill * 0.6, -0.12, 0.55 + L.bill, -0.05); ctx.lineTo(0.53, 0.01); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = L.wing || L.body; wing(ctx, f, L, 1, 0);
+}
+
+function ravens(w, h, t) {
+  const n = Math.random() < 0.55 ? 2 : 1, dir = Math.random() < 0.5 ? 1 : -1, y0 = h * rr(0.1, 0.32), secs = rr(10, 14), s = rr(26, 34);
+  return Array.from({ length: n }, (_, i) => ({ t0: t + i * rr(0.5, 1.1), secs, dir, y: y0 + i * rr(-26, 26), s: s * (i ? rr(0.85, 1) : 1), ph: rr(0, 9),
+    draw(ctx, w, h, t, u, v, night) {
+      const c = (t + v.ph) % 2.8;                                    /* four beats, then a glide */
+      const f = c < 1.6 ? Math.sin(c * 15.708) : 0.18;
+      if (night) { ctx.shadowColor = "rgba(190,180,230,.45)"; ctx.shadowBlur = 4; }
+      ctx.globalAlpha = night ? 0.95 : 0.82;
+      drawBird(ctx, across(v, u, 60), v.y + Math.sin(u * 7 + v.ph) * 10 - f * 1.5, v.s, f, v.dir, RAVEN);
+    } }));
+}
+
+function cardinal(w, h, t) {
+  return [{ t0: t, secs: rr(9, 12), dir: Math.random() < 0.5 ? 1 : -1, y: h * rr(0.3, 0.55), s: rr(22, 27), ph: rr(0, 9),
+    draw(ctx, w, h, t, u, v) {
+      const c = (t + v.ph) % 0.8, flap = c < 0.4;                   /* bounding: a burst of beats, then wings shut */
+      const f = flap ? Math.sin(c * 47.12) : -0.08;
+      const hop = Math.sin(((t + v.ph) % 0.8) / 0.8 * Math.PI) * 9;
+      drawBird(ctx, across(v, u, 40), v.y - hop + Math.sin(u * 5 + v.ph) * 16, v.s, f, v.dir, CARDINAL);
+    } }];
+}
+
+const WINGS = [["#f7b733", "#c9781a"], ["#6cc4f0", "#2f7fb5"], ["#f48fb1", "#c2557e"], ["#b48cf0", "#7a52c0"]];
+function butterflies(w, h, t) {
+  const dir = Math.random() < 0.5 ? 1 : -1, y0 = h * rr(0.25, 0.6), secs = rr(16, 22);
+  const a = Math.floor(rr(0, WINGS.length)), b = (a + 1 + Math.floor(rr(0, WINGS.length - 1))) % WINGS.length;
+  return [a, b].map((c, i) => ({ t0: t + i * rr(0.6, 1.4), secs, dir, y: y0, s: rr(10, 13), ph: rr(0, 9), col: WINGS[c],
+    draw(ctx, w, h, t, u, v) {
+      const x = across(v, u, 30) + Math.sin(u * 9 + v.ph) * 26, y = v.y + Math.sin(u * 6 + v.ph) * 46 + Math.sin(t * 9 + v.ph) * 4;
+      const open = 0.2 + 0.8 * Math.abs(Math.cos(t * 11 + v.ph)), s = v.s;
+      ctx.translate(x, y); ctx.rotate(Math.sin(t * 2 + v.ph) * 0.25);
+      ctx.globalAlpha = 0.9; ctx.strokeStyle = v.col[1]; ctx.lineWidth = 0.8;
+      for (const side of [-1, 1]) {
+        ctx.fillStyle = v.col[0];
+        ctx.beginPath(); ctx.ellipse(side * s * 0.55 * open, -s * 0.28, s * 0.55 * open, s * 0.42, side * 0.5, 0, 6.2832); ctx.fill(); ctx.stroke();
+        ctx.beginPath(); ctx.ellipse(side * s * 0.38 * open, s * 0.3, s * 0.38 * open, s * 0.3, -side * 0.4, 0, 6.2832); ctx.fill(); ctx.stroke();
+      }
+      ctx.fillStyle = "#3a2a1c"; ctx.beginPath(); ctx.ellipse(0, 0, s * 0.09, s * 0.55, 0, 0, 6.2832); ctx.fill();
+      ctx.strokeStyle = "#3a2a1c"; ctx.beginPath(); ctx.moveTo(-1, -s * 0.5); ctx.lineTo(-s * 0.25, -s * 0.85); ctx.moveTo(1, -s * 0.5); ctx.lineTo(s * 0.25, -s * 0.85); ctx.stroke();
+    } }));
+}
+
+function gulls(w, h, t) {
+  const n = 2 + (Math.random() < 0.4 ? 1 : 0), dir = Math.random() < 0.5 ? 1 : -1, y0 = h * rr(0.15, 0.4), secs = rr(14, 19);
+  return Array.from({ length: n }, (_, i) => ({ t0: t + i * rr(0.4, 1.2), secs: secs * rr(0.92, 1.08), dir, y: y0 + i * rr(-30, 30), s: rr(13, 18), ph: rr(0, 9),
+    draw(ctx, w, h, t, u, v) {
+      const c = (t + v.ph) % 4, f = c < 1.2 ? Math.sin(c * 10.47) : 0.15;   /* a few slow beats, a long glide */
+      const x = across(v, u, 30), y = v.y + Math.sin(u * 4 + v.ph) * 18, s = v.s, k = f * 0.35;
+      ctx.strokeStyle = "rgba(55,72,92,.7)"; ctx.lineWidth = Math.max(1.6, s * 0.14); ctx.lineCap = ctx.lineJoin = "round";
+      ctx.beginPath(); ctx.moveTo(x - s, y - s * (0.15 + k));
+      ctx.quadraticCurveTo(x - s * 0.5, y - s * (0.5 + k * 0.6), x, y);
+      ctx.quadraticCurveTo(x + s * 0.5, y - s * (0.5 + k * 0.6), x + s, y - s * (0.15 + k));
+      ctx.stroke();
+    } }));
+}
+
+function shootingStar(w, h, t) {
+  const dir = Math.random() < 0.5 ? 1 : -1, x0 = w * (dir > 0 ? rr(0.05, 0.5) : rr(0.5, 0.95)), y0 = h * rr(0.05, 0.3);
+  const ang = rr(0.35, 0.6), dx = Math.cos(ang) * dir, dy = Math.sin(ang), D = rr(260, 420), L = rr(110, 180);
+  return [{ t0: t, secs: rr(0.9, 1.3), dir,
+    draw(ctx, w, h, t, u) {
+      const e = 1 - (1 - u) * (1 - u), hx = x0 + dx * D * e, hy = y0 + dy * D * e, len = L * Math.min(1, u * 3);
+      const tx = hx - dx * len, ty = hy - dy * len, a = Math.sin(Math.PI * u);
+      const g = ctx.createLinearGradient(hx, hy, tx, ty);
+      g.addColorStop(0, "rgba(255,250,235," + a.toFixed(2) + ")"); g.addColorStop(1, "rgba(255,250,235,0)");
+      ctx.strokeStyle = g; ctx.lineWidth = 2; ctx.lineCap = "round";
+      ctx.beginPath(); ctx.moveTo(hx, hy); ctx.lineTo(tx, ty); ctx.stroke();
+      ctx.globalAlpha = a; ctx.fillStyle = "#fffaf0"; ctx.shadowColor = "rgba(255,245,220,.9)"; ctx.shadowBlur = 8;
+      ctx.beginPath(); ctx.arc(hx, hy, 1.8, 0, 6.2832); ctx.fill();
+    } }];
+}
+
+const VISITORS = {
+  spring: (w, h, t, night) => night ? shootingStar(w, h, t) : butterflies(w, h, t),
+  summer: (w, h, t, night) => night ? shootingStar(w, h, t) : gulls(w, h, t),
+  autumn: ravens,
+  winter: (w, h, t, night) => night ? shootingStar(w, h, t) : cardinal(w, h, t)
+};
+const withVisitors = (draw, season) => (ctx, w, h, t, sc, night) => { draw(ctx, w, h, t, sc, night); visitors(ctx, w, h, t, sc, night, VISITORS[season]); };
+
 const THEMES = {
-  spring:    { scene: springScene,    draw: drawSpring },
-  summer:    { scene: summerScene,    draw: drawSummer },
-  autumn:    { scene: autumnScene,    draw: drawAutumn },
-  winter:    { scene: winterScene,    draw: drawWinter },
+  spring:    { scene: springScene,    draw: withVisitors(drawSpring, "spring") },
+  summer:    { scene: summerScene,    draw: withVisitors(drawSummer, "summer") },
+  autumn:    { scene: autumnScene,    draw: withVisitors(drawAutumn, "autumn") },
+  winter:    { scene: winterScene,    draw: withVisitors(drawWinter, "winter") },
   halloween: { scene: halloweenScene, draw: drawHalloween, goal: halloweenGoal },
   christmas: { scene: christmasScene, draw: drawChristmas, goal: christmasGoal },
   newyear:   { scene: newYearScene,   draw: drawNewYear,   goal: newYearGoal }
