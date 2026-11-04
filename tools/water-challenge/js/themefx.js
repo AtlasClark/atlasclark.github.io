@@ -717,20 +717,37 @@ export function drawBird(ctx, x, y, s, f, dir, L) {
   ctx.fillStyle = L.wing || L.body; wing(ctx, f, L, 1, 0);
 }
 
+/* The band over the page's header (title, buttons, tabs) at the top of the page, so the
+   birds (ravens, gulls, the cardinal) pass behind it rather than behind the glasses. */
+function headerBand(h) {
+  const g = document.getElementById("glasses"), top = g ? g.getBoundingClientRect().top + scrollY - 24 : 160;
+  return Math.max(70, Math.min(h * 0.4, top));
+}
+
 function ravens(w, h, t) {
-  const n = Math.random() < 0.55 ? 2 : 1, dir = Math.random() < 0.5 ? 1 : -1, y0 = h * rr(0.1, 0.32), secs = rr(10, 14), s = rr(26, 34);
-  return Array.from({ length: n }, (_, i) => ({ t0: t + i * rr(0.5, 1.1), secs, dir, y: y0 + i * rr(-26, 26), s: s * (i ? rr(0.85, 1) : 1), ph: rr(0, 9),
+  const band = headerBand(h);
+  const n = Math.random() < 0.55 ? 2 : 1, dir = Math.random() < 0.5 ? 1 : -1, y0 = band * rr(0.25, 0.7), secs = rr(10, 14), s = rr(26, 34);
+  return Array.from({ length: n }, (_, i) => ({ t0: t + i * rr(0.5, 1.1), secs, dir, y: Math.max(16, Math.min(band - 10, y0 + i * rr(-22, 22))), s: s * (i ? rr(0.85, 1) : 1), ph: rr(0, 9),
     draw(ctx, w, h, t, u, v, night) {
       const c = (t + v.ph) % 2.8;                                    /* four beats, then a glide */
       const f = c < 1.6 ? Math.sin(c * 15.708) : 0.18;
-      if (night) { ctx.shadowColor = "rgba(190,180,230,.45)"; ctx.shadowBlur = 4; }
-      ctx.globalAlpha = night ? 0.95 : 0.82;
-      drawBird(ctx, across(v, u, 60), v.y + Math.sin(u * 7 + v.ph) * 10 - f * 1.5, v.s, f, v.dir, RAVEN);
+      const x = across(v, u, 60), y = v.y + Math.sin(u * 7 + v.ph) * 8 - f * 1.5;
+      ctx.globalAlpha = night ? 0.95 : 0.85;
+      ctx.save(); drawBird(ctx, x, y, v.s, f, v.dir, RAVEN); ctx.restore();
+      /* warm light from the low sun on its underside: the same bird again in a gradient
+         that is clear above the body line (bird units; read at fill time) */
+      const g = ctx.createLinearGradient(0, -0.02, 0, 0.6), k = night ? 0.6 : 0.5;
+      g.addColorStop(0, "rgba(255,140,60,0)");                       /* brightest along the belly, a hint on a lowered wing */
+      g.addColorStop(0.3, "rgba(255,145,65," + k + ")");
+      g.addColorStop(0.6, "rgba(255,145,65," + (k * 0.3).toFixed(2) + ")");
+      g.addColorStop(1, "rgba(255,145,65," + (k * 0.12).toFixed(2) + ")");
+      ctx.save(); drawBird(ctx, x, y, v.s, f, v.dir, Object.assign({}, RAVEN, { body: g, far: g, wing: g })); ctx.restore();
     } }));
 }
 
 function cardinal(w, h, t) {
-  return [{ t0: t, secs: rr(9, 12), dir: Math.random() < 0.5 ? 1 : -1, y: h * rr(0.3, 0.55), s: rr(22, 27), ph: rr(0, 9),
+  const band = headerBand(h);
+  return [{ t0: t, secs: rr(9, 12), dir: Math.random() < 0.5 ? 1 : -1, y: Math.max(28, band * rr(0.4, 0.7)), s: rr(22, 27), ph: rr(0, 9),
     draw(ctx, w, h, t, u, v) {
       const c = (t + v.ph) % 0.8, flap = c < 0.4;                   /* bounding: a burst of beats, then wings shut */
       const f = flap ? Math.sin(c * 47.12) : -0.08;
@@ -760,8 +777,8 @@ function butterflies(w, h, t) {
 }
 
 function gulls(w, h, t) {
-  const n = 2 + (Math.random() < 0.4 ? 1 : 0), dir = Math.random() < 0.5 ? 1 : -1, y0 = h * rr(0.15, 0.4), secs = rr(14, 19);
-  return Array.from({ length: n }, (_, i) => ({ t0: t + i * rr(0.4, 1.2), secs: secs * rr(0.92, 1.08), dir, y: y0 + i * rr(-30, 30), s: rr(13, 18), ph: rr(0, 9),
+  const band = headerBand(h), n = 2 + (Math.random() < 0.4 ? 1 : 0), dir = Math.random() < 0.5 ? 1 : -1, y0 = band * rr(0.25, 0.65), secs = rr(14, 19);
+  return Array.from({ length: n }, (_, i) => ({ t0: t + i * rr(0.4, 1.2), secs: secs * rr(0.92, 1.08), dir, y: Math.max(18, Math.min(band - 14, y0 + i * rr(-24, 24))), s: rr(13, 18), ph: rr(0, 9),
     draw(ctx, w, h, t, u, v) {
       const c = (t + v.ph) % 4, f = c < 1.2 ? Math.sin(c * 10.47) : 0.15;   /* a few slow beats, a long glide */
       const x = across(v, u, 30), y = v.y + Math.sin(u * 4 + v.ph) * 18, s = v.s, k = f * 0.35;
