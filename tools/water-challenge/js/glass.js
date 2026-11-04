@@ -120,7 +120,7 @@ function resetBubble(b) {
 /* duckState: 0 none, 1 floating, 2 sinking, 3 on the bottom, 4 headstone */
 export function animState(name) {
   if (!anim[name]) {
-    anim[name] = { level: 0, target: 0, amp: C.AMBIENT_AMP, phase: Math.random() * 6.283,
+    anim[name] = { name, level: 0, target: 0, amp: C.AMBIENT_AMP, phase: Math.random() * 6.283,
                    color: "#60a5fa", bubbles: [], rings: [], drops: [], pour: null, ctx: null, dctx: null,
                    duckState: 0, duckT: 0, critterKind: 0, critterHue: 0,
                    duckCrown: false, duckJester: false,
@@ -600,6 +600,7 @@ function drawPetLayer(st) {
   const r = petR();
   if (st.duckState === 4) drawHeadstone(ctx, W / 2 + offX, floorY() + offY, r, st.critterHue);
   else if (st.duckState === 1 && !st.visit) drawFloating(ctx, st, st, W, H, top, offX, offY, r);
+  else if (st.duckState === 1 && st.visit.pose && st.visit.pose.where === st.name && st.visit.stage !== "there") drawTrip(ctx, st, st.visit.pose, offX, offY, r);
   else if (st.duckState === 2) drawSinking(ctx, st, W, H, top, offX, offY, r);
   else if (st.duckState === 3) {
     drawCritter(ctx, W / 2 + offX, duckRestY(st, r) + offY, r, Math.PI, st.duckCrown, true,
@@ -607,6 +608,7 @@ function drawPetLayer(st) {
   }
   const g = st.guest && anim[st.guest], v = g && g.visit;
   if (v && v.stage === "there") drawFloating(ctx, st, v.sw, W, H, top, offX, offY, r);
+  else if (v && v.pose && v.pose.where === st.name) drawTrip(ctx, g, v.pose, offX, offY, r);
   ctx.restore();
   if (st.duckState || st.guest) tintUnderwater(ctx, st, W, H, top, offX, offY);
   placePin(st);
@@ -857,55 +859,116 @@ function stepDeep(st, m, z, dt, water, play) {
 let order = [];
 export function setOrder(names) { order = names.slice(); }
 
-/* The glasses beside this one in its row. */
-export function neighborsOf(name) {
-  const i = order.indexOf(name), c = Math.max(1, dims.cols), out = [];
-  if (i < 0) return out;
-  if (i % c > 0) out.push(order[i - 1]);
-  if (i % c < c - 1 && i + 1 < order.length) out.push(order[i + 1]);
-  return out;
+/* What the data says, so every screen agrees: a live pet with water can go; a glass
+   with water and no dead pet can host. */
+const canGo = st => !!st && st.duckState === 1 && st.target >= C.VISIT_MIN_LEVEL;
+const canTake = st => !!st && (st.duckState === 0 || st.duckState === 1) && st.target >= C.VISIT_MIN_LEVEL;
+
+/* ---- one timetable for every screen (rev 1.38.8) ----------------------------
+   Time is cut into VISIT_SLOT_SECS slots. A slot's visit, if it has one (VISIT_SLOT_CHANCE),
+   comes from draws seeded by the slot's number over the glasses that can go and can host
+   (sorted by name), so every screen with the same data shows the same visit at the same
+   moment. A screen that opens, or wakes, mid-visit skips forward to where it should be.
+   Nothing is sent or saved. visitClock is for tests. */
+export const visitClock = { now: () => Date.now(), on: true };
+function hashStr(s) {
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); }
+  return h >>> 0;
+}
+function rngOf(seed) {
+  let a = seed | 0;
+  return () => {
+    a = (a + 0x6D2B79F5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+const slotMs = () => C.VISIT_SLOT_SECS * 1000;
+const tripSecs = stay => 4 * C.VISIT_BEAM_SECS + 2 * C.VISIT_BEAM_GAP + stay;
+
+/* Slot k's visit, or null: { k, guest, host, start (ms), stay (s) }. */
+export function planFor(k, names = order) {
+  const r = rngOf(hashStr("visit|" + k));
+  const go = r(), pickG = r(), pickH = r(), when = r(), long = r();
+  if (go >= C.VISIT_SLOT_CHANCE) return null;
+  const all = names.slice().sort(), goers = all.filter(n => canGo(anim[n]));
+  if (!goers.length) return null;
+  const guest = goers[Math.floor(pickG * goers.length)];
+  const hosts = all.filter(n => n !== guest && canTake(anim[n]));
+  if (!hosts.length) return null;
+  return { k, guest, host: hosts[Math.floor(pickH * hosts.length)],
+           start: k * slotMs() + when * C.VISIT_START_SPREAD * 1000,
+           stay: C.VISIT_STAY[0] + long * (C.VISIT_STAY[1] - C.VISIT_STAY[0]) };
 }
 
-const settled = st => st.duckState === 1 && st.m.drop < 0 && st.m.dive < 0 && st.m.hop < 0 && !(st.m.leap >= 0) && !(st.m.skim >= 0);
-const wet = st => st.level >= C.VISIT_MIN_LEVEL && st.target >= C.VISIT_MIN_LEVEL;
-const canHost = h => !!h && !!h.dcv && !h.visit && !h.guest && wet(h) && (h.duckState === 0 || h.duckState === 1);
-
-function maybeVisit(name, st) {
-  const m = st.m;
-  if (m.nextVisit === undefined) m.nextVisit = m.t + rnd(C.VISIT_EVERY[0], C.VISIT_EVERY[1]);
-  if (m.t < m.nextVisit) return;
-  m.nextVisit = m.t + rnd(C.VISIT_EVERY[0], C.VISIT_EVERY[1]);
-  if (!st.dcv || st.visit || st.guest || !settled(st) || !wet(st) || Math.random() >= C.VISIT_CHANCE) return;
-  const hosts = neighborsOf(name).filter(n => canHost(anim[n]));
-  if (hosts.length) startVisit(name, hosts[Math.floor(Math.random() * hosts.length)]);
+let doneK = -1;
+function schedule(now) {
+  for (const name in anim) {                                          /* catch up a visit this screen fell behind on */
+    const v = anim[name].visit;
+    if (v && v.start != null) { const lag = (now - v.start) / 1000 - v.age; if (lag > 0.5) fastForward(name, lag); }
+  }
+  const k = Math.floor(now / slotMs());
+  if (doneK === k) return;
+  const p = planFor(k);
+  if (!p) return;                                                     /* asked again next frame: the data may not be in yet */
+  const age = (now - p.start) / 1000;
+  if (age < 0) return;
+  doneK = k;
+  if (age >= tripSecs(p.stay) - 0.5) return;                          /* over before this screen saw it */
+  const g = anim[p.guest], h = anim[p.host];
+  if (!g.dcv || !h.dcv || g.visit || g.guest || h.visit || h.guest) return;
+  if (startVisit(p.guest, p.host, p)) fastForward(p.guest, age);
+}
+function fastForward(name, secs) {
+  for (let n = Math.round(secs * 30); n > 0 && anim[name].visit; n--) stepVisit(name, 1);
 }
 
-/* Leaves for the host's glass. The guest swims half a drift away from the host's pet. */
-export function startVisit(name, hostName) {
+/* ---- beam visits (rev 1.38.8) -------------------------------------------
+   The pet beams out from where it swims: a column of light, rising sparkles, the pet
+   glows white and breaks up into specks. After a short gap it beams in at its place in
+   the host's glass (any glass on the page) the same way in reverse, then plays. Home
+   the same way. Stages: out (in the glass it leaves), gap, in (in the glass it reaches),
+   there (at the host); v.back on the way home. Each step works out v.pose, which the
+   glass named in pose.where draws. */
+const clamp01 = u => Math.max(0, Math.min(1, u));
+const seg = (t, a, b) => clamp01((t - a) / (b - a));
+const swimmerOf = (st, v) => v.back ? st : v.sw;
+const homeOf = (name, v) => v.back ? name : v.host;      /* the glass it is making for */
+const awayOf = (name, v) => v.back ? v.host : name;      /* the glass it is leaving */
+
+/* Where a swimmer is now in a glass, and the way it faces. */
+const spotOf = (sw, water) => { const x = petX(sw); return { x, y: homeY(sw, water, x), face: motionOn() ? sw.m.flip : 1 }; };
+const hold = m => { m.dive = -1; m.hop = -1; m.leap = -1; m.skim = -1; m.nextDive = m.nextHop = m.nextLeap = m.nextSkim = m.t + 1e6; };
+const wake = m => { m.nextDive = m.t + rnd(1.5, 5); m.nextHop = m.t + 0.5; m.nextLeap = m.t + rnd(4, 10); m.nextSkim = m.t + rnd(3, 8); };
+
+function beamOut(v, at) { v.stage = "out"; v.t = 0; v.at = at; v.seed = Math.random() * 1000; }
+
+/* Leaves for the host's glass. */
+export function startVisit(name, hostName, plan) {
   const st = anim[name], h = anim[hostName];
-  if (!st || !h || st.visit || h.guest) return false;
-  const sw = { m: { t: 0, face: 1, flip: 1, drift: 0, xs: 0, dive: -1, hop: -1, drop: -1, dropWait: 0, leap: -1,
-                    nextDive: rnd(1.5, 5), nextHop: 0.5, nextLeap: rnd(4, 10), splashed: 0 },
+  if (!st || !h || st.visit || h.guest || name === hostName) return false;
+  const sw = { m: { t: 0, face: 1, flip: 1, drift: 0, xs: 0, dive: -1, hop: -1, drop: -1, dropWait: 0, leap: -1, skim: -1, splashed: 0 },
                off: Math.PI / 0.31, phase: h.phase + Math.PI / 0.31, play: C.VISIT_PLAY, duckState: 1,
                critterKind: st.critterKind, critterHue: st.critterHue, duckCrown: st.duckCrown, duckJester: st.duckJester, duckMedal: st.duckMedal, look: st.look };
-  st.visit = { stage: "out", host: hostName, t: 0, from: { x: petX(st), y: homeY(st, st) }, sw };
+  hold(sw.m);
+  const v = st.visit = { host: hostName, back: false, sw, age: 0, start: plan ? plan.start : null,
+                         untilAge: 2 * C.VISIT_BEAM_SECS + C.VISIT_BEAM_GAP + (plan ? plan.stay : rnd(C.VISIT_STAY[0], C.VISIT_STAY[1])) };
+  beamOut(v, spotOf(st, st));
   h.guest = name;
-  st.m.dive = -1; st.m.hop = -1; st.m.leap = -1;
-  ringAt(st, petX(st), true);
-  st.amp = Math.max(st.amp, 9);
+  hold(st.m);
+  stepPose(name, st, v);
   return true;
 }
 
-/* Back over the rims, from wherever it is in the host's glass. */
+/* Beams home from wherever it is in the host's glass. */
 function goHome(name) {
   const st = anim[name], v = st && st.visit;
   if (!v || v.stage !== "there") return;
-  const h = anim[v.host];
-  v.stage = "back"; v.t = 0;
-  v.from = { x: petX(v.sw), y: homeY(v.sw, h) };
-  h.guest = null; h.play = 1;
-  ringAt(h, v.from.x, true);
-  h.amp = Math.max(h.amp, 9);
+  v.back = true;
+  beamOut(v, spotOf(v.sw, anim[v.host]));
+  hold(v.sw.m);
 }
 
 /* Home at once, wherever it was. */
@@ -916,87 +979,180 @@ function endVisit(name) {
   if (h && h.guest === name) { h.guest = null; h.play = 1; }
   st.visit = null;
   st.m.dive = -1; st.m.hop = -1; st.m.leap = -1; st.m.xs = 0;
-  st.m.nextVisit = st.m.t + rnd(C.VISIT_EVERY[0], C.VISIT_EVERY[1]);
+  wake(st.m);
+}
+
+/* The beam and the pet now: glow = how white, gone = how much has broken up, beam = the
+   column's strength; at = where (out: where it stood; in: its place, live). */
+function stepPose(name, st, v) {
+  const t = clamp01(v.t), out = v.stage === "out", inn = v.stage === "in";
+  const at = inn ? spotOf(swimmerOf(st, v), anim[homeOf(name, v)]) : v.at;
+  const pose = { where: inn ? homeOf(name, v) : awayOf(name, v), x: at.x, y: at.y, face: at.face, seed: v.seed, t,
+                 beam: 0, glow: 0, gone: 1 };
+  if (out) {
+    pose.beam = seg(t, 0, 0.22) * (1 - seg(t, 0.78, 1));
+    pose.glow = seg(t, 0.12, 0.5);
+    pose.gone = seg(t, 0.42, 0.86);
+  } else if (inn) {
+    pose.beam = seg(t, 0, 0.22) * (1 - seg(t, 0.8, 1));
+    pose.gone = 1 - seg(t, 0.18, 0.58);
+    pose.glow = 1 - seg(t, 0.52, 0.88);
+  }
+  v.pose = v.stage === "gap" ? null : pose;
+}
+
+const beamSecs = v => v.stage === "gap" ? C.VISIT_BEAM_GAP : C.VISIT_BEAM_SECS;
+
+function stepVisit(name, f) {
+  const st = anim[name], v = st.visit, dt = f / 30, h = anim[v.host];
+  /* a glass left the screen, or the pet changed or is going under: home at once */
+  if (!h || !h.dcv || !st.dcv || st.duckState !== 1 || st.critterKind !== v.sw.critterKind || !motionOn()) { endVisit(name); return; }
+  v.age += dt;
+  Object.assign(v.sw, { critterHue: st.critterHue, duckCrown: st.duckCrown, duckJester: st.duckJester, duckMedal: st.duckMedal, look: st.look });
+  v.sw.phase = h.phase + v.sw.off;
+  if (v.stage === "there") {
+    stepMotion(v.sw, f, h);
+    /* the water went, or the host is going under: leave now; else when the stay is up
+       and it is not mid-dive */
+    const urgent = h.level < C.VISIT_MIN_LEVEL * 0.6 || h.duckState === 2 || h.duckState === 3;
+    if (urgent || (v.age >= v.untilAge && v.sw.m.dive < 0 && v.sw.m.hop < 0 && !(v.sw.m.leap >= 0))) goHome(name);
+    return;
+  }
+  if (v.stage === "in" && !v.back) stepMotion(v.sw, f, h);              /* its place drifts with the host's water */
+  v.t += dt / beamSecs(v);
+  if (v.t >= 1) {
+    if (v.stage === "out") {
+      v.stage = "gap"; v.t = 0;
+      if (v.back) { h.guest = null; h.play = 1; }                         /* gone from the host's glass */
+    } else if (v.stage === "gap") {
+      v.stage = "in"; v.t = 0; v.seed = Math.random() * 1000;
+      hold(swimmerOf(st, v).m);
+    } else if (v.back) {                                                  /* home */
+      endVisit(name);
+      st.m.nextHop = st.m.t + 0.3;
+      return;
+    } else {
+      v.stage = "there";
+      wake(v.sw.m);
+      h.play = C.VISIT_PLAY;
+      if (h.m.dive < 0 && h.m.hop < 0) h.m.nextHop = h.m.t + 0.4;         /* a hello */
+      return;
+    }
+  }
+  stepPose(name, st, v);
 }
 
 export function stepVisits(f) {
-  const dt = f / 30;
-  for (const name in anim) {
-    const st = anim[name], v = st.visit;
-    if (!v) { if (motionOn() && active) maybeVisit(name, st); continue; }
-    const h = anim[v.host];
-    /* a glass left the screen, or the pet changed or is going under: home at once */
-    if (!h || !h.dcv || !st.dcv || st.duckState !== 1 || st.critterKind !== v.sw.critterKind || !motionOn()) { endVisit(name); continue; }
-    Object.assign(v.sw, { critterHue: st.critterHue, duckCrown: st.duckCrown, duckJester: st.duckJester, duckMedal: st.duckMedal, look: st.look });
-    v.sw.phase = h.phase + v.sw.off;
-    if (v.stage !== "there") {
-      v.t += dt / C.VISIT_JUMP_SECS;
-      if (v.t < 1) continue;
-      if (v.stage === "back") {
-        ringAt(st, petX(st), true); st.amp = Math.max(st.amp, 10);
-        endVisit(name);
-        st.m.nextHop = st.m.t + 0.2;
-        continue;
-      }
-      v.stage = "there";
-      v.until = st.m.t + rnd(C.VISIT_STAY[0], C.VISIT_STAY[1]);
-      ringAt(h, petX(v.sw), true); h.amp = Math.max(h.amp, 10);
-      h.play = C.VISIT_PLAY;
-      if (h.m.dive < 0 && h.m.hop < 0) h.m.nextHop = h.m.t + 0.4;       /* a hello */
-      continue;
-    }
-    stepMotion(v.sw, f, h);
-    /* moved apart by a new ranking, or the water went: leave now; else when the
-       stay is up and it is not mid-dive */
-    const urgent = !neighborsOf(name).includes(v.host) || h.level < C.VISIT_MIN_LEVEL * 0.6 || h.duckState === 2 || h.duckState === 3;
-    if (urgent || (st.m.t >= v.until && v.sw.m.dive < 0 && v.sw.m.hop < 0 && !(v.sw.m.leap >= 0))) goHome(name);
-  }
+  if (visitClock.on && motionOn() && active) schedule(visitClock.now());
+  for (const name in anim) if (anim[name].visit) stepVisit(name, f);
 }
 
-/* ---- the leap, drawn on a layer over all the cards ---------------------- */
-let flightCv = null, flightCtx = null, flightDirty = false;
-export function bindFlight(cv) { flightCv = cv; flightCtx = null; }
+/* A fixed scatter per beam: n points in 0..1, from a seed. */
+function scatter(seed, n) {
+  const out = [];
+  let s = Math.floor(seed * 9301 + 49297) % 233280;
+  const next = () => (s = (s * 9301 + 49297) % 233280) / 233280;
+  for (let i = 0; i < n; i++) out.push([next(), next(), next(), next()]);
+  return out;
+}
 
-function drawFlights() {
-  if (!flightCv) return;
-  const flying = Object.keys(anim).filter(n => { const v = anim[n].visit; return v && v.stage !== "there"; });
-  if (!flying.length && !flightDirty) return;
-  /* reaches above the first row too: the top of a leap is over the rims */
-  const r = petR(), pad = Math.ceil(r * (1.6 + C.TALLEST_PET_R)) + 10;
-  const host = flightCv.parentElement, w = host.clientWidth, hgt = host.scrollHeight + pad;
-  if (!flightCtx || flightCv._w !== w || flightCv._h !== hgt) {
-    flightCtx = sizeCanvas(flightCv, w, hgt); flightCv._w = w; flightCv._h = hgt;
-    flightCv.style.top = -pad + "px";
+/* The column of light and its sparkles, over the pet's box (glass px + offsets). */
+function drawBeam(ctx, cx, top, bottom, w, p, now) {
+  if (p.beam <= 0.01) return;
+  const a = p.beam, H = bottom - top, cy = (top + bottom) / 2;
+  ctx.save();
+  ctx.globalCompositeOperation = "lighter";                           /* light added, never a grey box */
+  ctx.save();                                                         /* a soft oval of light */
+  ctx.translate(cx, cy); ctx.scale(w / 2, H / 2);
+  const g = ctx.createRadialGradient(0, 0, 0, 0, 0, 1);
+  g.addColorStop(0, "rgba(120,190,255," + (0.42 * a).toFixed(3) + ")");
+  g.addColorStop(0.55, "rgba(90,160,240," + (0.2 * a).toFixed(3) + ")");
+  g.addColorStop(1, "rgba(80,150,230,0)");
+  ctx.fillStyle = g;
+  ctx.beginPath(); ctx.arc(0, 0, 1, 0, 6.2832); ctx.fill();
+  ctx.restore();
+  for (let i = 0; i < 5; i++) {                                       /* faint streaks that flicker */
+    const x = cx + (i - 2) * w * 0.14 + Math.sin(now * 7 + i * 2.1) * 1.5;
+    const fl = 0.5 + 0.5 * Math.sin(now * 19 + i * 4.7 + p.seed);
+    const sg = ctx.createLinearGradient(0, top, 0, bottom);
+    sg.addColorStop(0, "rgba(170,220,255,0)"); sg.addColorStop(0.5, "rgba(170,220,255," + (0.28 * a * fl).toFixed(3) + ")"); sg.addColorStop(1, "rgba(170,220,255,0)");
+    ctx.strokeStyle = sg; ctx.lineWidth = 1.2;
+    ctx.beginPath(); ctx.moveTo(x, top + H * 0.06); ctx.lineTo(x, bottom - H * 0.06); ctx.stroke();
   }
-  const ctx = flightCtx, g = flightCv.getBoundingClientRect(), offX = 4 + dims.pad, offY = dims.head + 3;
-  reset(ctx);
-  ctx.clearRect(0, 0, w, hgt);
-  for (const name of flying) {
-    const st = anim[name], v = st.visit, h = anim[v.host];
-    const out = v.stage === "out", fromEl = (out ? st : h).dcv, toEl = (out ? h : st).dcv;
-    if (!fromEl || !toEl) continue;
-    const a = fromEl.getBoundingClientRect(), b = toEl.getBoundingClientRect();
-    const land = out ? { x: petX(v.sw), y: homeY(v.sw, h, petX(v.sw)) } : { x: petX(st), y: homeY(st, st, petX(st)) };
-    const p0 = [a.left - g.left + offX + v.from.x, a.top - g.top + offY + v.from.y];
-    const p2 = [b.left - g.left + offX + land.x, b.top - g.top + offY + land.y];
-    const rims = Math.min(a.top, b.top) - g.top + dims.head;       /* the higher glass top */
-    const apex = Math.min(p0[1], p2[1], rims) - r * 1.4;
-    const p1 = [(p0[0] + p2[0]) / 2, 2 * apex - (p0[1] + p2[1]) / 2];
-    const t = v.t, u = 1 - t;
-    const x = u * u * p0[0] + 2 * u * t * p1[0] + t * t * p2[0], y = u * u * p0[1] + 2 * u * t * p1[1] + t * t * p2[1];
-    const vx = 2 * u * (p1[0] - p0[0]) + 2 * t * (p2[0] - p1[0]), vy = 2 * u * (p1[1] - p0[1]) + 2 * t * (p2[1] - p1[1]);
-    const right = p2[0] > p0[0];                                    /* pets are drawn facing left */
-    const ang = (right ? -Math.atan2(vy, vx) : Math.atan2(-vy, -vx)) * 0.8, mid = bodyMid(st);
-    drawTurned(ctx, x, y, mid, ang, (ox, oy) => {
-      ctx.scale(right ? -1 : 1, 1);
-      drawCritter(ctx, ox, oy, r, ang, st.duckCrown, false, st.critterKind || 0, st.critterHue || 0, st.duckJester, lookOf(st).finish, st.duckMedal);
-    });
+  for (const [u, k, ph, sz] of scatter(p.seed, 34)) {                 /* sparkles drift up the column and twinkle */
+    const y = bottom - ((k * H + now * (18 + sz * 26)) % H);
+    const x = cx + (u - 0.5) * w * 0.7 + Math.sin(now * 3 + ph * 9) * 2;
+    const tw = Math.pow(Math.abs(Math.sin(now * (5 + ph * 6) + ph * 20)), 3) * a;
+    if (tw < 0.05) continue;
+    const r = 0.8 + sz * 1.6;
+    ctx.globalAlpha = tw;
+    ctx.fillStyle = sz > 0.75 ? "#fff6d6" : "#eaf6ff";
+    ctx.beginPath();                                                  /* a small four-point star */
+    ctx.moveTo(x, y - r * 2.2); ctx.lineTo(x + r * 0.45, y - r * 0.45); ctx.lineTo(x + r * 2.2, y); ctx.lineTo(x + r * 0.45, y + r * 0.45);
+    ctx.lineTo(x, y + r * 2.2); ctx.lineTo(x - r * 0.45, y + r * 0.45); ctx.lineTo(x - r * 2.2, y); ctx.lineTo(x - r * 0.45, y - r * 0.45);
+    ctx.closePath(); ctx.fill();
   }
-  flightDirty = flying.length > 0;
+  ctx.restore();
+}
+
+/* The pet, whitened by glow and broken into specks by gone, drawn through a scratch
+   canvas the size of the pet layer. */
+let scratch = null;
+function drawBeamPet(ctx, pet, p, offX, offY, r) {
+  if (p.gone >= 0.995) return;
+  const cv = ctx.canvas;
+  if (!scratch) scratch = document.createElement("canvas");
+  if (scratch.width !== cv.width || scratch.height !== cv.height) { scratch.width = cv.width; scratch.height = cv.height; }
+  const sc = scratch.getContext("2d");
+  sc.setTransform(1, 0, 0, 1, 0, 0);
+  sc.clearRect(0, 0, scratch.width, scratch.height);
+  sc.setTransform(ctx.getTransform());
+  const mid = bodyMid(pet), fs = Math.abs(p.face) < 0.04 ? (p.face < 0 ? -0.04 : 0.04) : p.face;
+  drawTurned(sc, p.x + offX, p.y + offY, mid, 0, (x, y) => {
+    sc.scale(fs, 1);
+    drawCritter(sc, x, y, r, 0, pet.duckCrown, false, pet.critterKind || 0, pet.critterHue || 0, pet.duckJester, lookOf(pet).finish, pet.duckMedal);
+  });
+  if (p.glow > 0.01) {                                                /* glows white, the shape kept */
+    sc.globalCompositeOperation = "source-atop";
+    sc.fillStyle = "rgba(236,246,255," + (0.92 * p.glow).toFixed(3) + ")";
+    sc.fillRect(p.x + offX - r * 3, p.y + offY - r * 4, r * 6, r * 7);
+  }
+  if (p.gone > 0.01) {                                                /* breaks up into specks */
+    const b = bodyBox(defOf(pet)), x0 = p.x + offX - r * Math.max(-b.x0, b.x1) - 2, y0 = p.y + offY + b.top * r - 2;
+    const bw = r * (Math.max(-b.x0, b.x1) * 2) + 4, bh = (b.bottom - b.top) * r + 4;
+    sc.globalCompositeOperation = "destination-out";
+    sc.fillStyle = "#000";
+    const n = 220, dots = scatter(p.seed + 7, n);
+    for (let i = 0; i < n; i++) {
+      const [u, k, rank, sz] = dots[i];
+      if (rank > p.gone) continue;
+      sc.beginPath(); sc.arc(x0 + u * bw, y0 + k * bh, 1.2 + sz * 2.4 + p.gone * 2.2, 0, 6.2832); sc.fill();
+    }
+  }
+  sc.globalCompositeOperation = "source-over";
+  ctx.save();
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.globalAlpha = 1 - Math.max(0, p.gone - 0.6) / 0.4;
+  ctx.drawImage(scratch, 0, 0);
+  ctx.restore();
+}
+
+/* The travelling pet and its beam, in the glass the pose names. */
+function drawTrip(ctx, pet, p, offX, offY, r) {
+  const b = bodyBox(defOf(pet)), cx = p.x + offX + (b.x0 + b.x1) / 2 * r * p.face;
+  const top = p.y + offY + b.top * r - r * 0.9, bottom = p.y + offY + b.bottom * r + r * 0.5;
+  const w = Math.max(r * 2.4, (b.x1 - b.x0) * r + r * 0.9), now = clock();
+  drawBeam(ctx, cx, top, bottom, w, p, now);
+  drawBeamPet(ctx, pet, p, offX, offY, r);
+  if (p.beam > 0.3) {                                                 /* a few sparkles over the pet too */
+    ctx.save(); ctx.globalAlpha = 0.7;
+    drawBeam(ctx, cx, top, bottom, w * 0.6, { beam: p.beam * 0.6, seed: p.seed + 3 }, now * 1.3);
+    ctx.restore();
+  }
 }
 
 /* For tests: a visit's stage and host, if any. */
-export const visitOf = name => { const v = anim[name] && anim[name].visit; return v ? { stage: v.stage, host: v.host, t: v.t } : null; };
+export const visitOf = name => { const v = anim[name] && anim[name].visit; return v ? { stage: v.stage, host: v.host, t: v.t, back: v.back, where: v.pose && v.pose.where, age: v.age } : null; };
 
 /* For tests: a middle pet's leap, and where a pet lives in a glass. */
 export const leapProbe = { start: startLeap, path: leapPath, secs: leapSecs, can: canLeap, home: homeY, surface: surfaceY, floor: floorY, mid: bodyMid };
@@ -1032,7 +1188,6 @@ function frame(now) {
       stats.lastError = k + ": " + (e.message || e);
     }
   }
-  try { drawFlights(); } catch (e) { stats.errors++; stats.lastError = "leap: " + (e.message || e); }
 }
 
 export function startAnim() {

@@ -261,54 +261,44 @@ function glassRow(names, cols) {
   G.applyLayout(G.pickLayout(8, 748));
   G.dims.cols = cols;
   G.setOrder(names);
+  G.visitClock.on = false;                                 /* visits by hand; the timetable has its own tests */
   return names.map(n => {
     const st = G.animState(n);
     st.duckState = 1; st.critterKind = 0; st.level = st.target = 0.5; st.dcv = {};
     st.visit = null; st.guest = null;
-    Object.assign(st.m, { dive: -1, hop: -1, drop: -1, nextVisit: 1e9 });
+    Object.assign(st.m, { dive: -1, hop: -1, drop: -1 });
     return st;
   });
 }
 const steps = (secs) => { for (let i = 0; i < secs * 30; i++) G.stepVisits(1); };
 
-test("visits: only the glass beside it in the same row is a neighbour", () => {
-  glassRow(["n1", "n2", "n3", "n4", "n5"], 3);
-  assert.deepEqual(G.neighborsOf("n1"), ["n2"]);
-  assert.deepEqual(G.neighborsOf("n2"), ["n1", "n3"]);
-  assert.deepEqual(G.neighborsOf("n3"), ["n2"], "the row ends at three");
-  assert.deepEqual(G.neighborsOf("n4"), ["n5"], "next row");
-  assert.deepEqual(G.neighborsOf("nobody"), []);
-});
+/* the whole trip one way: beam out, a gap, beam in */
+const tripSecs = () => 2 * C.VISIT_BEAM_SECS + C.VISIT_BEAM_GAP + 0.2;
 
-test("visits: leap over, play faster, leap home", () => {
-  const [a, b] = glassRow(["va", "vb", "vc"], 3);
-  assert.ok(G.startVisit("va", "vb"));
-  assert.equal(G.visitOf("va").stage, "out");
-  assert.equal(b.guest, "va", "the host is taken from the start");
-  steps(C.VISIT_JUMP_SECS + 0.1);
+test("visits: beam out, beam in anywhere, play, and beam home", () => {
+  const [a] = glassRow(["va", "vb", "vc", "vd", "ve"], 2);
+  assert.ok(G.startVisit("va", "ve"), "any glass on the page, not only the one beside it");
+  assert.deepEqual([G.visitOf("va").stage, G.visitOf("va").where], ["out", "va"], "beams out of its own glass");
+  assert.equal(G.animState("ve").guest, "va", "the host is taken from the start");
+  steps(C.VISIT_BEAM_SECS + 0.05);
+  assert.equal(G.visitOf("va").stage, "gap");
+  assert.equal(G.visitOf("va").where, null, "nowhere for a moment");
+  steps(C.VISIT_BEAM_GAP + 0.05);
+  assert.deepEqual([G.visitOf("va").stage, G.visitOf("va").where], ["in", "ve"], "beams into the host's glass");
+  steps(C.VISIT_BEAM_SECS + 0.1);
   assert.equal(G.visitOf("va").stage, "there");
-  assert.equal(b.play, C.VISIT_PLAY, "the host plays more");
+  const e = G.animState("ve");
+  assert.equal(e.play, C.VISIT_PLAY, "the host plays more");
   assert.equal(a.visit.sw.play, C.VISIT_PLAY, "and so does the guest");
-  a.visit.until = a.m.t;                                   /* the stay is up */
+  a.visit.untilAge = a.visit.age;                          /* the stay is up */
   a.visit.sw.m.dive = -1; a.visit.sw.m.hop = -1;
   steps(0.1);
-  assert.equal(G.visitOf("va").stage, "back");
-  assert.equal(b.guest, null);
-  steps(C.VISIT_JUMP_SECS + 0.1);
+  assert.deepEqual([G.visitOf("va").stage, G.visitOf("va").back, G.visitOf("va").where], ["out", true, "ve"], "beams out of the host's glass");
+  assert.equal(e.guest, "va", "still there until it has gone");
+  steps(tripSecs());
   assert.equal(G.visitOf("va"), null, "home");
-  assert.equal(b.play, 1);
-});
-
-test("visits: a new ranking that moves the glasses apart sends the guest home", () => {
-  glassRow(["ra", "rb", "rc"], 3);
-  G.startVisit("ra", "rb");
-  steps(C.VISIT_JUMP_SECS + 0.1);
-  assert.equal(G.visitOf("ra").stage, "there");
-  G.setOrder(["ra", "rc", "rb"]);                          /* rb is no longer beside ra */
-  steps(0.05);
-  assert.equal(G.visitOf("ra").stage, "back", "leaves at once, even mid-stay");
-  steps(C.VISIT_JUMP_SECS + 0.1);
-  assert.equal(G.visitOf("ra"), null);
+  assert.equal(e.guest, null);
+  assert.equal(e.play, 1);
 });
 
 test("visits: drowning, a new pet or a glass leaving the screen end a visit", () => {
@@ -318,9 +308,11 @@ test("visits: drowning, a new pet or a glass leaving the screen end a visit", ()
   assert.equal(G.visitOf("da"), null, "goes under at home");
   assert.equal(b.guest, null);
   glassRow(["da", "db"], 2);
-  G.startVisit("da", "db"); steps(C.VISIT_JUMP_SECS + 0.1);
+  G.startVisit("da", "db"); steps(tripSecs());
+  assert.equal(G.visitOf("da").stage, "there");
   G.startSink("db", 0, 0);                                 /* the host's pet goes under */
-  assert.equal(G.visitOf("da").stage, "back");
+  steps(0.05);
+  assert.equal(G.visitOf("da").back, true, "heads home");
   glassRow(["da", "db"], 2);
   G.startVisit("da", "db");
   b.dcv = null;                                            /* the host's glass went off screen */
@@ -333,26 +325,57 @@ test("visits: drowning, a new pet or a glass leaving the screen end a visit", ()
   assert.equal(G.visitOf("da"), null);
 });
 
-test("visits: only from a settled pet with water, to a free neighbour with water", () => {
-  const real = Math.random;
-  Math.random = () => 0;                                   /* every chance comes up */
+test("visit timetable: the same visit on every screen, from the slot and the data", () => {
+  const names = ["ta", "tb", "tc", "td"];
+  glassRow(names, 2);
+  let k = 5000, plan = null;
+  while (!(plan = G.planFor(k, names))) k++;                           /* the first slot with a visit */
+  assert.deepEqual(G.planFor(k, names.slice().reverse()), plan, "screen order makes no difference");
+  assert.notEqual(plan.guest, plan.host);
+  assert.ok(plan.start >= k * C.VISIT_SLOT_SECS * 1000 && plan.start <= (k * C.VISIT_SLOT_SECS + C.VISIT_START_SPREAD) * 1000);
+  assert.ok(plan.stay >= C.VISIT_STAY[0] && plan.stay <= C.VISIT_STAY[1]);
+  const trip = 4 * C.VISIT_BEAM_SECS + 2 * C.VISIT_BEAM_GAP + C.VISIT_STAY[1] + C.VISIT_START_SPREAD;
+  assert.ok(trip < C.VISIT_SLOT_SECS - 5, "a visit is over before the next slot");
+  let n = 0;
+  for (let j = 0; j < 400; j++) if (G.planFor(k + j, names)) n++;
+  assert.ok(n > 400 * C.VISIT_SLOT_CHANCE * 0.7 && n < 400 * C.VISIT_SLOT_CHANCE * 1.3, "about VISIT_SLOT_CHANCE of slots: " + n);
+  for (const nm of names) G.animState(nm).target = 0.05;             /* every glass nearly dry */
+  assert.equal(G.planFor(k, names), null, "no water, no visit");
+  glassRow(names, 2);
+  G.animState(plan.host).duckState = 3;                                /* the host's pet drowned today */
+  const again = G.planFor(k, names);
+  assert.ok(!again || (again.host !== plan.host && again.guest !== plan.host), "a glass with a dead pet neither goes nor hosts");
+});
+
+test("visit timetable: starts on time, joins late, catches up after a pause", () => {
+  const names = ["ja", "jb", "jc"];
+  glassRow(names, 3);
+  let k = 7000, plan = null;
+  while (!(plan = G.planFor(k, names))) k++;
+  let now = plan.start - 1000;
+  G.visitClock.now = () => now; G.visitClock.on = true;
   try {
-    let [a, b] = glassRow(["ea", "eb"], 2);
-    b.level = b.target = 0.05;                             /* almost dry */
-    a.m.nextVisit = 0; steps(0.05);
-    assert.equal(G.visitOf("ea"), null, "not into a dry glass");
-    [a, b] = glassRow(["ea", "eb"], 2);
-    a.m.dive = 0.5; a.m.nextVisit = 0;
     G.stepVisits(1);
-    assert.equal(G.visitOf("ea"), null, "not mid-dive");
-    [a, b] = glassRow(["ea", "eb"], 2);
-    b.guest = "someone";
-    a.m.nextVisit = 0; steps(0.05);
-    assert.equal(G.visitOf("ea"), null, "one guest at a time");
-    [a, b] = glassRow(["ea", "eb"], 2);
-    a.m.nextVisit = 0; G.stepVisits(1);
-    assert.equal(G.visitOf("ea").host, "eb", "otherwise it goes");
-  } finally { Math.random = real; }
+    assert.equal(G.visitOf(plan.guest), null, "not before its time");
+    now = plan.start + 100;
+    G.stepVisits(1);
+    assert.equal(G.visitOf(plan.guest).stage, "out", "on time");
+    assert.equal(G.visitOf(plan.guest).host, plan.host);
+    now = plan.start + (2 * C.VISIT_BEAM_SECS + C.VISIT_BEAM_GAP + 1) * 1000;   /* a screen asleep for a while */
+    G.stepVisits(1);
+    assert.equal(G.visitOf(plan.guest).stage, "there", "caught up to where every other screen is");
+    glassRow(names, 3);
+    G.visitClock.now = () => now; G.visitClock.on = true;
+    now = plan.start + 12000;
+    G.stepVisits(1);
+    assert.equal(G.visitOf(plan.guest), null, "a slot is looked at once per screen");
+    let k2 = k + 1, p2 = null;
+    while (!(p2 = G.planFor(k2, names))) k2++;
+    now = p2.start + 12000;                                            /* a screen opened mid-visit */
+    G.stepVisits(1);
+    assert.equal(G.visitOf(p2.guest).stage, "there", "joins it where it is");
+    assert.ok(Math.abs(G.visitOf(p2.guest).age - 12) < 0.2);
+  } finally { G.visitClock.on = false; G.visitClock.now = () => Date.now(); }
 });
 
 test("goal rolls: hidden until the unlock card closes, from the activity list and the Pets tab", async () => {

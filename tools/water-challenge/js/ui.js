@@ -167,10 +167,8 @@ function buildGlasses() {
     }
     h.push('</div></div>');
   });
-  h.push('<canvas class="flight" id="flightCv" aria-hidden="true"></canvas>');   /* pets leaping between glasses */
   $("glasses").innerHTML = h.join("");
   G.unbindAll();
-  G.bindFlight($("flightCv"));
   ordered.forEach((p, i) => {
     G.bindCanvases(p.name, $("cv_" + i), $("dc_" + i), T.gw, T.gh, $("de_" + i));
     G.bindPin(p.name, $("mp_" + i), $("mb_" + i));

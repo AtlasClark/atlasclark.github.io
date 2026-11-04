@@ -1,8 +1,8 @@
 /* Water Challenge (web) - constants: rules, tunables and the on-disk contract
    (FORMAT_REV, UTF-16 LE + BOM JSON, unknown fields kept). */
 
-export const REV         = "rev 1.38.7";
-export const APP_VERSION = "web 1.38.7";   /* stamped as writerVersion */
+export const REV         = "rev 1.38.8";
+export const APP_VERSION = "web 1.38.8";   /* stamped as writerVersion */
 /* Every file is written at FORMAT_REV. A file stamped higher came from a newer
    build, and the page asks for a reload. */
 export const FORMAT_REV    = 22;
@@ -319,10 +319,12 @@ export const HOP_EVERY      = [9, 24];    /* random gap between small hops */
 /* Visits: now and then a pet leaps to the glass beside it (same row, left or right),
    plays there, then leaps home. Only on screen: nothing is saved, and each screen
    picks its own visits, since every screen lays the glasses out its own way. */
-export const VISIT_EVERY     = [30, 90];  /* seconds between a pet's chances to go */
-export const VISIT_CHANCE    = 0.08;      /* the chance each time: about one visit per 12 minutes */
+export const VISIT_SLOT_SECS = 75;        /* one shared timetable: at most one visit per slot (rev 1.38.8) */
+export const VISIT_SLOT_CHANCE = 0.4;     /* the chance a slot has one: about one visit every 3 minutes */
+export const VISIT_START_SPREAD = 10;     /* seconds into its slot a visit may start */
 export const VISIT_STAY      = [20, 45];  /* seconds it stays */
-export const VISIT_JUMP_SECS = 1.15;      /* the leap between glasses */
+export const VISIT_BEAM_SECS = 1.7;       /* beaming out, and beaming in (rev 1.38.8) */
+export const VISIT_BEAM_GAP  = 0.25;      /* nowhere, between the two */
 export const VISIT_PLAY      = 0.3;       /* dive and hop gaps scale by this for guest and host */
 export const VISIT_MIN_LEVEL = 0.15;      /* both glasses need this much water */
 /* A dive is one continuous path: down and forward, back up, out of the water on a
