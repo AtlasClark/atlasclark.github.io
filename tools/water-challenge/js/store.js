@@ -18,6 +18,7 @@ import { S, dataChanged, currentGoalFor, currentGoal, currentAnnualGoal, current
          goalTunables, legacyFlat, challengeStart, forceLegacyStamps, personalGoal,
          defaultSettings } from "./model.js";
 import { todayKey, dateKey, localStamp, parseKey, has, shiftKey, monthDayOk } from "./util.js";
+import { newerMsg } from "./msg.js";
 
 export let dir = null;          /* FileSystemDirectoryHandle of the data folder */
 export let cloud = null;        /* cloud.js, while signed in with an access code */
@@ -224,6 +225,7 @@ export function toJson(p) {
   out.push('\n  "rerollDay": ' + q(p.rerollDay || "") + ',');
   out.push('\n  "rollLog": ' + JSON.stringify(p.rollLog || {}) + ',');
   out.push('\n  "graveLog": ' + JSON.stringify(p.graveLog || {}) + ',');
+  if (p.msg) out.push('\n  "msg": ' + JSON.stringify({ id: String(p.msg.id), text: String(p.msg.text), at: Number(p.msg.at) || 0 }) + ',');
   out.push('\n  "spends": [' + spends.map(s => '\n    ' + JSON.stringify(s)).join(",") + (spends.length ? '\n  ' : '') + '],');
   for (const k of extraFields(p)) out.push('\n  ' + JSON.stringify(k) + ': ' + JSON.stringify(p[k]) + ',');
   out.push('\n  "writerRev": ' + C.FORMAT_REV + ',');
@@ -301,6 +303,8 @@ function mergeWithDisk(p, disk, removedIds, removedPets, revivedPets, clearRoll)
   out.rerollDay = [p.rerollDay || "", (disk && disk.rerollDay) || ""].sort().pop();
   for (const k of extraFields(p)) out[k] = p[k];
   if (disk) for (const k of extraFields(disk)) if (!(k in out)) out[k] = disk[k];
+  const msg = newerMsg(p.msg, disk && disk.msg);                 /* the newer message wins, so two PCs can't undo one */
+  if (msg) out.msg = msg;
   /* a drowning on disk today wins, unless this write brings a pet back */
   if (disk && disk.graveDay > out.graveDay && !(revivedPets && revivedPets.length)) { out.graveDay = disk.graveDay; out.deadKind = n1(disk.deadKind); }
   /* A roll recorded on disk today wins, unless this write is taking it back. */
@@ -359,6 +363,7 @@ export async function saveParticipant(p, removedIds, removedPets, revivedPets, c
       p.rollLog = merged.rollLog;
       p.graveLog = merged.graveLog;
       p.rerollDay = merged.rerollDay;
+      if (merged.msg) p.msg = merged.msg;
       for (const f of ["petRollDay", "equippedPet", "rollKind", "rollWasNew", "lastRoll", "prevRoll", "graveDay", "deadKind"]) p[f] = merged[f];
       dataChanged();
     } else note("busy: " + name);

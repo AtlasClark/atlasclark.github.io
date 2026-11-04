@@ -1,4 +1,4 @@
-/* Water Challenge cloud: a Cloudflare Worker with one Durable Object (rev cloud 1.0).
+/* Water Challenge cloud: a Cloudflare Worker with one Durable Object (rev cloud 1.1).
    Scope: holds the whole challenge online, so the page needs no shared folder. People
    sign in with an access code; the page's own merge rules stay as they were.
 
@@ -27,7 +27,8 @@
    - Answers only the challenge page's origins (ORIGINS).
    - OWNER_CODE (a secret, 12+ letters or digits) is always an admin code: for set-up and recovery.
    - Players may change any person's file (pours for others, as on the share), but a new pour
-     must carry their own user name, and only the glass's own code may spend from it.
+     must carry their own user name, and only the glass's own code may spend from it or
+     change its message (rev cloud 1.1).
      New people, settings, codes, import, restore and removal: admin only. Pet art
      (_pets.json): admin, or a code with "art".
    - No string in any file or live event may hold < or >, colours are #hex, and sizes are
@@ -117,6 +118,8 @@ function markup(v, depth = 0) {
   return "";
 }
 
+const MSG_MAX = 140;                                        /* the page's MSG_MAX */
+const msgKey = m => m && typeof m === "object" ? [String(m.id), String(m.text), Number(m.at)].join("|") : "";
 const NAME_RE = /^[^<>"&\u0000-\u001f]{1,60}$/, HEX_RE = /^#[0-9a-f]{3,8}$/i, DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
 export function checkRecord(o) {
   if (!o || typeof o !== "object" || Array.isArray(o)) return "not a person's file";
@@ -131,6 +134,11 @@ export function checkRecord(o) {
   }
   if (o.spends !== undefined && !Array.isArray(o.spends)) return "spends is not a list";
   for (const s of o.spends || []) if (!s || typeof s !== "object" || typeof s.id !== "string" || s.id.length > 120) return "a spend has no id";
+  if (o.msg !== undefined && o.msg !== null) {               /* a glass message (page rev 1.38.7) */
+    const m = o.msg;
+    if (typeof m !== "object" || Array.isArray(m) || typeof m.id !== "string" || m.id.length > 60 ||
+        typeof m.text !== "string" || m.text.length > MSG_MAX || !isFinite(Number(m.at))) return "the message is not a short text";
+  }
   for (const f of ["pets", "graves", "dayGoals"]) {
     const m = o[f];
     if (m === undefined) continue;
@@ -160,6 +168,7 @@ export function checkWrite(who, name, old, o) {
   if (who.admin) return "";
   if (!same(old.name, o.name)) return "a person's name can't be changed";
   const own = same(o.name, who.glass);
+  if (!own && msgKey(old.msg) !== msgKey(o.msg)) return "only " + o.name + "'s own code can change " + o.name + "'s message";
   const ids = new Set(), keys = new Set();
   for (const e of old.entries || []) { if (e && e.eid) ids.add(e.eid); keys.add(entryKey(e)); }
   for (const e of o.entries) {

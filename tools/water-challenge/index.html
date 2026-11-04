@@ -180,6 +180,7 @@
       <div class="control-panel slim">
         <p class="pour-hint"><b>Right-click a glass</b> to log water <span class="dim">(press and hold on touch)</span></p>
         <button type="button" id="quickPour" class="btn primary quick" hidden></button>
+        <button type="button" id="msgBtn" class="btn muted msg-btn" hidden title="Leave a message over your pet"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 3h10a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2H8l-3.2 2.4V12H3a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z" fill="currentColor"/></svg>Message</button>
         <button type="button" id="bottleSync" class="btn muted" hidden title="Pull today's sips from your HidrateSpark bottle">Sync bottle</button>
         <div class="newp">
           <label class="field-label" for="pname">New participant</label>
@@ -338,6 +339,22 @@
 </dialog>
 
 <!-- confirm -->
+<dialog id="msgDialog" class="dlg">
+  <form method="dialog" id="msgForm">
+    <h3>Your message</h3>
+    <p class="hint">It floats over your pet for everyone to read.</p>
+    <div class="msg-box">
+      <textarea id="msgText" class="txt" rows="3" maxlength="140" spellcheck="true" aria-describedby="msgCount"></textarea>
+      <span id="msgCount" class="msg-count" aria-live="polite">0 / 140</span>
+    </div>
+    <div class="dlg-actions">
+      <button value="clear" id="msgClear" class="btn muted msg-clear">Take it down</button>
+      <button value="cancel" class="btn muted">Cancel</button>
+      <button value="post" id="msgPost" class="btn primary">Post</button>
+    </div>
+  </form>
+</dialog>
+
 <dialog id="confirmDialog" class="dlg">
   <form method="dialog">
     <h3 id="confirmTitle"></h3>

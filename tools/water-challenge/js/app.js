@@ -16,6 +16,7 @@ import { startLive, onLive, emit } from "./live.js";
 import { loadPetDefs, useFolderDefs, useSiteDefs } from "./petdefs.js";
 import { bottleOn, bottleCfg, signedIn, loadBottle, setRelay, newRelayKey, pingRelay, signIn, signOut, fetchSips, applySips } from "./bottle.js";
 import { openRadial, wireRadial } from "./radial.js";
+import { makeMsg, msgOf, toggleMsg, openMsgs, cleanText } from "./msg.js";
 import { initShop, renderShop, shopTabChanged } from "./shopui.js";
 import { shellsEarned, earnedTotal } from "./shop.js";
 import { isHydrationDay } from "./hydration.js";
@@ -513,6 +514,49 @@ async function addWater(name, oz) {
   });
 }
 
+/* ---- glass messages (msg.js) ------------------------------------------- */
+function openMsgDialog() {
+  const p = S.mine && findParticipant(S.mine);
+  if (!p || !guard()) return;
+  const m = msgOf(p), t = $("msgText"), d = $("msgDialog");
+  t.maxLength = C.MSG_MAX;
+  t.value = m ? m.text : "";
+  $("msgClear").hidden = !m;
+  msgCount();
+  d.returnValue = "";
+  d.showModal();
+  t.focus(); t.select();
+}
+function msgCount() {
+  const t = $("msgText"), v = cleanText(t.value);
+  if (v !== t.value) {                                /* < > and line breaks are dropped as you type */
+    const at = Math.max(0, t.selectionStart - (t.value.length - v.length));
+    t.value = v; t.setSelectionRange(at, at);
+  }
+  const n = t.value.length;
+  $("msgCount").textContent = n + " / " + C.MSG_MAX;
+  $("msgCount").classList.toggle("near", n >= C.MSG_MAX - 10);
+  $("msgPost").disabled = !t.value.trim();
+}
+async function postMsg(text) {
+  if (!guard()) return;
+  await store.serial(async () => {
+    const p = S.mine && findParticipant(S.mine);
+    if (!p) return;
+    const before = p.msg, m = makeMsg(text);
+    if (!m.text && !msgOf(p)) return;
+    p.msg = m;
+    if (!(await store.saveParticipant(p, null))) {
+      p.msg = before;
+      setMsg("Couldn't " + (m.text ? "post" : "take down") + " your message. Try again.", false);
+      return;
+    }
+    if (m.text) openMsgs.add(p.name); else openMsgs.delete(p.name);
+    setMsg(m.text ? "Message posted over your pet." : "Message taken down.", true);
+    render();
+  });
+}
+
 /* First click arms a pour's undo for a few seconds; the second click removes it. */
 const ARM_MS = 5000;
 let armTimer = 0;
@@ -712,6 +756,17 @@ function wire() {
   $("pname").addEventListener("keydown", e => { if (e.key === "Enter") addParticipant(); });
   $("addP").onclick = addParticipant;
   $("quickPour").onclick = () => { if (S.mine) addWater(S.mine, ui.amount); };
+  $("msgBtn").onclick = openMsgDialog;
+  $("msgText").addEventListener("input", msgCount);
+  $("msgText").addEventListener("keydown", e => {        /* Enter posts; it is one line */
+    if (e.key === "Enter") { e.preventDefault(); if (!$("msgPost").disabled) $("msgDialog").close("post"); }
+  });
+  $("msgDialog").addEventListener("close", () => {
+    const v = $("msgDialog").returnValue;
+    if (v === "post") postMsg($("msgText").value);
+    else if (v === "clear") postMsg("");
+  });
+  document.addEventListener("keydown", e => { if (e.key === "Escape" && openMsgs.size && !document.querySelector("dialog[open]")) { openMsgs.clear(); render(); } });
   wireBottle();
   $("sbMe").onclick = () => { if (store.cloud) { showGate("account"); $("gateClose").hidden = !ui.connected; } else askIdentity(false); };
   $("sbDiag").onclick = showDiag;
@@ -741,7 +796,7 @@ function wire() {
   $("glasses").addEventListener("pointerdown", e => {
     if (e.pointerType === "mouse" || !e.isPrimary) return;
     const card = e.target.closest(".participant-card");
-    if (!card || e.target.closest(".swatches, button, a")) return;
+    if (!card || e.target.closest(".swatches, button, a, .msg-bubble")) return;
     endPress();
     const x = e.clientX, y = e.clientY;
     press = { x, y, t: setTimeout(() => { press = null; pressedAt = Date.now(); openPour(card.dataset.name, x, y, true); }, C.LONG_PRESS_MS) };
@@ -752,7 +807,7 @@ function wire() {
   for (const k of ["pointerup", "pointercancel"]) $("glasses").addEventListener(k, endPress);
   $("glasses").addEventListener("keydown", e => {
     const g = e.target.closest(".gwrap"), card = e.target.closest(".participant-card");
-    if (!g || !card || (e.key !== "Enter" && e.key !== " ")) return;
+    if (!g || !card || (e.key !== "Enter" && e.key !== " ") || e.target.closest(".msg-pin")) return;
     e.preventDefault();
     const r = g.getBoundingClientRect();
     openPour(card.dataset.name, r.left + r.width / 2, r.top + r.height / 2);
@@ -773,6 +828,7 @@ function wire() {
       case "swatches": toggleSwatches(card); break;
       case "audit": auditStreak(name); break;
       case "color": setColor(name, t.dataset.color); break;
+      case "msg": { const p = findParticipant(name); if (p) { toggleMsg(p); render(); } break; }
     }
   };
   const equipFrom = e => {

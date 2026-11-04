@@ -156,7 +156,24 @@ export function bindCanvases(name, glassCanvas, petCanvas, gw, gh, decorCanvas) 
   st.ecv = decorCanvas || null; st.ectx = null; st.eW = st.eH = 0;
 }
 
-export function unbindAll() { for (const k in anim) { anim[k].ctx = null; anim[k].dctx = null; anim[k].dcv = null; anim[k].ecv = null; anim[k].ectx = null; } }
+export function unbindAll() { for (const k in anim) { anim[k].ctx = null; anim[k].dctx = null; anim[k].dcv = null; anim[k].ecv = null; anim[k].ectx = null; anim[k].pin = anim[k].bub = null; } }
+
+/* Message pin and bubble (msg.js): DOM elements in the glass's wrapper, moved each frame
+   to just over the pet's head (its hat included), or over the rim while it is away. */
+export function bindPin(name, pin, bubble) { const st = animState(name); st.pin = pin || null; st.bub = bubble || null; }
+function placePin(st) {
+  const pin = st.pin;
+  if (!pin || pin.hidden) return;
+  const r = petR(), at = st.pinAt;
+  const x = (at ? at[0] : st.dW / 2) - dims.pad, y = Math.max(-dims.head - 14, (at ? at[1] - r * 0.6 : dims.head - 4) - dims.head);
+  pin.style.left = x.toFixed(1) + "px"; pin.style.top = y.toFixed(1) + "px";
+  const b = st.bub;
+  if (!b || b.hidden) return;
+  const side = (dims.card - dims.gw) / 2, w = b.offsetWidth;
+  const left = Math.max(-side + 4, Math.min(dims.gw + side - 4 - w, x - w / 2));
+  b.style.left = left.toFixed(1) + "px"; b.style.top = (y - 22).toFixed(1) + "px";
+  b.style.setProperty("--tx", Math.max(12, Math.min(w - 12, x - left)).toFixed(1) + "px");
+}
 
 const motionOn = () => C.PET_MOTION && !(reduceMotion && reduceMotion.matches);
 const depthAt = level => Math.min(Math.max(level, 0), 1) * (dims.H - C.SURFACE_BAND);
@@ -569,6 +586,7 @@ function drawDecorLayer(st) {
 
 function drawPetLayer(st) {
   const ctx = st.dctx, W = dims.W, H = dims.H, offX = 4 + dims.pad, offY = dims.head + 3;
+  st.pinAt = null;
   reset(ctx);
   ctx.clearRect(0, 0, st.dW, st.dH);
   const top = surfaceY(st);
@@ -591,6 +609,7 @@ function drawPetLayer(st) {
   if (v && v.stage === "there") drawFloating(ctx, st, v.sw, W, H, top, offX, offY, r);
   ctx.restore();
   if (st.duckState || st.guest) tintUnderwater(ctx, st, W, H, top, offX, offY);
+  placePin(st);
 }
 
 /* water: whose glass it is in (waves, surface). pet: who is drawn (its motion, kind,
@@ -652,6 +671,10 @@ function drawFloating(ctx, water, pet, W, H, top, offX, offY, r) {
     drawCritter(ctx, x, y, r, ang, pet.duckCrown, false, pet.critterKind || 0, pet.critterHue || 0, pet.duckJester, look.finish, pet.duckMedal);
   });
   if (look.effect) drawEffect(ctx, look.effect, fx, fy, r, t, pet.critterHue || 0, "front");
+  if (water === pet) {                                                /* where its message pin goes: over its head */
+    const b = bodyBox(defOf(pet));
+    water.pinAt = [px + fs * (b.x0 + b.x1) / 2 * r, py + b.top * r];
+  }
 }
 
 /* Air a pet lets go of under the water, rising from the top of its body to the surface. */

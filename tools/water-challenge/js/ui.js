@@ -23,6 +23,7 @@ import { COSMETICS, drawShell } from "./cosmetics.js";
 import { isHydrationDay, teamSplash } from "./hydration.js";
 import { setHydrationDay } from "./hydfx.js";
 import { setHolidayTheme, seasonsOn, seasonOf } from "./themefx.js";
+import { msgOf, isNew, openMsgs, whenText } from "./msg.js";
 import { $, esc, fmt, fmtOz, fmtGal, todayKey, dateKey, prettyTime, clockStamp, has, parseKey, shiftKey, aAn } from "./util.js";
 
 /* Set by app.js: the Shop tab renders from shopui.js, which imports this module. */
@@ -152,6 +153,8 @@ function buildGlasses() {
            'style="width:' + sk + 'px;height:' + sk + 'px;margin-left:-' + (sk / 2) + 'px;margin-top:-' + (sk / 2) + 'px">');
     h.push('</div><div class="glass-edge" style="width:' + T.gw + 'px;height:' + T.gh + 'px;border-radius:' + radius + '"><div class="shine"></div></div>');
     h.push('<canvas class="duckc" id="dc_' + i + '" style="top:-' + G.dims.head + 'px"></canvas>');
+    h.push('<button type="button" class="msg-pin" id="mp_' + i + '" data-act="msg" hidden></button>');
+    h.push('<div class="msg-bubble" id="mb_' + i + '" data-act="msg" hidden></div>');
     h.push('</div>');
     h.push('<h2 class="pick" title="Click to change colour" data-act="swatches">' + esc(p.name) +
            (p.name === S.mine ? '<span class="you" title="This browser&rsquo;s glass">you</span>' : '') + '</h2>');
@@ -170,6 +173,7 @@ function buildGlasses() {
   G.bindFlight($("flightCv"));
   ordered.forEach((p, i) => {
     G.bindCanvases(p.name, $("cv_" + i), $("dc_" + i), T.gw, T.gh, $("de_" + i));
+    G.bindPin(p.name, $("mp_" + i), $("mb_" + i));
     G.animState(p.name).hatIs = "";
   });
   G.startAnim();
@@ -222,6 +226,19 @@ function petVisual(p, st, danger, key) {
   }
 }
 
+/* The message pin over a pet ("!" until read here, then a dim bubble) and its bubble. */
+const BUBBLE_SVG = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 3h10a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2H8l-3.2 2.4V12H3a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z" fill="currentColor"/></svg>';
+function msgView(p, i) {
+  const m = msgOf(p), fresh = isNew(p), open = !!m && openMsgs.has(p.name);
+  if (!m) openMsgs.delete(p.name);
+  show("mp_" + i, !!m);
+  show("mb_" + i, open);
+  if (!m) return;
+  setEl("mp_" + i, fresh ? "!" : BUBBLE_SVG, "msg-pin" + (fresh ? " new" : " seen") + (open ? " open" : ""));
+  setTitle("mp_" + i, (open ? "Hide " : fresh ? "New message from " : "Message from ") + p.name);
+  if (open) setEl("mb_" + i, '<b>' + esc(p.name) + '</b> <span class="when">' + esc(whenText(m.at)) + '</span><p>' + esc(m.text) + '</p>', "msg-bubble");
+}
+
 function updateGlasses() {
   const key = todayKey(), hol = holidayOn(key), holidayHats = !!hol;
   const gfx = hol ? C.GOAL_FX[hol.theme || (isHydrationDay() ? "hydration" : "")] : null;   /* event-day goal glasses */
@@ -260,6 +277,7 @@ function updateGlasses() {
     }
     const s = streaks(p);
     setEl("sk_" + i, streakPips(s, false), (s.win || s.goal) ? "streak pick" : "streak pick none");
+    msgView(p, i);
   });
 }
 
@@ -680,6 +698,7 @@ function renderStatus() {
   setEl("sbMe", S.me ? esc(S.me) + (S.mine ? ' &middot; ' + esc(S.mine) : '') : "set your name", null);
   const mine = S.mine && findParticipant(S.mine), q = $("quickPour");
   q.hidden = !mine || !ui.connected;
+  $("msgBtn").hidden = q.hidden;
   if (mine) {
     setEl("quickPour", '+ ' + fmtOz(ui.amount) + ' oz for ' + esc(mine.name), null);
     q.style.setProperty("--pc", mine.color);
