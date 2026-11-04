@@ -623,7 +623,8 @@ h1 { margin: 4px 0 0; font-size: clamp(30px, 5vw, 52px); letter-spacing: -.04em;
 /* Inside a card, back to front: glass and water (1), a cup decoration set behind the
    outline (2), the outline and shine (3), a decoration in front of it (4), the crown (5),
    the pet layer (6). */
-.participant-card { isolation: isolate; }
+.participant-card { isolation: isolate; -webkit-user-select: none; user-select: none;
+  -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; }   /* a long press pours, never selects */
 .decorc { position: absolute; z-index: 2; pointer-events: none; }
 .decorc.front { z-index: 4; }
 .crown-wrap { position: relative; z-index: 5; height: 20px; margin: 0 0 2px; visibility: hidden;

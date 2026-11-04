@@ -444,11 +444,14 @@ function rememberAmount(oz) {
   try { localStorage.setItem("awc-amount", String(oz)); } catch { }
 }
 
-function openPour(name, x, y) {
+let press = null, pressedAt = 0;                       /* touch long press on a glass */
+function endPress() { if (press) { clearTimeout(press.t); press = null; } }
+
+function openPour(name, x, y, touch) {
   const p = findParticipant(name);
   if (!p) return;
   const key = todayKey();
-  openRadial({ name: p.name, color: p.color, total: totalOn(p, key), goal: currentGoalFor(p), amount: ui.amount, x, y },
+  openRadial({ name: p.name, color: p.color, total: totalOn(p, key), goal: currentGoalFor(p), amount: ui.amount, x, y, touch },
              (who, oz) => { rememberAmount(oz); addWater(who, oz); });
 }
 
@@ -724,6 +727,8 @@ function wire() {
     const card = e.target.closest(".participant-card");
     if (!card || e.target.closest(".swatches")) return;
     e.preventDefault();
+    if (Date.now() - pressedAt < 1500) return;        /* the long press below already opened it */
+    endPress();
     let x = e.clientX, y = e.clientY;
     if (!x && !y) {                                   /* the context-menu key: no pointer position */
       const r = card.querySelector(".gwrap").getBoundingClientRect();
@@ -731,6 +736,20 @@ function wire() {
     }
     openPour(card.dataset.name, x, y);
   });
+  /* Touch and pen (rev 1.38.5): a press held LONG_PRESS_MS opens the pour menu. iOS sends no
+     contextmenu, and other touch browsers selected the card's text instead. */
+  $("glasses").addEventListener("pointerdown", e => {
+    if (e.pointerType === "mouse" || !e.isPrimary) return;
+    const card = e.target.closest(".participant-card");
+    if (!card || e.target.closest(".swatches, button, a")) return;
+    endPress();
+    const x = e.clientX, y = e.clientY;
+    press = { x, y, t: setTimeout(() => { press = null; pressedAt = Date.now(); openPour(card.dataset.name, x, y, true); }, C.LONG_PRESS_MS) };
+  });
+  $("glasses").addEventListener("pointermove", e => {
+    if (press && Math.hypot(e.clientX - press.x, e.clientY - press.y) > C.PRESS_SLOP) endPress();
+  });
+  for (const k of ["pointerup", "pointercancel"]) $("glasses").addEventListener(k, endPress);
   $("glasses").addEventListener("keydown", e => {
     const g = e.target.closest(".gwrap"), card = e.target.closest(".participant-card");
     if (!g || !card || (e.key !== "Enter" && e.key !== " ")) return;

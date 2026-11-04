@@ -10,7 +10,7 @@ let open = null;               /* { name, onPick } while showing */
 
 export const radialOpen = () => !!open;
 
-/* o: { name, color, total, goal, amount, x, y } in viewport px */
+/* o: { name, color, total, goal, amount, x, y, touch } in viewport px */
 export function openRadial(o, onPick) {
   const el = $("radial"), pad = RING + 40;
   el.style.left = Math.max(pad, Math.min(window.innerWidth - pad, o.x)) + "px";
@@ -31,7 +31,8 @@ export function openRadial(o, onPick) {
   el.classList.remove("closing");
   el.hidden = false;
   open = { name: o.name, onPick };
-  requestAnimationFrame(() => { $("radAmt").focus(); $("radAmt").select(); });
+  /* on touch, no focus: the on-screen keyboard would cover the ring, and its resize closes it */
+  if (!o.touch) requestAnimationFrame(() => { $("radAmt").focus(); $("radAmt").select(); });
 }
 
 export function closeRadial() {

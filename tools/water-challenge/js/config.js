@@ -1,8 +1,8 @@
 /* Water Challenge (web) - constants: rules, tunables and the on-disk contract
    (FORMAT_REV, UTF-16 LE + BOM JSON, unknown fields kept). */
 
-export const REV         = "rev 1.38.4";
-export const APP_VERSION = "web 1.38.4";   /* stamped as writerVersion */
+export const REV         = "rev 1.38.5";
+export const APP_VERSION = "web 1.38.5";   /* stamped as writerVersion */
 /* Every file is written at FORMAT_REV. A file stamped higher came from a newer
    build, and the page asks for a reload. */
 export const FORMAT_REV    = 22;
@@ -152,6 +152,8 @@ export const TIE_EPSILON       = 0.05;
 
 export const QUICK_SIZES    = [8, 12, 16.9, 20, 24, 32, 40, 64];
 export const DEFAULT_AMOUNT = 8;
+export const LONG_PRESS_MS  = 450;   /* touch: hold a glass this long for the pour menu */
+export const PRESS_SLOP     = 10;    /* px a finger may move before the press counts as a scroll */
 /* "by" values that are not people, so never offered as a username */
 export const NOT_USERS = ["", "?", "unknown", "hidrate", "test"];
 
