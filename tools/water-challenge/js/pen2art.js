@@ -247,3 +247,62 @@ export const PEN2_ART = [
     E(-0.68, -0.66, 0.02, 0.015, "ink"), S("M -0.2 -0.02 Q -0.05 -0.08 0.1 -0.02", "light", 0.03),
     EYE(-0.38, -0.72, 0.8) ] }
 ];
+
+/* 77 the Automaton, the second pen's full-pen reward (rev 1.41.0): a hover-mech built from
+   the pen's spare parts, riding two water jets above the surface. Steel is fixed; the
+   armour, visor, core and jets follow its hue (195 when it comes, a recolour changes it).
+   Kind 77 is C.AUTOMATON_KIND (this file takes no imports). */
+const STEEL = { steel: FIX("#d3d9e1"), steelD: FIX("#8e98a6"), steelDD: FIX("#4a5260"), visor: FIX("#151b26"),
+                body: HUE(0, 70, 52), light: HUE(0, 75, 66), glow: HUE(0, 100, 74), halo: HUE(0, 100, 72, 0.28),
+                jet: HUE(0, 85, 82, 0.62), core: FIX("#ffffff"), ink: FIX("#1c2129") };
+const ALIVE2 = s => Object.assign(s, { show: "alive" });
+export const REWARD2_ART = {
+  77: { crown: [-0.12, -1.21], zone: "air", pal: STEEL, swim: [
+    /* far side: thruster boot and its jet, arm, back pack */
+    S("M 0.16 -0.44 L 0.18 -0.36", "steelD", 0.1),
+    ALIVE2(P("M 0.12 -0.22 L 0.24 -0.22 L 0.21 -0.08 Q 0.18 -0.03 0.15 -0.08 Z", "jet")), ALIVE2(E(0.18, -0.15, 0.025, 0.05, "core")),
+    P("M 0.06 -0.39 L 0.3 -0.39 Q 0.33 -0.33 0.28 -0.29 L 0.25 -0.26 L 0.11 -0.26 L 0.08 -0.29 Q 0.03 -0.33 0.06 -0.39 Z", "steelDD"),
+    P("M 0.11 -0.27 L 0.25 -0.27 L 0.23 -0.22 L 0.13 -0.22 Z", "visor"),
+    S("M 0.22 -0.72 Q 0.4 -0.64 0.38 -0.48", "steelD", 0.08), E(0.38, -0.45, 0.06, 0.055, "steelDD"),
+    P("M 0.24 -0.86 L 0.44 -0.82 Q 0.49 -0.8 0.49 -0.75 L 0.49 -0.52 Q 0.49 -0.47 0.44 -0.47 L 0.24 -0.45 Z", "steelD"),
+    P("M 0.29 -0.93 L 0.35 -0.93 L 0.36 -0.85 L 0.29 -0.85 Z", "steelDD"), P("M 0.38 -0.91 L 0.44 -0.91 L 0.44 -0.83 L 0.38 -0.84 Z", "steelDD"),
+    S("M 0.3 -0.77 L 0.43 -0.75", "body", 0.035), S("M 0.3 -0.69 L 0.43 -0.68", "body", 0.035),
+    /* near thruster boot and its jet */
+    S("M -0.2 -0.44 L -0.22 -0.36", "steel", 0.12),
+    ALIVE2(P("M -0.29 -0.2 L -0.15 -0.2 L -0.18 -0.05 Q -0.22 0 -0.26 -0.05 Z", "jet")), ALIVE2(E(-0.22, -0.13, 0.03, 0.06, "core")),
+    P("M -0.37 -0.38 L -0.07 -0.38 Q -0.04 -0.32 -0.09 -0.28 L -0.13 -0.24 L -0.31 -0.24 L -0.35 -0.28 Q -0.4 -0.32 -0.37 -0.38 Z", "body"),
+    S("M -0.35 -0.33 L -0.09 -0.33", "light", 0.022),
+    P("M -0.3 -0.25 L -0.14 -0.25 L -0.16 -0.2 L -0.28 -0.2 Z", "visor"),
+    /* torso with a V chest plate round the core */
+    P("M -0.3 -0.86 L 0.22 -0.86 Q 0.32 -0.86 0.32 -0.76 L 0.3 -0.5 Q 0.29 -0.42 0.2 -0.42 L -0.24 -0.42 Q -0.33 -0.42 -0.34 -0.5 L -0.38 -0.76 Q -0.38 -0.86 -0.3 -0.86 Z", "steel"),
+    P("M -0.33 -0.52 L 0.3 -0.52 L 0.296 -0.47 L -0.335 -0.47 Z", "steelD"),
+    P("M -0.36 -0.83 L 0.07 -0.83 L 0.03 -0.63 L -0.14 -0.54 L -0.31 -0.62 Z", "body"),
+    S("M -0.33 -0.8 L 0.04 -0.8", "light", 0.022),
+    E(-0.15, -0.69, 0.095, 0.095, "steelDD"), ALIVE2(E(-0.15, -0.69, 0.15, 0.15, "halo")), E(-0.15, -0.69, 0.068, 0.068, "glow"),
+    ALIVE2(E(-0.172, -0.71, 0.026, 0.026, "core")),
+    S("M 0.11 -0.75 L 0.24 -0.75", "steelD", 0.022), S("M 0.11 -0.7 L 0.24 -0.7", "steelD", 0.022), S("M 0.11 -0.65 L 0.24 -0.65", "steelD", 0.022),
+    E(0.1, -0.57, 0.018, 0.018, "steelD"), E(0.24, -0.57, 0.018, 0.018, "steelD"),
+    /* neck, antenna, helmet with a chamfered brow, a crest, an ear disc and one visor slit */
+    P("M -0.14 -0.93 L 0.06 -0.93 L 0.07 -0.85 L -0.15 -0.85 Z", "steelDD"),
+    S("M 0.14 -1.19 L 0.22 -1.33", "steelDD", 0.026),
+    ALIVE2(E(0.225, -1.35, 0.085, 0.085, "halo")), E(0.225, -1.35, 0.042, 0.042, "glow"),
+    P("M -0.26 -1.2 L 0.14 -1.2 Q 0.22 -1.2 0.22 -1.12 L 0.22 -0.98 Q 0.22 -0.9 0.14 -0.9 L -0.3 -0.9 Q -0.38 -0.9 -0.4 -0.97 L -0.43 -1.05 L -0.35 -1.16 Q -0.32 -1.2 -0.26 -1.2 Z", "steel"),
+    P("M -0.2 -1.2 L 0.06 -1.2 L 0.02 -1.26 L -0.16 -1.25 Z", "body"),
+    S("M -0.27 -1.165 L 0.14 -1.165", "steelD", 0.018),
+    E(0.13, -1.04, 0.07, 0.07, "body"), E(0.13, -1.04, 0.03, 0.03, "steelDD"),
+    P("M -0.42 -1.1 L 0 -1.1 Q 0.04 -1.1 0.04 -1.06 L 0.04 -1.0 Q 0.04 -0.96 0 -0.96 L -0.39 -0.96 L -0.43 -1.03 Z", "visor"),
+    ALIVE2(P("M -0.41 -1.075 L 0.0 -1.075 L 0.0 -0.985 L -0.39 -0.985 L -0.415 -1.03 Z", "halo")),
+    ALIVE2(P("M -0.4 -1.05 L -0.01 -1.05 L -0.01 -1.01 L -0.395 -1.01 Z", "glow")),
+    ALIVE2(E(-0.31, -1.03, 0.045, 0.03, "core")),
+    Object.assign(EYE(-0.29, -1.03, 0.6), { show: "dead" }), Object.assign(EYE(-0.11, -1.03, 0.6), { show: "dead" }),
+    S("M -0.33 -0.935 L -0.18 -0.935", "steelD", 0.018),
+    /* near arm: armoured shoulder, gauntlet and a pincer reaching forward */
+    S("M -0.34 -0.72 L -0.45 -0.58", "steel", 0.08),
+    S("M -0.46 -0.57 L -0.6 -0.52", "body", 0.095), S("M -0.47 -0.6 L -0.58 -0.56", "light", 0.02),
+    P("M -0.62 -0.55 Q -0.74 -0.61 -0.81 -0.54 Q -0.72 -0.55 -0.66 -0.5 Z", "steelD"),
+    P("M -0.62 -0.49 Q -0.72 -0.42 -0.8 -0.46 Q -0.72 -0.5 -0.64 -0.53 Z", "steelD"),
+    E(-0.62, -0.52, 0.04, 0.048, "steelDD"),
+    E(-0.45, -0.58, 0.042, 0.042, "steelDD"),
+    P("M -0.47 -0.74 Q -0.47 -0.88 -0.31 -0.9 L -0.16 -0.88 Q -0.12 -0.8 -0.18 -0.72 L -0.39 -0.68 Q -0.47 -0.68 -0.47 -0.74 Z", "body"),
+    S("M -0.43 -0.79 Q -0.37 -0.86 -0.24 -0.86", "light", 0.024) ] }
+};

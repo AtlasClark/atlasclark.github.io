@@ -16,7 +16,7 @@ import * as G from "./geom.js";
 import { CloudDir, hello } from "../js/cloud.js";
 import { kvGet } from "../js/store.js";
 
-const REV = "studio 1.20.1";
+const REV = "studio 1.20.2";
 const PETS_URL = "../pets/pets.json";
 const $ = id => document.getElementById(id);
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -77,6 +77,7 @@ function rarityOf(k) {
   if (isFx(k)) return { name: "Style shop, effect", i: 0 };
   if (isHat(k)) return { name: { crown: "leader, goal met", jester: "leader, under goal", grave: "a drowned pet", coin: "tokens", medal: "yesterday's winner" }[k], i: 0 };
   if (k === C.HOMUNCULUS_KIND) return { name: "Full-pen reward", i: 5 };
+  if (k === C.AUTOMATON_KIND) return { name: "Full-pen reward · second pen", i: 5 };
   if (k === C.MYSTERY_KIND) return { name: "Secret", i: 6 };
   const pen = k >= C.PEN3_FIRST ? 3 : k >= C.PEN2_FIRST ? 2 : 1, base = k - C.PEN_STARTS[pen];
   const b = C.PET_BINS.findIndex(x => x.kinds.includes(base));
@@ -734,6 +735,7 @@ function renderPetList() {
   const order = [{ pen: "First pen" }, ...C.PET_BINS.map((b, i) => ({ name: b.name, i, kinds: b.kinds })),
                  { name: "Reward and secret", i: 5, kinds: [C.HOMUNCULUS_KIND, C.MYSTERY_KIND] },
                  { pen: "Second pen" }, ...C.PEN2_BINS.map((b, i) => ({ name: b.name, i, kinds: b.kinds })),
+                 { name: "Reward", i: 5, kinds: [C.AUTOMATON_KIND] },
                  { pen: "Third pen" }, ...C.PEN3_BINS.map((b, i) => ({ name: b.name, i, kinds: b.kinds })),
                  { pen: "Hats and props" }, { name: "Crown and jester", i: 0, kinds: ["crown", "jester"] },
                  { name: "Holiday hats", i: 0, kinds: HOLIDAY_KEYS },

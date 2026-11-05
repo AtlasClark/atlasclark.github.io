@@ -12,7 +12,7 @@ import { S, personalGoal, capFor, totalOn, metGoal, pastCap, atCap, dayScoreFor,
 import { petKindFor, ownsEquipped, graveEquipped, petHueFor, isGrave, gravesOf, petsOwned,
          graveLine, petLabel, petName, petRarityOf, petBinIndex, petGridOrder, penFound,
          penOf, penKinds, pen2Open, pensOf, penAlive, penBuried, pen3Earned, pen3Open, PEN3_CLOSED,
-         hashHue, hueOf, rarityLabel, undoEffect, rollOdds } from "./pets.js";
+         hashHue, hueOf, rarityLabel, undoEffect, rollOdds, isReward, rewardPen } from "./pets.js";
 import { crownSvg, jesterSvg, hatSvg, drawPortrait, drawCritter, drawHeadstone, drawGoldPile, drawCoin, hatKeyFor, drawMedal, holidayOn, glassHatSvg, EVENTS, eventRange, eventDefault, setEventRanges } from "./art.js";
 import * as G from "./glass.js";
 import { diag, dir, cloud, sourceName } from "./store.js";
@@ -23,6 +23,8 @@ import { COSMETICS, drawShell } from "./cosmetics.js";
 import { isHydrationDay, teamSplash } from "./hydration.js";
 import { setHydrationDay } from "./hydfx.js";
 import { setHolidayTheme, seasonsOn, seasonOf } from "./themefx.js";
+import { MONSTERS, devBoss, setMonsterHp } from "./monsterfx.js";
+import { monsterNow } from "./monster.js";
 import { msgOf, isNew, openMsgs, whenText } from "./msg.js";
 import { $, esc, fmt, fmtOz, fmtGal, todayKey, dateKey, prettyTime, clockStamp, has, parseKey, shiftKey, aAn } from "./util.js";
 
@@ -434,7 +436,10 @@ function wornTheme() {
 }
 
 function renderEventBanner() {
+  const boss = devBoss(), fightNow = isHydrationDay() ? null : monsterNow();
+  if (boss || fightNow) { renderBossBanner(boss, fightNow); return; }       /* monster week wins over holidays and themes */
   const on = isHydrationDay(), el = $("eventBanner"), hol = holidayOn();
+  el.classList.remove("boss"); evEnd = null;
   setHydrationDay(on);
   /* a holiday's theme, else a bought theme this glass wears (or one being tried in the
      Style shop), else (unless this browser turned seasons off) the season's */
@@ -455,13 +460,56 @@ function renderEventBanner() {
   if (!evTimer) evTimer = setInterval(tickEventClock, 1000);
   el.hidden = false;
 }
+/* Monster week (monster.js rules, monsterfx.js looks): the monster's banner and health
+   bar. Localhost ?boss=<key>&hp=<0..100> shows any monster at any health (preview only). */
+let bossPrev = { key: "", pct: 100 };
+function renderBossBanner(boss, f) {
+  const key = boss ? boss.key : f.ev.key, M = MONSTERS[key], el = $("eventBanner");
+  setHydrationDay(false);
+  setHolidayTheme("m-" + key);
+  if (lineArt.on) { setLineArt(""); resetIcons(); }
+  const max = f && !boss ? f.max : Math.max(1, Math.round(teamSplash().goal * 5 * C.MONSTER.hpShare));
+  const hp = boss ? boss.hp : f.hp / f.max, pct = Math.max(0, Math.min(100, hp * 100));
+  setMonsterHp(hp);
+  const prev = bossPrev.key === key ? bossPrev.pct : pct;                    /* the last hit, shown falling away */
+  bossPrev = { key, pct };
+  const sum = o => Object.values(o || {}).reduce((a, b) => a + b, 0);
+  const top = Object.entries(f ? f.dealt : {}).sort((a, b) => b[1] - a[1])[0];
+  const won = f && !boss ? f.beaten : null, mine = S.mine || "";
+  evEnd = f ? parseKey(shiftKey(f.ev.end, 1)) : null;
+  const lines = won
+    ? [esc(won.name) + " landed the last hit on " + esc(weekday(won.day)) + ".",
+       "+" + C.MONSTER.shells + " shells and " + C.MONSTER.tokens + " tokens for everyone who fought."]
+    : M.flavor.split(/(?<=[.!?])\s+/).map(esc);
+  const html = '<div class="boss-head"><span class="boss-kick">' + (won ? "Beaten" : "Monster week &middot; " + esc(M.tag)) + '</span>' +
+    '<b class="boss-name">' + esc(M.name) + '</b>' + (won ? '' : '<span class="ev-clock" id="evClock"></span>') + '</div>' +
+    '<p class="boss-flavor">' + lines.join("<br>") + '</p>' +
+    '<div class="boss-hp" role="img" aria-label="' + esc(M.name) + ' health ' + Math.round(pct) + '%">' +
+    '<i class="boss-bar"><s style="width:' + Math.max(prev, pct).toFixed(1) + '%"></s><b style="width:' + pct.toFixed(1) + '%"></b></i>' +
+    '<span class="boss-num">' + Math.ceil(max * hp).toLocaleString() + ' / ' + max.toLocaleString() + '</span></div>' +
+    '<div class="boss-foot"><span>Today: <b>' + fmtOz(Math.round(sum(f && f.today))) + '</b> damage</span>' +
+    (top && top[1] > 0 ? '<span>Hardest hitter: <b>' + esc(top[0]) + '</b></span>' : '') +
+    (f && f.soaked.includes(mine) && !won ? '<span class="boss-soak">You drowned a pet. Half damage till Sunday.</span>' : '') +
+    (won ? '' : '<span class="boss-twist">' + esc(M.twist) + ' A drowned pet feeds it.</span>') + '</div>';
+  el.classList.add("boss");
+  if (evHtml !== html) {
+    el.innerHTML = evHtml = html;
+    tickEventClock();
+    if (prev > pct) setTimeout(() => { const c = el.querySelector(".boss-bar s"); if (c) c.style.width = pct.toFixed(1) + "%"; }, 700);
+  }
+  if (!evTimer && evEnd) evTimer = setInterval(tickEventClock, 1000);
+  el.hidden = false;
+}
+
 /* Time left in the day, to local midnight. */
+let evEnd = null;                                                          /* a monster week's end, else today's */
 function tickEventClock() {
   const el = $("evClock");
   if (!el) return;
-  const now = new Date(), end = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+  const now = new Date(), end = evEnd || new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
   const s = Math.max(0, Math.floor((end - now) / 1000)), p = n => String(n).padStart(2, "0");
-  el.textContent = "⏳ " + Math.floor(s / 3600) + "h " + p(Math.floor(s / 60) % 60) + "m " + p(s % 60) + "s left";
+  const d = Math.floor(s / 86400);
+  el.textContent = "⏳ " + (d ? d + "d " : "") + Math.floor(s / 3600) % (d ? 24 : 1e9) + "h " + p(Math.floor(s / 60) % 60) + "m " + p(s % 60) + "s left";
 }
 
 function renderStaleWarning() {
@@ -508,7 +556,8 @@ export function ensureIcons() {
     css.push(".pi-" + k + "{background-image:url(" + iconUrl(ctx => drawPortrait(ctx, 30, 42, 20, k, hashHue(C.PET_BASE_NAMES[k] + k))) + ")}");
   }
   css.push(".pi-grave{background-image:url(" + iconUrl(ctx => drawHeadstone(ctx, 30, 50, 26, 210)) + ")}");
-  css.push(".pi-hom{background-image:url(" + iconUrl(ctx => drawCritter(ctx, 30, 50, 17, 0, false, false, C.HOMUNCULUS_KIND, 210)) + ")}");
+  css.push(".pi-rw1{background-image:url(" + iconUrl(ctx => drawCritter(ctx, 30, 50, 17, 0, false, false, C.HOMUNCULUS_KIND, 210)) + ")}");
+  css.push(".pi-rw2{background-image:url(" + iconUrl(ctx => drawPortrait(ctx, 30, 42, 20, C.AUTOMATON_KIND, C.PEN_REWARDS[2].hue)) + ")}");
   css.push(".coin{background:center/contain no-repeat url(" + iconUrl(ctx => drawCoin(ctx, 30, 30, 58)) + ");box-shadow:none}");
   css.push(".shellico{background:center/contain no-repeat url(" + iconUrl(ctx => drawShell(ctx, 30, 30, 58)) + ")}");
   css.push(".medalico{background:center/contain no-repeat url(" + iconUrl(ctx => drawMedal(ctx, 30, 42, 70)) + ")}");
@@ -560,15 +609,17 @@ function renderPets() {
     h.push('</div>');
     if (pen > 1) {
       h.push('<p class="pen-note' + (shut ? ' closed' : '') + '">' + (shut ? esc(PEN3_CLOSED) + ' Its pets wait here.'
-        : 'Opened ' + esc(prettyDate(pen === 3 ? p.pen3 : p.pen2)) + '.' + (pen === pensOf(p).at(-1) ? ' New pets come from here now.' : '')) + '</p></div>');
-      continue;
+        : 'Opened ' + esc(prettyDate(pen === 3 ? p.pen3 : p.pen2)) + '.' + (pen === pensOf(p).at(-1) ? ' New pets come from here now.' : '')) + '</p>');
     }
-    const got = has(p.pets, C.HOMUNCULUS_KIND);
-    h.push('<div class="pet-reward' + (got ? ' won" data-act="equip" data-kind="' + C.HOMUNCULUS_KIND + '" role="button" tabindex="0"' : '"') +
-           ' title="' + (got ? esc(C.PET_NAMES[C.HOMUNCULUS_KIND]) + ' &middot; every one of them at once'
-                             : 'Have all ' + C.PET_COUNT + ' alive to find out') + '">' +
-           (got ? '<i class="pi pi-hom"></i>' : '<span class="q">?</span>') +
-           '<span class="rl">' + (got ? esc(C.PET_NAMES[C.HOMUNCULUS_KIND]) : penFound(p) + ' / ' + C.PET_COUNT + ' alive') + '</span></div>');
+    const rw = C.PEN_REWARDS[pen];                          /* the full-pen reward, under its pen */
+    if (rw) {
+      const got = has(p.pets, rw.kind);
+      h.push('<div class="pet-reward' + (got ? ' won" data-act="equip" data-kind="' + rw.kind + '" role="button" tabindex="0"' : '"') +
+             ' title="' + (got ? esc(C.PET_NAMES[rw.kind]) + ' &middot; ' + (pen === 1 ? 'every one of them at once' : 'built from the second pen&rsquo;s spare parts')
+                               : 'Have all ' + C.PET_COUNT + ' alive to find out') + '">' +
+             (got ? '<i class="pi pi-rw' + pen + '"></i>' : '<span class="q">?</span>') +
+             '<span class="rl">' + (got ? esc(C.PET_NAMES[rw.kind]) : penFound(p, pen) + ' / ' + C.PET_COUNT + ' alive') + '</span></div>');
+    }
     h.push('</div>');
   }
   h.push('</div>');
@@ -854,7 +905,7 @@ function recapHtml() {
 
 /* Mondays: the week just gone, Monday to Sunday, in place of the day card. Who won
    the most days, the week's highlights, every new pet and drowning, and the shop. */
-const WEEK_RARITY = k => k === C.MYSTERY_KIND ? 7 : k === C.HOMUNCULUS_KIND ? 6 : petBinIndex(k);
+const WEEK_RARITY = k => k === C.MYSTERY_KIND ? 7 : isReward(k) ? 6 : petBinIndex(k);
 const shortDate = k => parseKey(k).toLocaleDateString("en-US", { month: "short", day: "numeric" });
 const weekday = k => parseKey(k).toLocaleDateString("en-US", { weekday: "long" });
 const plural = (n, w) => n + " " + w + (n === 1 ? "" : "s");
@@ -1068,7 +1119,7 @@ async function nextUnlock() {
 
 function tierOf(kind) {
   if (kind === C.MYSTERY_KIND) return "rm";
-  if (kind === C.HOMUNCULUS_KIND) return "rh";
+  if (isReward(kind)) return "rh";
   return "r" + petBinIndex(kind);
 }
 
@@ -1080,6 +1131,7 @@ function drawRevealPet(info) {
   ctx.clearRect(0, 0, size, size);
   if (info.kind === C.MYSTERY_KIND) drawCritter(ctx, 66, 104, 28, 0, false, false, info.kind, 0);
   else if (info.kind === C.HOMUNCULUS_KIND) drawCritter(ctx, 60, 98, 34, 0, false, false, info.kind, info.hue);
+  else if (isReward(info.kind)) drawPortrait(ctx, 60, 80, 44, info.kind, info.hue);
   else drawPortrait(ctx, 60, 84, 40, info.kind, info.hue);
 }
 
@@ -1132,8 +1184,9 @@ function playUnlock(info) {
       chip.textContent = rarityLabel(info.kind);
       $("ulQ").hidden = true;
       drawRevealPet(info);
-      $("ulName").innerHTML = info.kind === C.HOMUNCULUS_KIND
-        ? 'All ' + C.PET_COUNT + ' found. The pen made the <b>' + esc(label) + '</b>'
+      $("ulName").innerHTML = isReward(info.kind)
+        ? 'All ' + C.PET_COUNT + (rewardPen(info.kind) > 1 ? ' of the second pen' : '') + ' found. The pen ' +
+          C.PEN_REWARDS[rewardPen(info.kind)].verb + ' the <b>' + esc(label) + '</b>'
         : info.kind === C.MYSTERY_KIND
           ? '<b>' + esc(label) + '</b><small>It is not from the pen. Keep it on.</small>'
           : info.fresh ? '<span class="ul-new">New</span> <b>' + esc(label) + '</b>'

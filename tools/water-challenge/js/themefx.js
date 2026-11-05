@@ -4,6 +4,8 @@
    holiday's own effect across the screen. Still frames, no goal effect, for anyone
    who prefers reduced motion. National Hydration Day has its own (hydfx.js). */
 
+import { MONSTER_THEMES } from "./monsterfx.js";
+
 const LAYER = "position:fixed;inset:0;width:100%;height:100%;pointer-events:none;";
 const FPS = 24;
 
@@ -1077,5 +1079,6 @@ const THEMES = {
   atlas:     { scene: atlasScene,     draw: drawAtlas },
   hairline:  { scene: hairlineScene,  draw: drawHairline },
   blueprint: { scene: blueprintScene, draw: drawBlueprint },
-  synthwave: { scene: synthScene,     draw: drawSynth }
+  synthwave: { scene: synthScene,     draw: drawSynth },
+  ...MONSTER_THEMES                                                       /* monster week (draft) */
 };

@@ -1526,3 +1526,59 @@ li.pour.armed .undo-x { opacity: 1; background: #c4434f; color: #fff; }
 .msg-count { position: absolute; right: 10px; bottom: 6px; font-size: 11px; font-variant-numeric: tabular-nums; color: var(--faint); pointer-events: none; }
 .msg-count.near { color: var(--danger-ink, #c0392b); font-weight: 700; }
 .msg-clear { margin-right: auto; }
+
+/* ---- Monster week (rev 1.42.0; rules js/monster.js, looks js/monsterfx.js) ----
+   The page goes dark whatever the theme button says; each monster tints it and sets the
+   health bar's colours (--boss-a / --boss-b). */
+:root:is([data-holiday="m-kraken"], [data-holiday="m-leviathan"], [data-holiday="m-pirate"], [data-holiday="m-ai"]) {
+  --page-a: #050a12; --page-b: #08111c; --page-c: #0b1622;
+  --ink: #eef4fa; --ink-2: #d6e2ee; --muted: #9fb2c6; --faint: #8295aa; --fainter: #556678;
+  --head: #ffb35c; --title: #f4f8fc;
+  --line: #1b2836; --line-2: #263648;
+  --card: rgba(10,18,30,.55); --card-edge: rgba(200,225,255,.12);
+  --panel: rgba(8,14,24,.92); --solid: #0d1724; --solid-2: #142132;
+  --shadow: 0 18px 48px rgba(0,0,0,.55);
+  --accent: #4fb3ff; --accent-ink: #9fd4ff; --accent-soft: #0f2a40; --chip-line: #2b4560;
+  --input: #0a1320; --input-line: #2b3f55;
+  --glass-edge: rgba(170,210,255,.5); --glass-fill: rgba(170,210,255,.05); --glass-inner: rgba(190,220,255,.14);
+  --track: #1b2836; --pace: #ffb35c;
+  --cell: #122030; --cell-none: #0c1724; --cell-some: #1f3348;
+  --pc-bg: #102030; --pc-hover: #18304a; --pc-locked: #0b1622;
+  --scrim: rgba(2,6,12,.7);
+  --boss-a: #ff4d6d; --boss-b: #ffb35c;
+  color-scheme: dark;
+}
+:root[data-holiday="m-kraken"]    { --boss-a: #e2336f; --boss-b: #ffb84a; --accent: #ff6f9b; --accent-ink: #ffb3cb; --glass-edge: rgba(255,170,200,.45); }
+:root[data-holiday="m-leviathan"] { --boss-a: #12b6d8; --boss-b: #7ff3ff; --accent: #38d6f5; --accent-ink: #a8f1ff; --glass-edge: rgba(120,235,255,.5); }
+:root[data-holiday="m-pirate"]    { --boss-a: #2fd39a; --boss-b: #d8f86a; --accent: #4fe0a8; --accent-ink: #b6ffde; --glass-edge: rgba(150,255,210,.42);
+                                    --page-a: #060a1c; --page-b: #10142e; --page-c: #181c3c; }
+:root[data-holiday="m-ai"]        { --boss-a: #ff2d44; --boss-b: #ff9f43; --accent: #ff4d5e; --accent-ink: #ffb0b8; --glass-edge: rgba(255,120,130,.42);
+                                    --page-a: #050509; --page-b: #0b0810; --page-c: #110810; }
+[data-holiday^="m-"] h1 { text-shadow: 0 0 24px color-mix(in srgb, var(--boss-a) 55%, transparent); }
+[data-holiday="m-ai"] h1 { font-family: var(--mono); letter-spacing: .02em; }
+
+.banner.event.boss { gap: 10px; color: var(--ink); background: linear-gradient(160deg, rgba(8,12,22,.6), rgba(16,20,34,.52));
+  border: 1px solid color-mix(in srgb, var(--boss-a) 45%, transparent);
+  box-shadow: 0 10px 34px rgba(0,0,0,.45), 0 0 0 1px rgba(255,255,255,.03) inset, 0 0 40px color-mix(in srgb, var(--boss-a) 18%, transparent);
+  backdrop-filter: blur(3px); }
+.boss-head { display: grid; justify-items: center; gap: 3px; text-align: center; }
+.boss-kick { font-size: 11px; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; color: var(--boss-b); }
+.boss-name { font-size: 28px; letter-spacing: -.01em; line-height: 1.1; color: #fff;
+  text-shadow: 0 0 18px color-mix(in srgb, var(--boss-a) 70%, transparent); }
+[data-holiday="m-ai"] .boss-name { font-family: var(--mono); letter-spacing: .04em; }
+.banner.event.boss .ev-clock { background: rgba(255,255,255,.07); color: var(--ink-2); margin-top: 4px; }
+.boss-flavor { margin: 0 auto; max-width: 640px; text-align: center; font-size: 13.5px; font-weight: 500; color: var(--ink-2); line-height: 1.45; }
+.boss-hp { display: flex; align-items: center; gap: 10px; }
+.boss-bar { position: relative; flex: 1; height: 16px; border-radius: 4px; overflow: hidden;
+  background: rgba(255,255,255,.07); box-shadow: inset 0 0 0 1px rgba(255,255,255,.12); }
+.boss-bar b, .boss-bar s { position: absolute; inset: 0 auto 0 0; display: block; }
+.boss-bar s { background: rgba(255,255,255,.55); transition: width .9s ease-in; }   /* the last hit, falling away */
+.boss-bar b { background: linear-gradient(90deg, var(--boss-a), var(--boss-b)); box-shadow: 0 0 14px color-mix(in srgb, var(--boss-a) 70%, transparent);
+  transition: width .5s; }
+.boss-bar::after { content: ""; position: absolute; inset: 0;                /* tick marks every 10% */
+  background: repeating-linear-gradient(90deg, transparent 0 calc(10% - 1px), rgba(0,0,0,.45) calc(10% - 1px) 10%); }
+.boss-num { min-width: 92px; text-align: right; font-size: 13px; font-weight: 800; font-variant-numeric: tabular-nums; color: #fff; }
+.boss-foot { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 14px; font-size: 12px; font-weight: 600; color: var(--muted); }
+.boss-foot b { color: var(--ink); }
+.boss-twist { color: var(--boss-b); }
+.boss-soak { color: #ff8a8a; font-weight: 800; }

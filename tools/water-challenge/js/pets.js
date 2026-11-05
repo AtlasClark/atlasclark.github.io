@@ -90,24 +90,27 @@ export function petGridOrder(pen = 1) {
   return order;
 }
 
-/* The full-pen reward needs all 25 first-pen pets alive; syncHomunculus takes it away
-   when one is lost and gives it back when all 25 are alive again. */
-export function penComplete(p) {
-  for (let k = 0; k < C.PET_COUNT; k++) if (!has(p.pets, k)) return false;
-  return true;
-}
-export function penFound(p) {
-  let n = 0;
-  for (let k = 0; k < C.PET_COUNT; k++) if (has(p.pets, k)) n++;
-  return n;
-}
+/* Full-pen rewards (C.PEN_REWARDS): the Homunculus needs all 25 first-pen pets alive,
+   the Automaton all 25 of the second pen. syncRewards takes one away when a pet of its
+   pen is lost and gives it back when the 25 are alive again. */
+export const penComplete = (p, pen = 1) => penAlive(p, pen) >= C.PET_COUNT;
+export const penFound = (p, pen = 1) => penAlive(p, pen);
+/* The pen whose reward kind k is, else 0. */
+export const rewardPen = k => Math.max(0, C.PEN_REWARDS.findIndex(r => r && r.kind === k));
+export const isReward = k => rewardPen(k) > 0;
 
-export function grantHomunculus(p) {
-  if (!penComplete(p) || has(p.pets, C.HOMUNCULUS_KIND)) return false;
-  if (!p.pets) p.pets = {};
-  p.pets[String(C.HOMUNCULUS_KIND)] = 210;
-  if (petKindFor(p) !== C.MYSTERY_KIND) p.equippedPet = C.HOMUNCULUS_KIND;
-  return true;
+/* Gives every reward now earned and not held; returns the newest one's kind, else null. */
+export function grantReward(p) {
+  let got = null;
+  for (let pen = 1; pen < C.PEN_REWARDS.length; pen++) {
+    const r = C.PEN_REWARDS[pen];
+    if (!penComplete(p, pen) || has(p.pets, r.kind)) continue;
+    if (!p.pets) p.pets = {};
+    p.pets[String(r.kind)] = r.hue;
+    if (petKindFor(p) !== C.MYSTERY_KIND) p.equippedPet = r.kind;
+    got = r.kind;
+  }
+  return got;
 }
 
 /* What a bin can give a roll: any species not buried, owned or not (a repeat gives a
@@ -249,7 +252,7 @@ export function applyRoll(p, rnd, key) {
   p.rollWasNew = !dup;
   p.petRollDay = key;
   logDay(p, "rollLog", key, { k, n: dup ? 0 : 1 });
-  return { kind: k, hue: Number(p.pets[String(k)]), fresh: !dup, homunculus: grantHomunculus(p) };
+  return { kind: k, hue: Number(p.pets[String(k)]), fresh: !dup, reward: grantReward(p) };
 }
 
 /* Status line and unlock card for a roll that has been saved. */
@@ -261,9 +264,9 @@ export function announce(p, res, how) {
   } else if (res.mystery) {
     bus.unlock({ name: p.name, kind: C.MYSTERY_KIND, hue: 0, fresh: true, equipped: true,
                  msg: p.name + verb + " found something that doesn't live in the pen. Keep it on; it won't wait around." });
-  } else if (res.homunculus) {
-    bus.unlock({ name: p.name, kind: C.HOMUNCULUS_KIND, hue: 210, fresh: true, rolled: k,
-                 equipped: petKindFor(p) === C.HOMUNCULUS_KIND, msg: p.name + " has all " + C.PET_COUNT + ". The pen made something new." });
+  } else if (res.reward != null) {
+    bus.unlock({ name: p.name, kind: res.reward, hue: C.PEN_REWARDS[rewardPen(res.reward)].hue, fresh: true, rolled: k,
+                 equipped: petKindFor(p) === res.reward, msg: rewardMsg(p.name, res.reward) });
   } else {
     bus.unlock({ name: p.name, kind: k, hue: res.hue, fresh: res.fresh, equipped: petKindFor(p) === k,
                  msg: p.name + verb + (res.fresh ? " unlocked the " : " rolled another ") + petLabel(k) +
@@ -313,27 +316,37 @@ async function killPet(p) {
   return { kind: k, hue };
 }
 
-/* Today's pet events are a function of today's totals, not a ratchet. Runs for
-   every active person after each load and each action. */
-/* The full-pen reward follows the pen. Returns true when it changed. */
-export async function syncHomunculus(p) {
-  const H = String(C.HOMUNCULUS_KIND), holds = has(p.pets, H), whole = penComplete(p);
-  if (holds && !whole) {
-    delete p.pets[H];
-    if (petKindFor(p) === C.HOMUNCULUS_KIND) p.equippedPet = C.PET_NO_PET;
-    if (!(await saveParticipant(p, null, [H]))) return false;
-    bus.msg(p.name + " lost the " + C.PET_NAMES[C.HOMUNCULUS_KIND] + ". It needs all " + C.PET_COUNT + " alive.", false);
-    return true;
+/* "Ada has all 25. The pen made something new." / "... of the second pen. ... built ..." */
+export function rewardMsg(name, k) {
+  const pen = rewardPen(k);
+  return name + " has all " + C.PET_COUNT + (pen > 1 ? " of the " + C.PEN_LABELS[pen].toLowerCase() : "") +
+         ". The pen " + C.PEN_REWARDS[pen].verb + " something new.";
+}
+
+/* Each full-pen reward follows its pen. Returns true when one changed. */
+export async function syncRewards(p) {
+  let changed = false;
+  for (let pen = 1; pen < C.PEN_REWARDS.length; pen++) {
+    const K = C.PEN_REWARDS[pen].kind, H = String(K), holds = has(p.pets, H), whole = penComplete(p, pen);
+    if (holds && !whole) {
+      delete p.pets[H];
+      if (petKindFor(p) === K) p.equippedPet = C.PET_NO_PET;
+      if (!(await saveParticipant(p, null, [H]))) continue;
+      bus.msg(p.name + " lost the " + C.PET_NAMES[K] + ". It needs all " + C.PET_COUNT +
+              (pen > 1 ? " of the " + C.PEN_LABELS[pen].toLowerCase() : "") + " alive.", false);
+      changed = true;
+    } else if (!holds && whole) {
+      const revived = isGrave(p, H) ? [H] : null;            /* an old grave of it, from before this rule */
+      if (revived) delete p.graves[H];
+      p.pets = p.pets || {};
+      p.pets[H] = C.PEN_REWARDS[pen].hue;
+      if (petKindFor(p) !== C.MYSTERY_KIND) p.equippedPet = K;
+      if (!(await saveParticipant(p, null, null, revived))) continue;
+      announce(p, { kind: K, reward: K });
+      changed = true;
+    }
   }
-  if (!holds && whole) {
-    const revived = isGrave(p, H) ? [H] : null;              /* an old grave of it, from before this rule */
-    if (revived) delete p.graves[H];
-    grantHomunculus(p);
-    if (!(await saveParticipant(p, null, null, revived))) return false;
-    announce(p, { kind: C.HOMUNCULUS_KIND, homunculus: true, hue: 210 });
-    return true;
-  }
-  return false;
+  return changed;
 }
 
 /* The third pen opens the first time all 50 of the first two pens are alive at once
@@ -369,7 +382,7 @@ export async function openPen2(p) {
 export async function reconcilePets() {
   if (!C.EGG_ENABLED) return;
   const key = todayKey();
-  for (const p of S.participants) if (await syncHomunculus(p)) bus.petReset(p.name);
+  for (const p of S.participants) if (await syncRewards(p)) bus.petReset(p.name);
   for (const p of S.participants) await openPen2(p);
   for (const p of S.participants) await openPen3(p);
   for (const p of S.participants) {
@@ -387,7 +400,7 @@ export async function reconcilePets() {
       const dead = await killPet(p);
       if (dead) bus.drown(p.name, dead.kind, dead.hue);
     }
-    if (await syncHomunculus(p)) bus.petReset(p.name);
+    if (await syncRewards(p)) bus.petReset(p.name);
     await openPen2(p);
     if (await settlePen3(p)) bus.petReset(p.name);
   }
@@ -417,7 +430,7 @@ export async function equipPet(name, kind) {
 /* Rarity text for the activity feed. The reward and the one outside the pen have
    no bin (once shown as Common). */
 export function rarityLabel(k) {
-  if (k === C.HOMUNCULUS_KIND) return "reward";
+  if (isReward(k)) return "reward";
   if (k === C.MYSTERY_KIND) return "not in the pen";
   return petRarityOf(k).name;
 }

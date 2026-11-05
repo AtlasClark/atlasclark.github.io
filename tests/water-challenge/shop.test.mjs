@@ -328,6 +328,34 @@ test("full-pen reward at format 22: needs all 25 alive, goes when one drowns, co
   assert.ok(own(p, C.HOMUNCULUS_KIND), "all 25 alive again: it comes back");
 });
 
+test("second-pen reward: the Automaton needs all 25 of the second pen, and follows that pen only", { skip: skipReason }, async () => {
+  const { S } = await fresh();
+  const p = S.participants.find(x => x.pets);
+  p.graves = p.graves || {};
+  for (const k of [...web.pets.penKinds(1), ...web.pets.penKinds(2)]) {   /* both pens whole */
+    p.pets[String(k)] = p.pets[String(k)] ?? 100; delete p.graves[String(k)];
+  }
+  p.pen2 = p.pen2 || "2026-10-01";
+  delete p.pets[String(C.AUTOMATON_KIND)];
+  await web.store.saveParticipant(p, null);
+  await web.pets.reconcilePets();
+  assert.ok(own(p, C.AUTOMATON_KIND), "all 25 of the second pen alive: granted");
+  assert.equal(Number(p.pets[String(C.AUTOMATON_KIND)]), C.PEN_REWARDS[2].hue);
+  assert.equal(web.pets.rarityLabel(C.AUTOMATON_KIND), "reward");
+  assert.ok(!web.pets.penOf(C.AUTOMATON_KIND), "not in any pen: never rolled, bought or drowned by lot");
+
+  delete p.pets["3"]; p.graves["3"] = 1;                                /* a first-pen pet lost */
+  await web.store.saveParticipant(p, null, ["3"]);
+  await web.pets.reconcilePets();
+  assert.ok(!own(p, C.HOMUNCULUS_KIND) && own(p, C.AUTOMATON_KIND), "a first-pen loss takes only the Homunculus");
+
+  const k2 = C.PEN2_FIRST + 4;                                          /* a second-pen pet lost */
+  delete p.pets[String(k2)]; p.graves[String(k2)] = 1;
+  await web.store.saveParticipant(p, null, [String(k2)]);
+  await web.pets.reconcilePets();
+  assert.ok(!own(p, C.AUTOMATON_KIND), "a second-pen loss takes the Automaton");
+});
+
 /* ---- the cap bonus ---------------------------------------------------------- */
 test("cap bonus: 5 tokens a day past the cap, from the start date on, taken back on undo", { skip: skipReason }, async () => {
   const { S, day, M } = await fresh();

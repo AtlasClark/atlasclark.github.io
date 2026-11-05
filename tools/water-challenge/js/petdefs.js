@@ -19,7 +19,7 @@
 
 import * as C from "./config.js";
 import { PEN1_ART, EXTRA_ART } from "./pen1art.js";
-import { PEN2_ART } from "./pen2art.js";
+import { PEN2_ART, REWARD2_ART } from "./pen2art.js";
 import { PEN3_ART } from "./pen3art.js";
 import { PROP_ART, HOLIDAY_ART } from "./propart.js";
 import { CUP_ART, FX_ART } from "./styleart.js";
@@ -62,13 +62,13 @@ function cleanShape(s, pal) {
   return s;
 }
 
-/* Every pet's built-in drawing (the three pens, the Homunculus, the dragon) sits in defs
+/* Every pet's built-in drawing (the three pens, both rewards, the dragon) sits in defs
    from the start, and every hat and prop in hats; pets.json can replace any of them.
    A built-in drawing may say how it moves (zone): the third pen's flyers and deep ones. */
 function seedPens() {
   const all = [...PEN1_ART.map((p, i) => [i, p]), ...PEN2_ART.map((p, i) => [C.PEN2_FIRST + i, p]),
                ...PEN3_ART.map((p, i) => [C.PEN3_FIRST + i, p]),
-               ...Object.entries(EXTRA_ART).map(([k, p]) => [Number(k), p])];
+               ...Object.entries({ ...EXTRA_ART, ...REWARD2_ART }).map(([k, p]) => [Number(k), p])];
   for (const [k, p] of all) {
     const pal = {};
     for (const [n, c] of Object.entries(p.pal)) { const v = cleanColour(c); if (v) pal[n] = v; }

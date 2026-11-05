@@ -1,8 +1,8 @@
 /* Water Challenge (web) - constants: rules, tunables and the on-disk contract
    (FORMAT_REV, UTF-16 LE + BOM JSON, unknown fields kept). */
 
-export const REV         = "rev 1.40.3";
-export const APP_VERSION = "web 1.40.3";   /* stamped as writerVersion */
+export const REV         = "rev 1.42.0";
+export const APP_VERSION = "web 1.42.0";   /* stamped as writerVersion */
 /* Every file is written at FORMAT_REV. A file stamped higher came from a newer
    build, and the page asks for a reload. */
 export const FORMAT_REV    = 22;
@@ -89,7 +89,7 @@ export const MOVED_FILE       = "_moved.json";
    Every file the page is made of. When a new version is out, these are re-fetched
    past the browser cache before reloading, so old and new modules never mix. */
 export const SITE_FILES = ["./", "app.css",
-  "js/app.js", "js/art.js", "js/bottle.js", "js/cloud.js", "js/cloudui.js", "js/config.js", "js/glass.js", "js/guard.js", "js/live.js", "js/model.js", "js/msg.js", "js/hydration.js", "js/hydfx.js", "js/themefx.js", "js/cosmetics.js", "js/styleart.js", "js/styleui.js", "js/pen1art.js", "js/pen2art.js", "js/pen3art.js", "js/propart.js", "js/petdefs.js",
+  "js/app.js", "js/art.js", "js/bottle.js", "js/cloud.js", "js/cloudui.js", "js/config.js", "js/glass.js", "js/guard.js", "js/live.js", "js/model.js", "js/msg.js", "js/hydration.js", "js/hydfx.js", "js/themefx.js", "js/monster.js", "js/monsterfx.js", "js/cosmetics.js", "js/styleart.js", "js/styleui.js", "js/pen1art.js", "js/pen2art.js", "js/pen3art.js", "js/propart.js", "js/petdefs.js",
   "js/pets.js", "js/plinko.js", "js/radial.js", "js/reveal.js", "js/shop.js", "js/shopui.js", "js/store.js", "js/ui.js", "js/util.js", "pets/pets.json"];
 export const VERSION_CHECK_MS = 300000;
 
@@ -204,7 +204,8 @@ export const PET_NAMES = [
   "Narwhal","Axolotl","Nessie","Cat in a Ring",
   "Homunculus","Dragon",
   ...PEN2_NAMES,
-  ...PEN3_NAMES
+  ...PEN3_NAMES,
+  "Automaton"
 ];
 /* PET_NAMES can be renamed by pets/pets.json; these never change (icon hues use them). */
 export const PET_BASE_NAMES = PET_NAMES.slice();
@@ -224,8 +225,19 @@ export const PET_COUNT        = 25;                /* per pen */
 export const HOMUNCULUS_KIND  = 25;
 export const MYSTERY_KIND     = 26;
 export const MYSTERY_CHANCE   = 0.006;
-export const PET_MAX          = PEN3_FIRST + 25;   /* every kind: three pens, the reward, the dragon */
+export const AUTOMATON_KIND   = PEN3_FIRST + 25;   /* 77, the second pen's reward */
+export const PET_MAX          = AUTOMATON_KIND + 1; /* every kind: three pens, both rewards, the dragon */
+/* Full-pen rewards (index = pen): all 25 of that pen alive at once brings it; lose one
+   and it goes until they are whole again. */
+export const PEN_REWARDS = [null, { kind: HOMUNCULUS_KIND, hue: 210, verb: "made" }, { kind: AUTOMATON_KIND, hue: 195, verb: "built" }];
 export const PET_NO_PET       = -1;
+
+/* ---- monster week (js/monster.js rules, js/monsterfx.js looks; rev 1.42.0) ----
+   From the first Monday of each month to that Sunday. since: the first week that counts.
+   hpShare: health = everyone's Monday-Friday goals x this. Beaten: shells + tokens for
+   everyone who hit it. regrow: the kraken's overnight heal (share of its health); feed:
+   the heal a drowned pet gives it; soak: what a drowner's pours do after that. */
+export const MONSTER = { since: "2026-12-01", hpShare: 0.75, shells: 20, tokens: 5, regrow: 0.1, feed: 0.1, soak: 0.5 };
 export const JOKE_KIND        = 5;
 export const GRAVE_LINES = [
   "You did this to me.",

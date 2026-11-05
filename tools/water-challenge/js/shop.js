@@ -8,16 +8,17 @@ import * as C from "./config.js";
 import { S, tokensEarned, capBonus, dayWinners } from "./model.js";
 import { saveParticipant, petKindFor, setSpendCheck } from "./store.js";
 import { has, todayKey, localStamp, shiftKey, parseKey, aAn } from "./util.js";
-import { applyRoll, dayRng, grantHomunculus, isGrave, petBinIndex, penOf, binsFor, rollPen, pen2Open, pen3Open, pen3Earned, PEN3_CLOSED } from "./pets.js";
+import { applyRoll, dayRng, grantReward, isGrave, petBinIndex, penOf, binsFor, rollPen, pen2Open, pen3Open, pen3Earned, PEN3_CLOSED } from "./pets.js";
 import { COSMETICS, SLOTS, PAINT_COST } from "./cosmetics.js";
 import { hydrationEarned } from "./hydration.js";
+import { monsterEarned } from "./monster.js";
 
 const isShell = s => C.SHELL_KINDS.includes(s.kind);
 const isShard = s => C.SHARD_KINDS.includes(s.kind);
 const notTokens = s => isShell(s) || isShard(s);
 export const spentTotal = p => (p.spends || []).reduce((a, s) => a + (notTokens(s) ? 0 : Number(s.cost) || 0), 0);
 export const chestWinnings = p => (p.spends || []).reduce((a, s) => a + (s.chest ? Number(s.chest.won) || 0 : 0), 0);
-export const earnedTotal = p => tokensEarned(p) + capBonus(p) + chestWinnings(p) + hydrationEarned(p).tokens;
+export const earnedTotal = p => tokensEarned(p) + capBonus(p) + chestWinnings(p) + hydrationEarned(p).tokens + monsterEarned(p).tokens;
 
 /* The Community Chest holds every token put in by a centre landing, less every win.
    It lives in the spend records, so it merges like everything else. Two wins at the
@@ -75,9 +76,10 @@ export function rerollBlock(p) {
   const key = todayKey();
   if (p.petRollDay !== key || !(Number(p.rollKind) >= 0)) return "Reach today's goal first.";
   if (p.rerollDay === key) return "Already rerolled today.";
-  /* A new pen species today plus the full-pen reward means today's roll completed
+  /* A new pen species today plus that pen's full-pen reward means today's roll completed
      the pen; taking it back would leave the reward unearned. */
-  if (p.rollWasNew && penOf(Number(p.rollKind)) === 1 && has(p.pets, C.HOMUNCULUS_KIND)) {
+  const rw = C.PEN_REWARDS[penOf(Number(p.rollKind))];
+  if (p.rollWasNew && rw && has(p.pets, rw.kind)) {
     return "Today's roll completed the pen.";
   }
   const t = tierOf(Number(p.rollKind));                          /* a repeat: its shard goes back */
@@ -152,11 +154,11 @@ export async function plinkoPlay(p) {
   const revived = fresh && isGrave(p, d.kind);
   const hue = empty ? 0 : has(p.pets, d.kind) ? Number(p.pets[String(d.kind)]) : revived ? Number(p.graves[String(d.kind)]) : newHue(d.kind);
   if (fresh) { give(p, d.kind, hue); wear(p, d.kind); }
-  const homunculus = fresh && grantHomunculus(p);
+  const reward = fresh ? grantReward(p) : null;
   const s = spend(p, "plinko", empty ? 0 : C.PLINKO_COST, { pet: d.kind, bin: d.bin, slot: d.slot, fresh, revived, was });
   if (!(await saveOrUndo(p, before, null, null, revived ? [String(d.kind)] : null))) return null;
   return { id: s.id, at: Date.now(), name: p.name, color: p.color, kind: d.kind, bin: d.bin, hue, fresh, empty, revived,
-           homunculus, was, slot: d.slot, path: d.path };
+           reward, was, slot: d.slot, path: d.path };
 }
 
 /* The centre cup: the token goes into the chest; if the chest held anything, a
@@ -233,10 +235,10 @@ export async function pickPet(p, k) {
   const before = copy(p), revived = isGrave(p, k), hue = revived ? Number(p.graves[String(k)]) : newHue(k);
   give(p, k, hue);
   wear(p, k);
-  const homunculus = grantHomunculus(p);
+  const reward = grantReward(p);
   spend(p, "shard", shardCost(k), { pet: k, tier: petBinIndex(k), revived });
   if (!(await saveOrUndo(p, before, null, null, revived ? [String(k)] : null))) return null;
-  return { kind: k, hue, homunculus, revived };
+  return { kind: k, hue, reward, revived };
 }
 
 /* Plinko drops of p this page must not show yet (wins, repeats and their shards, chest
@@ -357,7 +359,7 @@ function runs(p) {
   return out;
 }
 export const shellAward = run => Math.min(C.SHELL_MAX, Math.max(1, run));
-export function shellsEarned(p) { return Object.values(runs(p)).reduce((a, r) => a + shellAward(r), 0) + hydrationEarned(p).shells + winShells(p); }
+export function shellsEarned(p) { return Object.values(runs(p)).reduce((a, r) => a + shellAward(r), 0) + hydrationEarned(p).shells + monsterEarned(p).shells + winShells(p); }
 /* Day wins pay WIN_SHELLS, split between that day's winners (model.dayWinners). */
 export const winShare = n => n ? Math.ceil(C.WIN_SHELLS / n) : 0;
 export function winShells(p) {

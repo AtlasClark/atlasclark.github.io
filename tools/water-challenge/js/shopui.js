@@ -8,7 +8,7 @@ import { balance, spentTotal, rerollBlock, reroll, plinkoBlock, plinkoPlay, plin
          fuseBlock, fuse, pickBlock, pickPet, shardCost, shardsText, tierOf } from "./shop.js";
 import { landed as landedIds, setFlying, HOLD_MS, hiddenPets, shownBalance, shownChest, anyPending, rollHoldLeft, shownShards } from "./reveal.js";
 import { onLive, emit } from "./live.js";
-import { petLabel, petGridOrder, rarityLabel, petBinIndex, isGrave, announce, penOf, pensOf, penAlive } from "./pets.js";
+import { petLabel, petGridOrder, rarityLabel, petBinIndex, isGrave, announce, penOf, pensOf, penAlive, rewardMsg, rewardPen } from "./pets.js";
 import { PlinkoBoard } from "./plinko.js";
 import { $, esc, has, todayKey, prettyTime, localStamp, bus, aAn } from "./util.js";
 import { setMsg, ensureIcons, ui, render, setHtml } from "./ui.js";
@@ -174,7 +174,7 @@ function landed(ev) {
   } else if (ev.mine) {
     setMsg(ev.name + " won " + (ev.fresh ? "the " : "another ") + petLabel(ev.kind) + " (" + binName(ev.bin) + ") on Plinko" +
            (ev.revived ? ", back from the grave!" : ev.fresh ? "!" : ": +1 " + binName(ev.bin) + " shard."), true);
-    if (ev.homunculus) setMsg(ev.name + " has all " + C.PET_COUNT + " alive. The pen made something new.", true);
+    if (ev.reward != null) setMsg(rewardMsg(ev.name, ev.reward), true);
   }
 }
 
@@ -234,8 +234,8 @@ async function doPick(kind) {
     const r = await pickPet(q, kind);
     if (!r) { setMsg("That didn't save.", false); return; }
     setMsg(p.name + " used " + price + " on the " + petLabel(kind) + (r.revived ? ", back from the grave." : "."), true);
-    const shown = r.homunculus ? C.HOMUNCULUS_KIND : kind;
-    bus.unlock({ name: p.name, kind: shown, hue: r.homunculus ? 210 : r.hue, fresh: true,
+    const shown = r.reward ?? kind;
+    bus.unlock({ name: p.name, kind: shown, hue: r.reward != null ? C.PEN_REWARDS[rewardPen(r.reward)].hue : r.hue, fresh: true,
                  equipped: store.petKindFor(q) === shown, bought: true, title: p.name + " used " + price });
     await hooks.settle();
   });
