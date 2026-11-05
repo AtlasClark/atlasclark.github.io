@@ -306,19 +306,19 @@
   </footer>
 
   <script>
-    const REV = "rev 1.9.0";
+    const REV = "rev 1.9.1";
 
     // ---------- TOOL REGISTRY ----------
     // status: "live" (linked) | "beta" (linked, flagged) | "planned" (not linked)
     const TOOLS = [
-      { slug: "pcb-viewer",      name: "PCB Viewer",           summary: "View released PCB assemblies", category: "Operations",  tags: ["PCB", "BOM", "Local"], status: "beta" },
+      { slug: "pcb-viewer",      name: "PCB Viewer",           summary: "View released PCB assemblies", category: "Operations",  tags: ["PCB", "BOM", "Local"], status: "live" },
       { slug: "ops-dashboard",   name: "Ops Dashboard",        summary: "Projects, fab/assembly orders, POs, scopes of work, and daily notes. Data stays in this browser and your JSON backup file.", category: "Operations", tags: ["Tracking", "Local"], status: "live" },
       { slug: "project-catalog", name: "Project Catalog",      summary: "Manage project release stages.", category: "Operations", tags: ["PCB", "Release", "Local"], status: "live" },
       { slug: "kit-studio",      name: "Kit Studio",           summary: "Generate component kit labels and packing lists.", category: "Operations", tags: ["BOM", "Print", "Local"], status: "beta" },
       { slug: "work-instructions", name: "Work Instructions",    summary: "Build step-by-step work instructions from screenshots: paste, annotate, export PNG, PDF, HTML or a wiki bundle. Stays in this browser.", category: "Operations", tags: ["Docs", "Screenshots", "Local"], status: "beta" },
       { slug: "cable-designer",  name: "Cable Designer",       summary: "Draw cable and harness drawings with pinouts, wire list and BOM.", category: "Operations", tags: ["Harness", "Drawing", "Local"], status: "beta" },
       { slug: "quick-cable",     name: "Quick Cable",          summary: "Sketch a simple cable drawing from connector pictures, with lengths, labels and detail views.", category: "Operations", tags: ["Harness", "Drawing", "Local"], status: "beta" },
-      { slug: "water-challenge", name: "Water Challenge",      summary: "Team water tracker with pets, a token shop and live Plinko. Sign in with an access code, or use a shared folder.", category: "Team", tags: ["Hydration", "Pets", "Access code"], status: "beta" },
+      { slug: "water-challenge", name: "Water Challenge",      summary: "Team water tracker with pets, a token shop and live Plinko. Sign in with an access code, or use a shared folder.", category: "Team", tags: ["Hydration", "Pets", "Access code"], status: "live" },
     ];
 
     // ---------- Render ----------
