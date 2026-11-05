@@ -1033,6 +1033,13 @@ h1 { margin: 4px 0 0; font-size: clamp(30px, 5vw, 52px); letter-spacing: -.04em;
 
 /* ---- panels ---- */
 .dashboard-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr)); gap: 22px; }
+/* Side by side, the activity card stretches to the leaderboard's height: its list fills the card
+   (it stopped at 380 px and left a blank band under it). Stacked, the 380 px cap stays. */
+.dashboard-grid { container-type: inline-size; }
+@container (min-width: 862px) {
+  .dashboard-grid > .panel:has(.activity-list) { display: flex; flex-direction: column; }
+  .dashboard-grid .activity-list { flex: 1 1 0; min-height: 260px; max-height: none; }
+}
 .panel { background: var(--panel); border: 1px solid var(--card-edge); border-radius: 24px; padding: 22px 24px; box-shadow: var(--shadow); min-width: 0; }
 .panel-heading { margin-bottom: 14px; }
 .panel-heading h2 { margin: 3px 0 0; font-size: 22px; color: var(--title); font-weight: 700; }
