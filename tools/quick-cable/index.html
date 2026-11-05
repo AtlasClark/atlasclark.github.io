@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<!--
+  Quick Cable — Atlas Devices tools
+  Scope: a fast, high-level cable drawing. Pick connector images from local
+  files (or paste / drop them): each image becomes a cable end, and the tool
+  lays out a simple line-art cable for 2 to 6 ends (straight, or a trunk with
+  a breakout and branches). Each end also gets a detail view with a caption
+  ("Detail A: Input - Connector Type"), and an optional molded Y boot at the
+  breakout. Label tools: length dimensions with
+  tolerance, text labels, leader callouts, balloons and a notes block.
+  Drawing frame, title block and revision block follow the Cable Designer
+  format; the title block (footer) can be switched off.
+  Export: vector PDF, PNG, SVG. Projects save to .qcable files (JSON with
+  the images inside). For full pinouts, wire lists and BOMs use Cable Designer.
+
+  No built-in branding in the drawing: this page is public. The title block
+  shows a company name or a logo file the user loads; the logo stays in that
+  browser's IndexedDB and is not part of the site or the project file.
+
+  All data stays on this machine: the working drawing autosaves to this
+  browser's IndexedDB. The CSP below blocks all network requests; fonts are
+  in fonts/ (SIL OFL 1.1) and jsPDF is in vendor/ (MIT).
+  Bump REV in js/app.js on each change.
+-->
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' blob: data:; worker-src 'none'; frame-src 'none'; form-action 'none'; base-uri 'none'">
+<meta name="referrer" content="no-referrer">
+<meta name="robots" content="noindex">
+<title>Quick Cable</title>
+<meta name="theme-color" content="#0B0C0A">
+<link rel="icon" type="image/png" href="../../assets/brand/favicon-64.png">
+<style>
+  @font-face { font-family: "Geist"; src: url("fonts/Geist-Variable.woff2") format("woff2"); font-weight: 100 900; font-display: swap; }
+  @font-face { font-family: "Geist Mono"; src: url("fonts/GeistMono-Variable.woff2") format("woff2"); font-weight: 100 900; font-display: swap; }
+  :root {
+    --font: "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    --mono: "Geist Mono", ui-monospace, "SFMono-Regular", Consolas, monospace;
+    --radius-sm: 10px; --lime: #D0DD2B; --on-lime: #10110E;
+    --wordmark-src: url("../../assets/brand/wordmark.png");
+  }
+  [data-theme="light"] {
+    --bg: #F3F3EE; --bg2: #ECECE5; --surface: #FBFBF8; --surface2: #F3F3EE;
+    --border: #DCDCD3; --text: #10110E; --ink-2: #3A3B35; --text-dim: #5E5F57; --text-faint: #9A9B91;
+    --input-bg: #FBFBF8; --hover: #EEEEE7; --sel: rgba(140,152,0,.14);
+    --accent-text: #5F6A00; --stage: #E3E3DA; --stage-dot: rgba(16,17,14,.10);
+    --shadow-lg: 0 24px 60px rgba(16,17,14,.16); --paper-shadow: 0 10px 40px rgba(16,17,14,.18);
+    --green: #3E8A4E; --yellow: #A87A06; --red: #B8402F;
+    color-scheme: light;
+  }
+  [data-theme="dark"] {
+    --bg: #0B0C0A; --bg2: #10110E; --surface: #131411; --surface2: #1A1B17;
+    --border: #24251F; --text: #ECEDE6; --ink-2: #B9BAB1; --text-dim: #9C9D94; --text-faint: #65665E;
+    --input-bg: #10110E; --hover: #1B1C18; --sel: rgba(208,221,43,.10);
+    --accent-text: #D0DD2B; --stage: #070806; --stage-dot: rgba(236,237,230,.07);
+    --shadow-lg: 0 24px 70px rgba(0,0,0,.55); --paper-shadow: 0 10px 50px rgba(0,0,0,.6);
+    --green: #86C98F; --yellow: #E2C14E; --red: #EE7B68;
+    color-scheme: dark;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body { font-family: var(--font); font-size: 14px; -webkit-font-smoothing: antialiased; background: var(--bg); color: var(--text); display: flex; flex-direction: column; overflow: hidden; }
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 6px; }
+  ::selection { background: var(--lime); color: var(--on-lime); }
+  :focus-visible { outline: 2px solid var(--accent-text); outline-offset: 2px; }
+  [hidden] { display: none !important; }
+
+  /* ===== Top bar ===== */
+  .topbar { position: relative; z-index: 30; display: flex; align-items: center; gap: 18px; padding: 0 20px; min-height: 60px; flex-wrap: wrap; background: color-mix(in srgb, var(--bg) 86%, transparent); border-bottom: 1px solid var(--border); }
+  a.brand { color: inherit; text-decoration: none; }
+  .brand { display: flex; align-items: center; gap: 14px; font-weight: 500; font-size: 17px; flex-shrink: 0; }
+  .brand .wordmark { display: none; width: 132px; aspect-ratio: 900 / 152; background: var(--text); -webkit-mask: var(--wordmark-src) center / contain no-repeat; mask: var(--wordmark-src) center / contain no-repeat; }
+  .has-wm .brand .wordmark { display: block; }
+  .has-wm .brand .wm-text { display: none; }
+  .wm-text { font: 600 15px var(--font); letter-spacing: .06em; }
+  .wm-text b { font-weight: 400; margin-left: 5px; color: var(--text-dim); }
+  .brand .div { width: 1px; height: 18px; background: var(--border); }
+  .brand-lbl { display: flex; align-items: center; gap: 9px; font: 500 12px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--text-dim); }
+  .pulse { width: 7px; height: 7px; border-radius: 50%; background: var(--lime); animation: brandPulse 2.4s ease-out infinite; flex-shrink: 0; }
+  @keyframes brandPulse { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--lime) 70%, transparent); } 70%, 100% { box-shadow: 0 0 0 9px transparent; } }
+  .doc-id { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 260px; }
+  .doc-id input { border-color: transparent; background: transparent; }
+  .doc-id input:hover { border-color: var(--border); }
+  .doc-id input:focus { border-color: var(--ink-2); background: var(--input-bg); }
+  #dwgNo { width: 130px; font-family: var(--mono); font-size: 12.5px; color: var(--accent-text); font-weight: 600; }
+  #dwgRev { width: 64px; font-family: var(--mono); font-size: 12.5px; text-align: center; }
+  #dwgTitle { flex: 1; min-width: 120px; max-width: 420px; font-size: 15px; font-weight: 500; }
+  .topbar .actions { display: flex; gap: 8px; margin-left: auto; align-items: center; }
+
+  /* ===== Buttons / inputs ===== */
+  .btn { border: 1px solid var(--border); background: var(--surface); color: var(--text); font-family: inherit; font-size: 13px; font-weight: 500; height: 36px; padding: 0 13px; border-radius: var(--radius-sm); cursor: pointer; display: inline-flex; align-items: center; gap: 7px; white-space: nowrap; transition: transform .15s, border-color .15s, background-color .15s, color .15s; }
+  .btn:hover { border-color: var(--ink-2); transform: translateY(-1px); }
+  .btn:disabled { opacity: .45; cursor: default; transform: none; border-color: var(--border); }
+  .btn svg { width: 15px; height: 15px; flex-shrink: 0; }
+  .btn-icon { width: 36px; padding: 0; justify-content: center; }
+  .btn-sm { height: 30px; padding: 0 10px; font-size: 12.5px; border-radius: 8px; }
+  .btn-xs { height: 26px; padding: 0 8px; font-size: 12px; border-radius: 7px; }
+  .btn-primary, .btn-primary:hover { background: var(--text); color: var(--bg); border: 1px solid var(--text); }
+  .btn-primary:hover { background: var(--lime); border-color: var(--lime); color: var(--on-lime); }
+  .btn-lime { background: var(--lime); border-color: var(--lime); color: var(--on-lime); }
+  .btn-lime:hover { border-color: var(--text); }
+  .btn-danger:hover { border-color: var(--red); color: var(--red); background: transparent; }
+  .icon-btn { border: none; background: transparent; color: var(--text-dim); cursor: pointer; font-size: 13px; padding: 3px 6px; border-radius: 6px; font-family: inherit; }
+  .icon-btn:hover { background: var(--hover); color: var(--text); }
+  .icon-btn:disabled { opacity: .3; cursor: default; background: transparent; }
+  input, select, textarea { font-family: var(--font); font-size: 13px; color: var(--text); background: var(--input-bg); border: 1px solid var(--border); border-radius: 8px; padding: 6px 9px; outline: none; transition: border .15s; min-width: 0; }
+  input, select { height: 32px; }
+  textarea { resize: vertical; line-height: 1.5; min-height: 54px; }
+  input:focus, select:focus, textarea:focus { border-color: var(--ink-2); }
+  input::placeholder, textarea::placeholder { color: var(--text-faint); }
+  input[type="checkbox"] { width: 15px; height: 15px; accent-color: var(--accent-text); }
+  input[type="range"] { height: 20px; padding: 0; border: none; background: transparent; accent-color: var(--accent-text); }
+
+  /* ===== Menus ===== */
+  .menu-wrap { position: relative; }
+  .menu { position: absolute; right: 0; top: calc(100% + 6px); z-index: 50; min-width: 280px; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 6px; box-shadow: var(--shadow-lg); animation: pop .14s ease; }
+  .menu button { all: unset; box-sizing: border-box; display: grid; grid-template-columns: 34px 1fr; gap: 2px 10px; width: 100%; padding: 9px 10px; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 500; }
+  .menu button:hover, .menu button:focus-visible { background: var(--hover); }
+  .menu button .ic { grid-row: span 2; color: var(--accent-text); font: 600 11px var(--mono); padding-top: 2px; }
+  .menu button small { color: var(--text-faint); font-size: 11.5px; font-weight: 400; }
+  .menu hr { border: none; border-top: 1px dashed var(--border); margin: 5px 4px; }
+
+  /* ===== Layout ===== */
+  main { flex: 1; min-height: 0; display: grid; grid-template-columns: 270px minmax(0, 1fr) 320px; }
+  .panel { min-height: 0; display: flex; flex-direction: column; background: var(--surface); }
+  .grp-lbl { font: 500 10.5px var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--text-faint); }
+  .side { border-right: 1px solid var(--border); overflow-y: auto; }
+  .side-sec { padding: 14px 14px 12px; display: flex; flex-direction: column; gap: 9px; }
+  .side-sec + .side-sec { border-top: 1px dashed var(--border); }
+  .side-sec > .grp-lbl { display: flex; justify-content: space-between; align-items: center; }
+  .ends { display: flex; flex-direction: column; gap: 6px; }
+  .end-row { display: grid; grid-template-columns: 26px 46px minmax(0, 1fr); gap: 9px; align-items: center; padding: 6px; border-radius: 10px; cursor: pointer; border: 1px solid transparent; }
+  .end-row:hover { background: var(--hover); }
+  .end-row.on { background: var(--sel); border-color: color-mix(in srgb, var(--accent-text) 40%, transparent); }
+  .end-row .lt { width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; font: 600 11.5px var(--mono); border: 1.5px solid var(--text-dim); color: var(--text); }
+  .end-row img, .end-row .noimg { width: 46px; height: 34px; object-fit: contain; background: #fff; border-radius: 6px; border: 1px solid var(--border); }
+  .end-row .noimg { display: grid; place-items: center; font: 500 9px var(--mono); color: #9A9B91; }
+  .end-row .cap { font-size: 12.5px; line-height: 1.3; overflow: hidden; }
+  .end-row .cap b { font-weight: 500; display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .end-row .cap span { color: var(--text-faint); font-size: 11.5px; display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .drop-zone { border: 1.5px dashed var(--border); border-radius: 12px; padding: 12px; text-align: center; font-size: 12px; color: var(--text-faint); line-height: 1.5; cursor: pointer; transition: border-color .15s, color .15s; }
+  .drop-zone:hover { border-color: var(--accent-text); color: var(--text-dim); }
+  .drop-zone b { color: var(--accent-text); font-weight: 600; }
+  .seg { display: inline-flex; border: 1px solid var(--border); border-radius: 9px; overflow: hidden; }
+  .seg button { all: unset; cursor: pointer; padding: 0 11px; height: 28px; display: grid; place-items: center; font: 500 11px var(--mono); color: var(--text-dim); border-right: 1px solid var(--border); }
+  .seg button:last-child { border-right: none; }
+  .seg button:hover { background: var(--hover); color: var(--text); }
+  .seg button[aria-pressed="true"] { background: var(--text); color: var(--bg); }
+  .row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .row .grow { flex: 1; }
+  .chk { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--ink-2); cursor: pointer; }
+  .note-row { display: grid; grid-template-columns: 18px 1fr auto; gap: 6px; align-items: start; }
+  .note-row > span { font: 600 11.5px var(--mono); color: var(--text-dim); padding-top: 8px; text-align: right; }
+  .note-row textarea { min-height: 34px; height: 34px; font-size: 12.5px; padding: 6px 8px; field-sizing: content; height: auto; max-height: 160px; }
+  .hint { font-size: 11.5px; color: var(--text-faint); line-height: 1.5; }
+
+  /* Center */
+  .center { min-width: 0; min-height: 0; display: flex; flex-direction: column; }
+  .tools { display: flex; align-items: center; gap: 6px; padding: 7px 12px; flex-wrap: wrap; border-bottom: 1px solid var(--border); background: var(--surface); }
+  .tools .vsep { width: 1px; height: 22px; background: var(--border); margin: 0 4px; }
+  .tools .spacer { flex: 1; }
+  .tools select { height: 30px; font-size: 12.5px; max-width: 170px; }
+  .tool { width: auto; min-width: 32px; height: 32px; padding: 0 9px; display: inline-flex; align-items: center; gap: 6px; border-radius: 9px; cursor: pointer; border: 1px solid transparent; background: transparent; color: var(--ink-2); font: 500 12px var(--font); }
+  .tool svg { width: 17px; height: 17px; flex-shrink: 0; }
+  .tool:hover { background: var(--hover); color: var(--text); }
+  .tool[aria-pressed="true"] { background: var(--text); color: var(--bg); }
+  .tool kbd { font: 500 9.5px var(--mono); opacity: .55; }
+  #zoomLbl { font: 500 11px var(--mono); color: var(--text-dim); min-width: 46px; text-align: center; cursor: pointer; }
+  .stage { position: relative; flex: 1; min-height: 0; overflow: hidden; background-color: var(--stage); background-image: radial-gradient(var(--stage-dot) 1px, transparent 1px); background-size: 18px 18px; touch-action: none; }
+  .stage.panning { cursor: grabbing; }
+  .stage.placing { cursor: crosshair; }
+  #sheetSvg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; user-select: none; }
+  #paper { filter: drop-shadow(var(--paper-shadow)); }
+  #sheetSvg .k-end, #sheetSvg .k-detail, #sheetSvg .k-label, #sheetSvg .k-notes, #sheetSvg .k-hub { cursor: move; }
+  #sheetSvg .k-dim, #sheetSvg .k-cable { cursor: pointer; }
+  .stage.placing #sheetSvg * { cursor: crosshair !important; }
+  .ovl-sel { fill: rgba(208,221,43,.06); stroke: #9DB000; stroke-width: 1.2; stroke-dasharray: 4 3; pointer-events: none; }
+  .handle { fill: #D0DD2B; stroke: #5F6A00; stroke-width: 1; cursor: grab; }
+  .snap { fill: none; stroke: #8A9A00; stroke-width: 1.2; pointer-events: none; }
+  .snap.hot { fill: #D0DD2B; stroke: #5F6A00; }
+  .ghost { stroke: #8A9A00; stroke-width: 1.2; stroke-dasharray: 4 3; fill: none; pointer-events: none; }
+  .tip-bar { position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); background: var(--surface); border: 1px solid var(--border); border-radius: 999px; padding: 7px 14px; font: 500 11.5px var(--mono); color: var(--text-dim); box-shadow: var(--shadow-lg); pointer-events: none; white-space: nowrap; }
+  .empty { position: absolute; inset: 0; display: grid; place-items: center; padding: 24px; pointer-events: none; }
+  .empty-card { pointer-events: auto; text-align: center; max-width: 440px; padding: 30px 28px; border-radius: 18px; border: 1.5px dashed color-mix(in srgb, var(--text-faint) 70%, transparent); background: color-mix(in srgb, var(--surface) 94%, transparent); box-shadow: var(--shadow-lg); }
+  .empty-card .big { width: 64px; height: 40px; margin: 0 auto 14px; color: var(--accent-text); }
+  .empty-card h2 { font-size: 19px; font-weight: 500; letter-spacing: -.01em; margin-bottom: 8px; }
+  .empty-card p { color: var(--text-dim); line-height: 1.55; font-size: 13.5px; }
+  .empty-card .row { justify-content: center; margin-top: 16px; }
+
+  /* Inspector */
+  .insp { border-left: 1px solid var(--border); overflow-y: auto; }
+  .insp-head { display: flex; align-items: center; justify-content: space-between; padding: 14px 16px 8px; gap: 8px; position: sticky; top: 0; background: var(--surface); z-index: 2; }
+  .insp-head .grp-lbl b { color: var(--accent-text); font-weight: 600; }
+  .insp-body { padding: 4px 16px 24px; display: flex; flex-direction: column; gap: 11px; }
+  .field { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+  .field > label, .field > .lbl { font: 500 10px var(--mono); text-transform: uppercase; letter-spacing: .08em; color: var(--text-faint); }
+  .field input:not([type="checkbox"]):not([type="range"]), .field select, .field textarea { width: 100%; }
+  .r2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .r3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+  .sec { border-top: 1px dashed var(--border); padding-top: 11px; display: flex; flex-direction: column; gap: 9px; }
+  .sec-h { font: 500 10.5px var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--accent-text); }
+  .btn-row { display: flex; flex-wrap: wrap; gap: 6px; }
+  .thumb { display: block; width: 100%; height: 140px; object-fit: contain; border-radius: 10px; border: 1px solid var(--border); background: #fff; }
+  .cap-prev { font: 600 12px var(--font); padding: 8px 10px; border-radius: 8px; background: var(--surface2); border: 1px dashed var(--border); }
+  .rng { display: grid; grid-template-columns: 1fr 48px; gap: 8px; align-items: center; }
+  .rng output { font: 500 11px var(--mono); color: var(--text-dim); text-align: right; }
+  .rng.lbl { grid-template-columns: 44px 1fr 48px; }
+  .rng.lbl span { font: 500 10px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--text-faint); }
+  .chips { display: flex; flex-wrap: wrap; gap: 5px; }
+  .chips button { all: unset; cursor: pointer; font: 500 10.5px var(--mono); padding: 4px 8px; border-radius: 999px; border: 1px solid var(--border); color: var(--text-dim); }
+  .chips button:hover { border-color: var(--accent-text); color: var(--text); }
+  .stat { display: grid; grid-template-columns: 1fr auto; gap: 5px 10px; font-size: 12.5px; color: var(--text-dim); }
+  .stat b { font: 600 12px var(--mono); color: var(--text); text-align: right; }
+  .keys { display: grid; grid-template-columns: auto 1fr; gap: 6px 10px; font-size: 12px; color: var(--text-dim); align-items: center; }
+  kbd { font: 500 10.5px var(--mono); padding: 1px 5px; border: 1px solid var(--border); border-radius: 5px; color: var(--text-dim); background: var(--surface); }
+
+  /* ===== Modal ===== */
+  .overlay { position: fixed; inset: 0; background: color-mix(in srgb, var(--bg) 70%, transparent); backdrop-filter: blur(4px); display: none; align-items: flex-start; justify-content: center; z-index: 100; padding: 5vh 16px; }
+  .overlay.open { display: flex; }
+  .modal { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; width: 760px; max-width: 100%; max-height: 90vh; overflow-y: auto; box-shadow: var(--shadow-lg); animation: pop .18s ease; }
+  @keyframes pop { from { transform: translateY(10px) scale(.98); opacity: 0; } }
+  .modal-head { display: flex; align-items: center; padding: 16px 20px; border-bottom: 1px solid var(--border); position: sticky; top: 0; background: var(--surface); z-index: 3; }
+  .modal-head h3 { font-size: 15.5px; font-weight: 500; flex: 1; }
+  .modal-body { padding: 18px 20px; display: flex; flex-direction: column; gap: 13px; font-size: 13.5px; }
+  .modal-foot { display: flex; justify-content: flex-end; gap: 9px; padding: 14px 20px; border-top: 1px dashed var(--border); }
+  .modal h4 { font: 500 10.5px var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--accent-text); margin-top: 6px; }
+  .modal .r4 { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+  .hist-tbl { width: 100%; border-collapse: collapse; }
+  .hist-tbl th { text-align: left; font: 500 10px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--text-faint); padding: 0 4px 6px; }
+  .hist-tbl td { padding: 3px 4px; }
+  .hist-tbl input { width: 100%; height: 30px; font-size: 12.5px; }
+  .logo-prev { max-height: 40px; max-width: 160px; background: #fff; border-radius: 6px; border: 1px solid var(--border); padding: 3px; }
+  body.drag::after { content: "Drop connector images or a .qcable project"; position: fixed; inset: 12px; z-index: 300; display: grid; place-items: center; border: 2px dashed var(--accent-text); border-radius: 16px; background: color-mix(in srgb, var(--bg) 82%, transparent); font: 500 14px var(--mono); color: var(--accent-text); }
+
+  /* ===== Toast / status bar ===== */
+  #toasts { position: fixed; bottom: 44px; right: 20px; display: flex; flex-direction: column; gap: 8px; z-index: 200; }
+  .toast { background: var(--surface); border: 1px solid var(--border); border-left: 3px solid var(--lime); padding: 11px 16px; border-radius: 10px; font-size: 13px; font-weight: 500; box-shadow: var(--shadow-lg); animation: slidein .25s ease; max-width: 420px; }
+  .toast.warn { border-left-color: var(--yellow); }
+  .toast.err { border-left-color: var(--red); }
+  @keyframes slidein { from { transform: translateX(30px); opacity: 0; } }
+  .statusbar { position: relative; z-index: 20; display: flex; align-items: center; gap: 12px; min-height: 28px; padding: 0 20px; border-top: 1px solid var(--border); background: color-mix(in srgb, var(--bg) 86%, transparent); font: 400 11px var(--mono); letter-spacing: .04em; color: var(--text-faint); white-space: nowrap; overflow: hidden; }
+  .statusbar > span { flex-shrink: 0; }
+  .statusbar #stats, .statusbar #saveStat { flex-shrink: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .statusbar .grow { flex: 1; }
+  .statusbar .sep { width: 1px; height: 12px; background: var(--border); }
+  .statusbar .rev { color: var(--accent-text); }
+  .statusbar .warn { color: var(--yellow); }
+  @media (max-width: 1500px) { .tool .lbl { display: none; } }
+  @media (max-width: 1200px) { main { grid-template-columns: 240px minmax(0, 1fr) 290px; } }
+  @media (max-width: 860px) {
+    body { overflow: auto; height: auto; }
+    main { grid-template-columns: 1fr; }
+    .side { border-right: none; border-bottom: 1px solid var(--border); max-height: 320px; }
+    .stage { min-height: 62vh; }
+    .insp { border-left: none; border-top: 1px solid var(--border); }
+    .topbar { padding: 8px 16px; }
+    .doc-id { order: 3; flex-basis: 100%; }
+    .statusbar { padding: 0 16px; }
+    .statusbar .hide-sm { display: none; }
+    .modal .r4 { grid-template-columns: 1fr 1fr; }
+  }
+</style>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="../../" title="Atlas Devices Tools, home">
+      <span class="wordmark" role="img" aria-label="Atlas Devices"></span>
+      <span class="wm-text">ATLAS<b>DEVICES</b></span>
+      <span class="div"></span>
+      <div class="brand-lbl"><span class="pulse"></span>Quick Cable</div>
+    </a>
+    <div class="doc-id">
+      <input id="dwgNo" placeholder="DWG-0000" autocomplete="off" spellcheck="false" title="Drawing number" aria-label="Drawing number">
+      <input id="dwgTitle" placeholder="Untitled cable" autocomplete="off" title="Drawing title" aria-label="Drawing title">
+      <input id="dwgRev" placeholder="Rev" autocomplete="off" spellcheck="false" title="Revision" aria-label="Revision">
+    </div>
+    <div class="actions">
+      <button class="btn" id="drawingBtn" title="Title block, footer and revisions">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 15h18M12 15v5M8 8h8"/></svg>Drawing
+      </button>
+      <div class="menu-wrap">
+        <button class="btn" id="projBtn" aria-haspopup="true" aria-expanded="false">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>Project
+        </button>
+        <div class="menu" id="projMenu" hidden role="menu">
+          <button data-act="save" role="menuitem"><span class="ic">S</span>Save project file<small>.qcable, images inside. Ctrl+S</small></button>
+          <button data-act="open" role="menuitem"><span class="ic">O</span>Open project file<small>Replaces the drawing here. Ctrl+O</small></button>
+          <hr>
+          <button data-act="new" role="menuitem"><span class="ic">+</span>New cable<small>Clears this browser's working copy</small></button>
+        </div>
+      </div>
+      <div class="menu-wrap">
+        <button class="btn btn-primary" id="expBtn" aria-haspopup="true" aria-expanded="false">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M7 10l5 5 5-5M4 20h16"/></svg>Export
+        </button>
+        <div class="menu" id="expMenu" hidden role="menu">
+          <button data-act="pdf" role="menuitem"><span class="ic">PDF</span>PDF drawing<small>Vector. Ctrl+P</small></button>
+          <button data-act="png" role="menuitem"><span class="ic">PNG</span>PNG image<small>200 dpi</small></button>
+          <button data-act="svg" role="menuitem"><span class="ic">SVG</span>SVG drawing<small>Images inside</small></button>
+        </div>
+      </div>
+      <button class="btn btn-icon" id="themeBtn" title="Light / dark theme" aria-label="Toggle color theme">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="4.5"/><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M5.3 18.7l1.4-1.4M17.3 6.7l1.4-1.4"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <main>
+    <aside class="panel side" aria-label="Cable set-up">
+      <div class="side-sec">
+        <div class="grp-lbl"><span>Connectors</span><span id="endCount">0 / 6</span></div>
+        <div class="ends" id="ends"></div>
+        <div class="drop-zone" id="addImgs" role="button" tabindex="0"><b>+ Add connector images</b><br>or paste / drop them here</div>
+      </div>
+      <div class="side-sec">
+        <div class="grp-lbl"><span>Cable</span></div>
+        <div class="row">
+          <div class="seg" id="styleSeg"><button data-v="tube">Tube</button><button data-v="line">Line</button></div>
+          <span class="grow"></span>
+          <label class="chk" title="Break mark: not to scale"><input type="checkbox" id="brkChk">Break</label>
+        </div>
+        <label class="chk" id="bootRow" title="Molded Y boot over the breakout"><input type="checkbox" id="bootChk">Y boot</label>
+        <div class="rng lbl" id="bootLRow"><span>Boot</span><input type="range" id="bootL" min="16" max="120" step="2" aria-label="Boot size"><output id="bootLOut"></output></div>
+        <div class="rng lbl" id="wRow"><span>Cable</span><input type="range" id="cableW" min="3" max="18" step="1" aria-label="Cable thickness"><output id="cableWOut"></output></div>
+        <div class="btn-row">
+          <button class="btn btn-sm" id="autoBtn" title="Put ends and breakout back in auto places">Auto layout</button>
+          <button class="btn btn-sm" id="autoDimBtn" title="Replace length dimensions with the default set">Auto lengths</button>
+        </div>
+      </div>
+      <div class="side-sec">
+        <div class="grp-lbl"><span>Notes</span><button class="icon-btn" id="addNote" title="Add a note">+ Add</button></div>
+        <div id="notes" class="ends"></div>
+      </div>
+    </aside>
+
+    <section class="center">
+      <div class="tools" role="toolbar" aria-label="Drawing tools">
+        <button class="tool" data-tool="select" title="Select and move (V)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M5 3l14 8-6 1.6L10 19z"/></svg><span class="lbl">Select</span></button>
+        <button class="tool" data-tool="dim" title="Length: click two points (L)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7v10M21 7v10M3 12h18M7 9l-4 3 4 3M17 9l4 3-4 3"/></svg><span class="lbl">Length</span></button>
+        <button class="tool" data-tool="text" title="Text label (T)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M5 6V4h14v2M12 4v16M9 20h6"/></svg><span class="lbl">Text</span></button>
+        <button class="tool" data-tool="callout" title="Callout: click the point, then place the box (C)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="11" y="3" width="10" height="7" rx="1"/><path d="M11 9L4 19"/><path d="M4 19l1-4M4 19l4-1"/></svg><span class="lbl">Callout</span></button>
+        <button class="tool" data-tool="balloon" title="Balloon: click the point, then place the balloon (B)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="15" cy="8" r="5"/><path d="M11.5 11.5L4 19"/></svg><span class="lbl">Balloon</span></button>
+        <span class="vsep"></span>
+        <select id="sheetSel" title="Sheet size" aria-label="Sheet size"></select>
+        <label class="chk" title="Title block at the foot of the sheet"><input type="checkbox" id="footerChk">Footer</label>
+        <span class="spacer"></span>
+        <button class="icon-btn" id="undoBtn" title="Undo (Ctrl+Z)">↶</button>
+        <button class="icon-btn" id="redoBtn" title="Redo (Ctrl+Y)">↷</button>
+        <span class="vsep"></span>
+        <button class="icon-btn" id="zoomOut" title="Zoom out">−</button>
+        <span id="zoomLbl" title="Fit sheet (F)">100%</span>
+        <button class="icon-btn" id="zoomIn" title="Zoom in">+</button>
+      </div>
+      <div class="stage" id="stage">
+        <svg id="sheetSvg" xmlns="http://www.w3.org/2000/svg" font-family="Arial, Helvetica, sans-serif" fill="#111111">
+          <g id="paper"></g><g id="ovl"></g>
+        </svg>
+        <div class="empty" id="empty" hidden>
+          <div class="empty-card">
+            <svg class="big" viewBox="0 0 64 40" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="12" width="12" height="16" rx="2"/><path d="M15 20h14l8-10h8M37 20h8M29 20l8 10h8"/><rect x="45" y="5" width="10" height="10" rx="2"/><rect x="45" y="15" width="10" height="10" rx="2"/><rect x="45" y="25" width="10" height="10" rx="2"/></svg>
+            <h2>Start with connector pictures</h2>
+            <p>Pick one image for each cable end. Two make a straight cable; three to six make a breakout.</p>
+            <div class="row"><button class="btn btn-lime" id="emptyAdd">Choose images</button><button class="btn" id="emptyOpen">Open project</button></div>
+          </div>
+        </div>
+        <div class="tip-bar" id="tipBar" hidden></div>
+      </div>
+    </section>
+
+    <aside class="panel insp" aria-label="Properties">
+      <div class="insp-head"><span class="grp-lbl" id="inspTitle">Drawing</span><button class="icon-btn" id="inspDel" title="Delete (Del)" hidden>Delete</button></div>
+      <div class="insp-body" id="inspBody"></div>
+    </aside>
+  </main>
+
+  <div class="overlay" id="overlay">
+    <div class="modal" id="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+      <div class="modal-head"><h3 id="modalTitle"></h3><button class="icon-btn" id="modalX" style="font-size:17px" aria-label="Close">✕</button></div>
+      <div class="modal-body" id="modalBody"></div>
+      <div class="modal-foot" id="modalFoot"></div>
+    </div>
+  </div>
+
+  <footer class="statusbar">
+    <span title="This page has no network access. The drawing stays in this browser until you export or save a project file.">Local only</span>
+    <span class="sep hide-sm"></span>
+    <span id="stats"></span>
+    <span class="grow"></span>
+    <span class="hide-sm" id="saveStat"></span>
+    <span class="sep hide-sm"></span>
+    <span class="rev" id="rev"></span>
+  </footer>
+
+  <input type="file" id="imgFile" accept="image/png,image/jpeg,image/webp,image/gif,image/bmp,image/svg+xml" multiple hidden>
+  <input type="file" id="oneImgFile" accept="image/png,image/jpeg,image/webp,image/gif,image/bmp,image/svg+xml" hidden>
+  <input type="file" id="projFile" accept=".qcable,.json" hidden>
+  <input type="file" id="logoFile" accept="image/png,image/jpeg,image/webp,image/svg+xml" hidden>
+  <div id="toasts"></div>
+
+  <script src="vendor/jspdf.umd.min.js"></script>
+  <script src="js/draw.js"></script>
+  <script src="js/out.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>

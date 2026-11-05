@@ -42,6 +42,12 @@ Cable_Designer/
 *.cable.svg
 *.cable.png
 
+# Quick Cable projects and exports are local only. Never commit them.
+Quick_Cable/
+*.qcable
+*.qcable.svg
+*.qcable.png
+
 # Pet Studio save lock (left behind only if a save is cut off)
 tools/water-challenge/pets/*.lock
 # Water Challenge cloud: backup downloads, Wrangler's local state
