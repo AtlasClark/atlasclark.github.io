@@ -814,6 +814,258 @@ const VISITORS = {
 };
 const withVisitors = (draw, season) => (ctx, w, h, t, sc, night) => { draw(ctx, w, h, t, sc, night); visitors(ctx, w, h, t, sc, night, VISITORS[season]); };
 
+/* ---- bought themes (rev 1.39.0): a worn theme replaces the season; a holiday wins. ---- */
+/* Atlas: the tools hub's dot grid, and now and then a band of lime light sweeping across it. */
+function atlasScene() { return { gap: 22, sweep: 0 }; }
+function drawAtlas(ctx, w, h, t, sc, night) {
+  const g = sc.gap, period = 11, u = (t % period) / 4.2;           /* a sweep takes 4.2 s, then rests */
+  const band = u <= 1 ? -h * 0.6 + u * (w + h * 1.2) : -1e9;       /* along x + y */
+  const base = night ? "rgba(236,237,230,.10)" : "rgba(16,17,14,.11)";
+  ctx.fillStyle = base;
+  for (let y = g / 2; y < h; y += g) for (let x = g / 2; x < w; x += g) {
+    const d = Math.abs(x + y * 0.6 - band);
+    if (d < 70) continue;
+    ctx.fillRect(x - 0.9, y - 0.9, 1.8, 1.8);
+  }
+  if (band > -1e8) {
+    for (let y = g / 2; y < h; y += g) for (let x = g / 2; x < w; x += g) {
+      const d = Math.abs(x + y * 0.6 - band);
+      if (d >= 70) continue;
+      const k = 1 - d / 70;
+      ctx.fillStyle = "rgba(" + (night ? "208,221,43," : "140,152,0,") + (0.18 + 0.7 * k).toFixed(3) + ")";
+      const r = 0.9 + 1.3 * k;
+      ctx.fillRect(x - r, y - r, 2 * r, 2 * r);
+    }
+  }
+}
+
+/* Hairline: a faint isometric grid fading down the page, and one line figure over the
+   header, a glass drawn in hairlines whose water slowly rises and falls. Dashed lines are
+   the edges that would be hidden. */
+function hairlineScene() { return {}; }
+const HL_TONES = { dark: { plate: "#08090a", hi: "#fafafa", edge: "#a1a1aa", mid: "#52525b", back: "#3f3f46", grid: "39,39,42" },
+                   light: { plate: "#fafafa", hi: "#09090b", edge: "#52525b", mid: "#a1a1aa", back: "#d4d4d8", grid: "212,212,216" } };
+function drawHairline(ctx, w, h, t, sc, night) {
+  const T = night ? HL_TONES.dark : HL_TONES.light;
+  ctx.lineWidth = 0.9;
+  const s = 46, fade = ctx.createLinearGradient(0, 0, 0, h);
+  fade.addColorStop(0, "rgba(" + T.grid + ",.9)"); fade.addColorStop(0.55, "rgba(" + T.grid + ",.35)"); fade.addColorStop(1, "rgba(" + T.grid + ",0)");
+  ctx.strokeStyle = fade;
+  ctx.beginPath();
+  for (let c = -h; c < w + h; c += s) {                             /* lines at +/- 26.57 degrees (2:1) */
+    ctx.moveTo(c, 0); ctx.lineTo(c + h * 2, h);
+    ctx.moveTo(c, 0); ctx.lineTo(c - h * 2, h);
+  }
+  ctx.stroke();
+  /* the figure: an isometric glass, centred in the header band at the right */
+  /* the figure sits right of the tabs, between the progress bar and the glasses; on a
+     screen too narrow for it, it is left out */
+  const tabs = document.querySelector(".tabs [role=tab]:last-child"), g = document.getElementById("glasses");
+  if (!tabs || !g) return;
+  const tr = tabs.getBoundingClientRect(), R = 15, ry = R / 2, Hh = 28;
+  const cx = tr.right + 26 + R * 2.2, botY = g.getBoundingClientRect().top - 14 - ry, topY = botY - Hh;
+  if (cx + R + 12 > w || botY < -20) return;
+  const ease = x => 1 - Math.pow(1 - x, 3), ph = (t % 14) / 7, lvl = 0.25 + 0.5 * (ph < 1 ? ease(ph) : 1 - ease(ph - 1));
+  const wy = botY - (botY - topY) * lvl;
+  const ell = (y, from, to, dash, col) => { ctx.setLineDash(dash); ctx.strokeStyle = col; ctx.beginPath(); ctx.ellipse(cx, y, R, ry, 0, from, to); ctx.stroke(); };
+  ctx.fillStyle = T.plate;                                          /* the plate: opaque, as the figure sits on it */
+  ctx.beginPath(); ctx.ellipse(cx, topY, R, ry, 0, Math.PI, 0); ctx.lineTo(cx + R, botY); ctx.ellipse(cx, botY, R, ry, 0, 0, Math.PI); ctx.closePath(); ctx.fill();
+  ell(botY, Math.PI, 2 * Math.PI, [2, 3], T.back);               /* the back of the base: hidden */
+  ell(wy, Math.PI, 2 * Math.PI, [2, 3], T.mid);
+  ell(wy, 0, Math.PI, [], T.hi);                               /* the water's near edge: lit */
+  ctx.setLineDash([]); ctx.strokeStyle = T.edge;                 /* silhouette */
+  ctx.beginPath(); ctx.moveTo(cx - R, topY); ctx.lineTo(cx - R, botY); ctx.moveTo(cx + R, topY); ctx.lineTo(cx + R, botY); ctx.stroke();
+  ell(botY, 0, Math.PI, [], T.edge);
+  ell(topY, 0, 2 * Math.PI, [], T.edge);
+  ell(topY + 2.2, 0, Math.PI, [], T.mid);                       /* a dim crease just inside the rim */
+  ctx.setLineDash([]);
+}
+
+/* Blueprint: a drafting sheet. A fine grid with a heavier line every five squares,
+   registration marks in the corners, a title block, and a compass that slowly draws a
+   construction circle beside the tabs. Dark = white on blue, light = blue on white. */
+function blueprintScene() { return {}; }
+function drawBlueprint(ctx, w, h, t, sc, night) {
+  const ink = night ? "207,227,255" : "31,78,140", g = 14;
+  ctx.lineWidth = 1;
+  for (let pass = 0; pass < 2; pass++) {
+    ctx.strokeStyle = "rgba(" + ink + "," + (pass ? (night ? 0.16 : 0.18) : (night ? 0.07 : 0.08)) + ")";
+    ctx.beginPath();
+    for (let x = 0, i = 0; x <= w; x += g, i++) if ((i % 5 === 0) === !!pass) { ctx.moveTo(x + 0.5, 0); ctx.lineTo(x + 0.5, h); }
+    for (let y = 0, i = 0; y <= h; y += g, i++) if ((i % 5 === 0) === !!pass) { ctx.moveTo(0, y + 0.5); ctx.lineTo(w, y + 0.5); }
+    ctx.stroke();
+  }
+  ctx.strokeStyle = "rgba(" + ink + ",.55)"; ctx.lineWidth = 0.9;
+  for (const [x, y] of [[22, 22], [w - 22, 22], [22, h - 52], [w - 22, h - 52]]) {   /* registration marks */
+    ctx.beginPath(); ctx.arc(x, y, 7, 0, 6.2832); ctx.moveTo(x - 12, y); ctx.lineTo(x + 12, y); ctx.moveTo(x, y - 12); ctx.lineTo(x, y + 12); ctx.stroke();
+  }
+  /* the title block, bottom right above the status bar */
+  const bw = Math.min(232, w * 0.4), bh = 58, bx = w - bw - 40, by = h - bh - 40;
+  if (bw > 150) {
+    ctx.fillStyle = night ? "rgba(15,58,110,.85)" : "rgba(244,247,251,.9)"; ctx.fillRect(bx, by, bw, bh);
+    ctx.strokeStyle = "rgba(" + ink + ",.6)"; ctx.strokeRect(bx + 0.5, by + 0.5, bw, bh);
+    ctx.beginPath(); ctx.moveTo(bx, by + 30.5); ctx.lineTo(bx + bw, by + 30.5); ctx.moveTo(bx + bw * 0.5 + 0.5, by + 30); ctx.lineTo(bx + bw * 0.5 + 0.5, by + bh); ctx.stroke();
+    ctx.fillStyle = "rgba(" + ink + ",.85)"; ctx.font = "600 11px 'Geist Mono', Consolas, monospace"; ctx.textBaseline = "middle";
+    ctx.fillText("WATER CHALLENGE", bx + 8, by + 11);
+    ctx.font = "9px 'Geist Mono', Consolas, monospace"; ctx.fillStyle = "rgba(" + ink + ",.6)";
+    ctx.fillText("DWG H2O-001  ·  HYDRATION ASSY", bx + 8, by + 23);
+    ctx.fillText("SCALE 1:1", bx + 8, by + 44); ctx.fillText("SHEET 1 OF 1", bx + bw * 0.5 + 8, by + 44);
+  }
+  /* the compass: a construction circle drawn round, held, then rubbed out */
+  const tabs = document.querySelector(".tabs [role=tab]:last-child"), gl = document.getElementById("glasses");
+  if (!tabs || !gl) return;
+  const tr = tabs.getBoundingClientRect(), R = 16, cx = tr.right + 30 + R, cy = (tr.top + gl.getBoundingClientRect().top) / 2 + 4;
+  if (cx + R + 14 > w || cy < -20) return;
+  const ph = (t % 9) / 9, ease = x => 1 - Math.pow(1 - x, 3), sweep = ph < 0.55 ? ease(ph / 0.55) : 1, fade = ph < 0.8 ? 1 : 1 - (ph - 0.8) / 0.2;
+  const a = -Math.PI / 2 + sweep * 2 * Math.PI;
+  ctx.globalAlpha = fade;
+  ctx.strokeStyle = "rgba(" + ink + ",.35)"; ctx.setLineDash([3, 3]);
+  ctx.beginPath(); ctx.moveTo(cx - R - 8, cy); ctx.lineTo(cx + R + 8, cy); ctx.moveTo(cx, cy - R - 8); ctx.lineTo(cx, cy + R + 8); ctx.stroke();
+  ctx.setLineDash([]); ctx.strokeStyle = "rgba(" + ink + ",.9)";
+  ctx.beginPath(); ctx.arc(cx, cy, R, -Math.PI / 2, a); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(cx + Math.cos(a) * R, cy + Math.sin(a) * R); ctx.stroke();   /* the compass arm */
+  ctx.fillStyle = "rgba(" + ink + ",.9)"; ctx.beginPath(); ctx.arc(cx, cy, 1.6, 0, 6.2832); ctx.fill();
+  ctx.globalAlpha = 1;
+}
+
+/* Synthwave: a striped sun setting on the horizon, a grid floor rolling toward you and
+   stars over it; on a light page the pastel version. */
+function synthScene() {
+  const rnd = seeded(808);
+  return { stars: Array.from({ length: 70 }, () => ({ x: rnd(), y: rnd() * 0.6, r: 0.4 + rnd() * 1.2, p: rnd() * 6.28, s: 0.6 + rnd() * 1.6 })) };
+}
+function drawSynth(ctx, w, h, t, sc, night) {
+  const hz = h * 0.66, R = Math.max(70, Math.min(w, h) * 0.2), cx = w / 2;
+  if (night) for (const s of sc.stars) {
+    if (s.y * h > hz - R * 0.2) continue;
+    ctx.globalAlpha = 0.3 + 0.5 * (0.5 + 0.5 * Math.sin(t * s.s + s.p));
+    ctx.fillStyle = "#ffe8ff"; ctx.beginPath(); ctx.arc(s.x * w, s.y * h, s.r, 0, 6.2832); ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+  /* the sun: a gradient disc with bands cut out of its lower half, widening down */
+  ctx.save();
+  ctx.beginPath(); ctx.rect(0, 0, w, hz); ctx.clip();
+  const sg = ctx.createLinearGradient(0, hz - R, 0, hz + R * 0.2);
+  if (night) { sg.addColorStop(0, "#ffd319"); sg.addColorStop(0.55, "#ff7a3d"); sg.addColorStop(1, "#ff2e88"); }
+  else { sg.addColorStop(0, "#fff1a8"); sg.addColorStop(0.55, "#ffb3d9"); sg.addColorStop(1, "#c9a7ff"); }
+  ctx.shadowColor = night ? "rgba(255,46,136,.6)" : "rgba(255,170,220,.6)"; ctx.shadowBlur = 40;
+  ctx.fillStyle = sg; ctx.beginPath(); ctx.arc(cx, hz, R, Math.PI, 0); ctx.fill();
+  ctx.shadowBlur = 0;
+  ctx.globalCompositeOperation = "destination-out";
+  ctx.beginPath(); ctx.arc(cx, hz, R, Math.PI, 0); ctx.closePath(); ctx.clip();   /* bands only across the disc */
+  for (let i = 0; i < 6; i++) {
+    const y = hz - R * 0.08 - i * R * 0.13 - ((t * 6) % (R * 0.13)), th = Math.max(1, 6 - i) * R * 0.012;
+    if (y < hz - R * 0.75) continue;
+    ctx.fillRect(cx - R, y, R * 2, th);
+  }
+  ctx.restore();
+  /* the floor: lines toward a point on the horizon, crossing lines rushing in */
+  const line = night ? "255,46,200" : "160,120,255";
+  ctx.lineWidth = 1.2;
+  ctx.strokeStyle = "rgba(" + line + ",.55)";
+  ctx.beginPath();
+  for (let i = -14; i <= 14; i++) { ctx.moveTo(cx + i * 6, hz); ctx.lineTo(cx + i * w * 0.16, h); }
+  const n = 12, sp = (t * 0.35) % 1;
+  for (let k = 0; k < n; k++) {
+    const u = (k + sp) / n, y = hz + (h - hz) * u * u;
+    ctx.moveTo(0, y); ctx.lineTo(w, y);
+  }
+  ctx.stroke();
+  const glow = ctx.createLinearGradient(0, hz - 30, 0, hz + 20);
+  glow.addColorStop(0, "rgba(" + line + ",0)"); glow.addColorStop(0.6, "rgba(" + line + ",.45)"); glow.addColorStop(1, "rgba(" + line + ",0)");
+  ctx.fillStyle = glow; ctx.fillRect(0, hz - 30, w, 50);                 /* the horizon glows */
+
+  timeCar(ctx, w, h, t, sc, night);
+}
+
+/* Now and then (rarely) a flying time-car: a low steel wedge, wheels folded flat for
+   flight, an underglow, and streaks of light behind it, banking along a gentle arc
+   across the header. First 40-120 s after the page opens, then every 4-8 minutes; never
+   under reduced motion. seasonVisit() sends it at once (sc.next). */
+const CAR_FIRST = [40, 120], CAR_GAP = [240, 480], CAR_SECS = [5.5, 7.5];
+function timeCar(ctx, w, h, t, sc, night) {
+  if (reduce()) return;
+  if (sc.next == null) sc.next = t + rr(...CAR_FIRST);
+  if (!sc.car && t > sc.next) {
+    const band = headerBand(h);
+    sc.car = { t0: t, secs: rr(...CAR_SECS), dir: Math.random() < 0.5 ? 1 : -1, y: band * rr(0.35, 0.65), arc: rr(18, 34), s: Math.max(70, Math.min(110, w * 0.09)) };
+    sc.next = t + rr(...CAR_GAP);
+  }
+  const c = sc.car;
+  if (!c) return;
+  const u = (t - c.t0) / c.secs;
+  if (u > 1) { sc.car = null; return; }
+  const pad = c.s * 1.6, x = c.dir > 0 ? -pad + u * (w + 2 * pad) : w + pad - u * (w + 2 * pad);
+  const y = c.y - Math.sin(u * Math.PI) * c.arc, slope = -Math.cos(u * Math.PI) * Math.PI * c.arc / (w + 2 * pad);
+  const bank = Math.atan(slope) * c.dir;                               /* nose follows the arc */
+  /* light streaks trailing behind, fading */
+  const back = -c.dir, L = c.s;
+  for (const [dy, col] of [[0.02, night ? "255,46,200" : "255,120,200"], [0.09, night ? "127,243,255" : "120,200,240"]]) {
+    const g = ctx.createLinearGradient(x, 0, x + back * L * 3.2, 0);
+    g.addColorStop(0, "rgba(" + col + ",.85)"); g.addColorStop(1, "rgba(" + col + ",0)");
+    ctx.strokeStyle = g; ctx.lineWidth = L * 0.035; ctx.lineCap = "round";
+    ctx.beginPath(); ctx.moveTo(x + back * L * 0.45, y + dy * L); ctx.lineTo(x + back * L * 3.2, y + dy * L + Math.sin(u * 9) * 2); ctx.stroke();
+  }
+  ctx.save();
+  ctx.translate(x, y); ctx.rotate(bank); ctx.scale(L * c.dir, L);
+  /* proportions after a gull-wing steel coupe seen side on: long hood rising gently, steep
+     screen, short flat roof, long fastback to a squared tail, black sill and belt strip */
+  const WF = 0.296, WR = -0.292, AY = 0.010, AR = 0.082;                 /* wheel arches */
+  const ug = ctx.createRadialGradient(0, 0.075, 0, 0, 0.075, 0.55);
+  ug.addColorStop(0, night ? "rgba(255,46,200,.55)" : "rgba(255,140,210,.45)"); ug.addColorStop(1, "rgba(255,46,200,0)");
+  ctx.fillStyle = ug; ctx.beginPath(); ctx.ellipse(0, 0.075, 0.62, 0.12, 0, 0, 6.2832); ctx.fill();
+  for (const wx of [WF, WR]) {                                         /* wheels folded flat for flight */
+    ctx.fillStyle = "#1c1b24"; ctx.beginPath(); ctx.ellipse(wx, 0.062, 0.074, 0.022, 0, 0, 6.2832); ctx.fill();
+    ctx.fillStyle = night ? "rgba(127,243,255,.95)" : "rgba(120,200,240,.95)";
+    ctx.beginPath(); ctx.ellipse(wx, 0.07, 0.06, 0.012, 0, 0, 6.2832); ctx.fill();
+  }
+  const body = () => {
+    ctx.beginPath();
+    ctx.moveTo(0.497, -0.017); ctx.lineTo(0.499, -0.054); ctx.lineTo(0.451, -0.089);   /* nose */
+    ctx.lineTo(0.164, -0.140);                                                           /* hood */
+    ctx.lineTo(0.027, -0.198);                                                           /* screen */
+    ctx.lineTo(-0.165, -0.201);                                                          /* roof */
+    ctx.lineTo(-0.450, -0.140);                                                          /* fastback */
+    ctx.lineTo(-0.495, -0.073); ctx.lineTo(-0.498, -0.022); ctx.lineTo(-0.478, 0.011); ctx.lineTo(-0.383, 0.022);   /* tail */
+    ctx.arc(WR, AY, AR, Math.PI, 2 * Math.PI);
+    ctx.lineTo(WR + AR, 0.028); ctx.lineTo(WF - AR, 0.028);                             /* sill */
+    ctx.arc(WF, AY, AR, Math.PI, 2 * Math.PI);
+    ctx.lineTo(0.382, 0.017); ctx.lineTo(0.458, 0.017);                                 /* front valance */
+    ctx.closePath();
+  };
+  const steel = ctx.createLinearGradient(0, -0.2, 0, 0.03);
+  steel.addColorStop(0, "#f2f3f7"); steel.addColorStop(0.35, "#c6c9d2"); steel.addColorStop(0.62, "#d9dbe2"); steel.addColorStop(1, "#8b909d");
+  body(); ctx.fillStyle = steel; ctx.fill();
+  ctx.save(); body(); ctx.clip();
+  const dark = "#1d1c25";
+  ctx.fillStyle = dark;
+  ctx.fillRect(WR, 0.004, WF - WR, 0.03);                                                 /* black sill */
+  ctx.beginPath(); ctx.moveTo(0.5, -0.054); ctx.lineTo(0.455, -0.054); ctx.lineTo(0.452, -0.017); ctx.lineTo(0.5, -0.017); ctx.fill();   /* bumpers */
+  ctx.beginPath(); ctx.moveTo(-0.5, -0.073); ctx.lineTo(-0.47, -0.071); ctx.lineTo(-0.472, -0.022); ctx.lineTo(-0.5, -0.022); ctx.fill();
+  ctx.strokeStyle = dark; ctx.lineWidth = 0.008;
+  ctx.beginPath(); ctx.moveTo(0.452, -0.055); ctx.lineTo(-0.47, -0.067); ctx.stroke();  /* belt strip */
+  ctx.restore();
+  for (const wx of [WF, WR]) { ctx.fillStyle = "#121118"; ctx.beginPath(); ctx.arc(wx, AY, AR - 0.006, Math.PI, 2 * Math.PI); ctx.fill(); }   /* empty wheel wells */
+  /* glass, lit by the neon sky */
+  const glass = ctx.createLinearGradient(0, -0.2, 0, -0.12);
+  glass.addColorStop(0, night ? "#241640" : "#4a3d78"); glass.addColorStop(1, night ? "#ff5fc8" : "#ff9fd8");
+  ctx.fillStyle = glass;
+  ctx.beginPath(); ctx.moveTo(0.158, -0.141); ctx.lineTo(0.030, -0.194); ctx.lineTo(0.020, -0.189); ctx.lineTo(0.146, -0.136); ctx.closePath(); ctx.fill();   /* screen */
+  ctx.beginPath(); ctx.moveTo(0.075, -0.123); ctx.lineTo(0.025, -0.190); ctx.lineTo(-0.141, -0.190); ctx.lineTo(-0.141, -0.123); ctx.closePath(); ctx.fill();   /* door window */
+  ctx.beginPath(); ctx.moveTo(-0.199, -0.184); ctx.lineTo(-0.417, -0.151); ctx.lineTo(-0.411, -0.134); ctx.lineTo(-0.21, -0.128); ctx.closePath(); ctx.fill();   /* rear quarter */
+  ctx.fillStyle = dark; ctx.fillRect(-0.198, -0.197, 0.022, 0.071);                        /* pillar */
+  ctx.beginPath(); ctx.moveTo(0.108, -0.138); ctx.lineTo(0.088, -0.142); ctx.lineTo(0.082, -0.128); ctx.lineTo(0.104, -0.126); ctx.fill();   /* mirror */
+  ctx.strokeStyle = "rgba(29,28,37,.7)"; ctx.lineWidth = 0.006;
+  for (let i = 1; i <= 4; i++) { const x0 = -0.215 - i * 0.042; ctx.beginPath(); ctx.moveTo(x0, -0.183 + i * 0.006); ctx.lineTo(x0 - 0.03, -0.172 + i * 0.006); ctx.stroke(); }   /* louvres */
+  ctx.beginPath(); ctx.moveTo(0.159, -0.117); ctx.lineTo(0.131, -0.006); ctx.moveTo(-0.154, -0.117); ctx.lineTo(-0.098, -0.006); ctx.stroke();   /* door seams */
+  ctx.beginPath(); ctx.moveTo(0.164, -0.14); ctx.lineTo(0.451, -0.089); ctx.strokeStyle = "rgba(255,255,255,.55)"; ctx.lineWidth = 0.006; ctx.stroke();   /* hood highlight */
+  ctx.fillStyle = "#ffb347"; ctx.fillRect(0.43, -0.05, 0.022, 0.012);                    /* side markers */
+  ctx.fillStyle = "#ff3b5c"; ctx.fillRect(-0.468, -0.062, 0.024, 0.012);
+  ctx.fillRect(-0.503, -0.07, 0.008, 0.045);                                              /* tail light */
+  body(); ctx.strokeStyle = "#2a2833"; ctx.lineWidth = 0.008; ctx.lineJoin = "round"; ctx.stroke();
+  ctx.restore();
+}
+
 const THEMES = {
   spring:    { scene: springScene,    draw: withVisitors(drawSpring, "spring") },
   summer:    { scene: summerScene,    draw: withVisitors(drawSummer, "summer") },
@@ -821,5 +1073,9 @@ const THEMES = {
   winter:    { scene: winterScene,    draw: withVisitors(drawWinter, "winter") },
   halloween: { scene: halloweenScene, draw: drawHalloween, goal: halloweenGoal },
   christmas: { scene: christmasScene, draw: drawChristmas, goal: christmasGoal },
-  newyear:   { scene: newYearScene,   draw: drawNewYear,   goal: newYearGoal }
+  newyear:   { scene: newYearScene,   draw: drawNewYear,   goal: newYearGoal },
+  atlas:     { scene: atlasScene,     draw: drawAtlas },
+  hairline:  { scene: hairlineScene,  draw: drawHairline },
+  blueprint: { scene: blueprintScene, draw: drawBlueprint },
+  synthwave: { scene: synthScene,     draw: drawSynth }
 };

@@ -11,9 +11,15 @@ import { CUP_PLACE } from "./styleart.js";
 export const SLOTS = [
   { key: "finish", name: "Finishes", note: "A new coat for whichever pet you wear." },
   { key: "effect", name: "Effects",  note: "Something going on around your pet." },
-  { key: "decor",  name: "Cup",      note: "Something in or on your glass." }
+  { key: "decor",  name: "Cup",      note: "Something in or on your glass." },
+  { key: "theme",  name: "Themes",   note: "A new look for your whole page. Only you see it." }
 ];
 const ITEMS = [
+  /* themes restyle the wearer's own page (rev 1.39.0): themefx.js scenes + app.css tokens */
+  ["theme", "atlas",    "Atlas",    50, "Cream, ink and lime, like the tools hub."],
+  ["theme", "hairline", "Hairline", 50, "Fine grey lines. Glasses and pets turn to line art."],
+  ["theme", "blueprint", "Blueprint", 50, "A drafting sheet. Glasses and pets drawn in white line, water hatched."],
+  ["theme", "synthwave", "Synthwave", 50, "Neon sunset over a rolling grid."],
   ["finish", "pastel",  "Pastel",       15, "Soft and chalky."],
   ["finish", "shadow",  "Shadow",       15, "Dark and moody."],
   ["finish", "frost",   "Frost",        20, "Icy blue, whatever it was."],

@@ -453,6 +453,300 @@
   color-scheme: dark;
 }
 [data-holiday="newyear"] h1 { text-shadow: 0 0 22px rgba(255,213,106,.35); }
+
+/* ---- bought themes (rev 1.39.0): worn from the Style shop, this browser's page only. A
+   holiday's theme wins on its days; a worn theme replaces the season the rest of the time. */
+@font-face { font-family: "Geist"; src: url("fonts/Geist-Variable.woff2") format("woff2"); font-weight: 100 900; font-display: swap; }
+@font-face { font-family: "Geist Mono"; src: url("fonts/GeistMono-Variable.woff2") format("woff2"); font-weight: 100 900; font-display: swap; }
+
+/* Atlas: the tools hub's cream, ink and lime, set in Geist. */
+:root[data-holiday="atlas"] {
+  --page-a: #F3F3EE; --page-b: #F3F3EE; --page-c: #ECECE5;
+  --ink: #10110E; --ink-2: #2A2B26; --muted: #74756C; --faint: #8A8B82; --fainter: #B4B5AC;
+  --head: #10110E; --title: #10110E;
+  --line: #E6E6DE; --line-2: #DCDCD3;
+  --card: rgba(251,251,248,.9); --card-edge: #DCDCD3;
+  --panel: #FBFBF8; --solid: #FBFBF8; --solid-2: #EFEFE8;
+  --shadow: 0 1px 0 rgba(16,17,14,.05);
+  --accent: #D0DD2B; --accent-ink: #5F6A00; --accent-soft: #F1F5C8; --chip-line: #D9DFA0;
+  --input: #FBFBF8; --input-line: #DCDCD3;
+  --glass-edge: rgba(16,17,14,.26); --glass-fill: rgba(251,251,248,.5); --glass-inner: rgba(255,255,255,.8);
+  --track: #E2E2DA; --pace: #10110E;
+  --cell: #EDEDE6; --cell-none: #F5F5F0; --cell-some: #DCDCD3;
+  --pc-bg: #EFEFE8; --pc-hover: #E6E6DE; --pc-locked: #F3F3EE;
+  --font: "Geist", "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  --mono: "Geist Mono", "Cascadia Mono", Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root[data-holiday="atlas"]:not([data-theme="light"]) {
+    --page-a: #0B0C0A; --page-b: #0B0C0A; --page-c: #10110E;
+    --ink: #ECEDE6; --ink-2: #B9BAB1; --muted: #8E8F86; --faint: #7D7E75; --fainter: #4E4F48;
+    --head: #ECEDE6; --title: #ECEDE6;
+    --line: #1C1D18; --line-2: #24251F;
+    --card: rgba(19,20,17,.92); --card-edge: #24251F;
+    --panel: #131411; --solid: #131411; --solid-2: #1A1B17;
+    --shadow: 0 1px 0 rgba(0,0,0,.4);
+    --accent: #D0DD2B; --accent-ink: #D0DD2B; --accent-soft: #23270B; --chip-line: #3D4410;
+    --input: #0F100D; --input-line: #2C2D26;
+    --glass-edge: rgba(236,237,230,.24); --glass-fill: rgba(236,237,230,.03); --glass-inner: rgba(236,237,230,.1);
+    --track: #1C1D18; --pace: #D0DD2B;
+    --cell: #1A1B17; --cell-none: #141511; --cell-some: #2C2D26;
+    --pc-bg: #161713; --pc-hover: #1F201B; --pc-locked: #11120F;
+    --scrim: rgba(0,0,0,.62);
+    color-scheme: dark;
+  }
+}
+:root[data-holiday="atlas"][data-theme="dark"] {
+    --page-a: #0B0C0A; --page-b: #0B0C0A; --page-c: #10110E;
+    --ink: #ECEDE6; --ink-2: #B9BAB1; --muted: #8E8F86; --faint: #7D7E75; --fainter: #4E4F48;
+    --head: #ECEDE6; --title: #ECEDE6;
+    --line: #1C1D18; --line-2: #24251F;
+    --card: rgba(19,20,17,.92); --card-edge: #24251F;
+    --panel: #131411; --solid: #131411; --solid-2: #1A1B17;
+    --shadow: 0 1px 0 rgba(0,0,0,.4);
+    --accent: #D0DD2B; --accent-ink: #D0DD2B; --accent-soft: #23270B; --chip-line: #3D4410;
+    --input: #0F100D; --input-line: #2C2D26;
+    --glass-edge: rgba(236,237,230,.24); --glass-fill: rgba(236,237,230,.03); --glass-inner: rgba(236,237,230,.1);
+    --track: #1C1D18; --pace: #D0DD2B;
+    --cell: #1A1B17; --cell-none: #141511; --cell-some: #2C2D26;
+    --pc-bg: #161713; --pc-hover: #1F201B; --pc-locked: #11120F;
+    --scrim: rgba(0,0,0,.62);
+    color-scheme: dark;
+}
+[data-holiday="atlas"] h1 { letter-spacing: -.05em; text-decoration: underline; text-decoration-color: #D0DD2B;
+  text-decoration-thickness: 5px; text-underline-offset: 10px; text-decoration-skip-ink: none; }
+[data-holiday="atlas"] .btn.primary { color: #10110E; }
+[data-holiday="atlas"] .btn { box-shadow: none; }
+[data-holiday="atlas"] .tab[aria-selected="true"] { color: #10110E; }
+[data-holiday="atlas"] .tb-fill { background: #D0DD2B !important; }
+
+/* Hairline: fine grey lines, after the hairline line-figure style (MIT,
+   github.com/lucasmarkes/hairline): no fills, glows or shadows; what matters is lit (the
+   brightest line on dark, the darkest on light). Light and dark follow the theme button.
+   The glasses and pets turn to line art too (petdefs.js lineArt, glass.js). --hl-* are its
+   four line tones: lit, edge, mid, and what recedes. */
+:root[data-holiday="hairline"] {
+    --page-a: #fafafa; --page-b: #fafafa; --page-c: #fafafa;
+    --ink: #09090b; --ink-2: #27272a; --muted: #52525b; --faint: #71717a; --fainter: #a1a1aa;
+    --head: #09090b; --title: #09090b;
+    --line: #f4f4f5; --line-2: #e4e4e7; --card-edge: #e4e4e7;
+    --panel: #fafafa; --solid: #ffffff; --solid-2: #f4f4f5;
+    --accent: #09090b; --accent-ink: #09090b; --accent-soft: #f4f4f5; --chip-line: #d4d4d8;
+    --input: #ffffff; --input-line: #d4d4d8;
+    --gold-ink: #09090b; --gold-bg: #f4f4f5; --gold-ink-2: #27272a; --silver-ink: #52525b; --silver-bg: #f4f4f5;
+    --glass-edge: #a1a1aa; --glass-inner: rgba(9,9,11,.08);
+    --track: #f4f4f5; --pace: #52525b;
+    --cell: #f4f4f5; --cell-none: #fafafa; --cell-some: #e4e4e7;
+    --cell-goal: #52525b; --cell-cap: #27272a; --cell-over: #a1a1aa;
+    --pc-bg: #ffffff; --pc-hover: #f4f4f5; --pc-locked: #fafafa; --pc-eq-bg: #f4f4f5; --pc-eq: #09090b;
+    --scrim: rgba(9,9,11,.35);
+    --hl-hi: #09090b; --hl-edge: #52525b; --hl-mid: #a1a1aa; --hl-lo: #e4e4e7;
+    --card: transparent; --shadow: none; --glass-fill: transparent;
+    --font: "Geist", "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+    --mono: "Geist Mono", "Cascadia Mono", Consolas, monospace;
+    color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root[data-holiday="hairline"]:not([data-theme="light"]) {
+    --page-a: #08090a; --page-b: #08090a; --page-c: #08090a;
+    --ink: #fafafa; --ink-2: #d4d4d8; --muted: #a1a1aa; --faint: #71717a; --fainter: #52525b;
+    --head: #fafafa; --title: #fafafa;
+    --line: #18181b; --line-2: #27272a; --card-edge: #27272a;
+    --panel: #08090a; --solid: #0c0c0e; --solid-2: #18181b;
+    --accent: #fafafa; --accent-ink: #fafafa; --accent-soft: #18181b; --chip-line: #3f3f46;
+    --input: #08090a; --input-line: #3f3f46;
+    --gold-ink: #fafafa; --gold-bg: #18181b; --gold-ink-2: #d4d4d8; --silver-ink: #a1a1aa; --silver-bg: #18181b;
+    --glass-edge: #52525b; --glass-inner: rgba(250,250,250,.1);
+    --track: #18181b; --pace: #a1a1aa;
+    --cell: #101014; --cell-none: #0c0c0e; --cell-some: #27272a;
+    --cell-goal: #a1a1aa; --cell-cap: #d4d4d8; --cell-over: #52525b;
+    --pc-bg: #0c0c0e; --pc-hover: #18181b; --pc-locked: #08090a; --pc-eq-bg: #18181b; --pc-eq: #fafafa;
+    --scrim: rgba(0,0,0,.72);
+    --hl-hi: #fafafa; --hl-edge: #a1a1aa; --hl-mid: #52525b; --hl-lo: #27272a;
+    --card: transparent; --shadow: none; --glass-fill: transparent;
+    --font: "Geist", "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+    --mono: "Geist Mono", "Cascadia Mono", Consolas, monospace;
+    color-scheme: dark;
+  }
+}
+:root[data-holiday="hairline"][data-theme="dark"] {
+    --page-a: #08090a; --page-b: #08090a; --page-c: #08090a;
+    --ink: #fafafa; --ink-2: #d4d4d8; --muted: #a1a1aa; --faint: #71717a; --fainter: #52525b;
+    --head: #fafafa; --title: #fafafa;
+    --line: #18181b; --line-2: #27272a; --card-edge: #27272a;
+    --panel: #08090a; --solid: #0c0c0e; --solid-2: #18181b;
+    --accent: #fafafa; --accent-ink: #fafafa; --accent-soft: #18181b; --chip-line: #3f3f46;
+    --input: #08090a; --input-line: #3f3f46;
+    --gold-ink: #fafafa; --gold-bg: #18181b; --gold-ink-2: #d4d4d8; --silver-ink: #a1a1aa; --silver-bg: #18181b;
+    --glass-edge: #52525b; --glass-inner: rgba(250,250,250,.1);
+    --track: #18181b; --pace: #a1a1aa;
+    --cell: #101014; --cell-none: #0c0c0e; --cell-some: #27272a;
+    --cell-goal: #a1a1aa; --cell-cap: #d4d4d8; --cell-over: #52525b;
+    --pc-bg: #0c0c0e; --pc-hover: #18181b; --pc-locked: #08090a; --pc-eq-bg: #18181b; --pc-eq: #fafafa;
+    --scrim: rgba(0,0,0,.72);
+    --hl-hi: #fafafa; --hl-edge: #a1a1aa; --hl-mid: #52525b; --hl-lo: #27272a;
+    --card: transparent; --shadow: none; --glass-fill: transparent;
+    --font: "Geist", "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+    --mono: "Geist Mono", "Cascadia Mono", Consolas, monospace;
+    color-scheme: dark;
+}
+:root:is([data-holiday="hairline"], [data-holiday="blueprint"]) *, :root:is([data-holiday="hairline"], [data-holiday="blueprint"]) *::before, :root:is([data-holiday="hairline"], [data-holiday="blueprint"]) *::after {
+  box-shadow: none !important; text-shadow: none !important; }
+[data-holiday="hairline"] h1 { font-weight: 300; letter-spacing: -.03em; }
+:is([data-holiday="hairline"], [data-holiday="blueprint"]) .btn, :is([data-holiday="hairline"], [data-holiday="blueprint"]) .btn.primary, :is([data-holiday="hairline"], [data-holiday="blueprint"]) .btn.muted,
+:is([data-holiday="hairline"], [data-holiday="blueprint"]) .btn.danger, :is([data-holiday="hairline"], [data-holiday="blueprint"]) .btn.quick {
+  background: transparent !important; color: var(--ink); border: 1px solid var(--hl-mid); font-weight: 500; }
+:is([data-holiday="hairline"], [data-holiday="blueprint"]) .btn.primary, :is([data-holiday="hairline"], [data-holiday="blueprint"]) .btn.quick { border-color: var(--hl-edge); }
+:is([data-holiday="hairline"], [data-holiday="blueprint"]) .btn:hover { filter: none; border-color: var(--hl-hi); }
+:is([data-holiday="hairline"], [data-holiday="blueprint"]) .participant-card, :is([data-holiday="hairline"], [data-holiday="blueprint"]) .panel, :is([data-holiday="hairline"], [data-holiday="blueprint"]) .pet-card,
+:is([data-holiday="hairline"], [data-holiday="blueprint"]) .recap, :is([data-holiday="hairline"], [data-holiday="blueprint"]) .dlg, :is([data-holiday="hairline"], [data-holiday="blueprint"]) .gate-box,
+:is([data-holiday="hairline"], [data-holiday="blueprint"]) .style-room { border-radius: 6px; border-color: var(--hl-lo); }
+:is([data-holiday="hairline"], [data-holiday="blueprint"]) .glass-edge { border-width: 1px; }
+:is([data-holiday="hairline"], [data-holiday="blueprint"]) .glass-edge .shine, :is([data-holiday="hairline"], [data-holiday="blueprint"]) .halo, :is([data-holiday="hairline"], [data-holiday="blueprint"]) .overflow-glow { display: none !important; }
+:is([data-holiday="hairline"], [data-holiday="blueprint"]) svg, :is([data-holiday="hairline"], [data-holiday="blueprint"]) .skull { filter: grayscale(1); }
+:is([data-holiday="hairline"], [data-holiday="blueprint"]) .tab { background: transparent; border-color: var(--hl-lo); }
+:is([data-holiday="hairline"], [data-holiday="blueprint"]) .tab[aria-selected="true"] { background: transparent; border-color: var(--hl-hi); color: var(--hl-hi); }
+:is([data-holiday="hairline"], [data-holiday="blueprint"]) .tb-track { height: 3px; background: var(--hl-lo); }
+:is([data-holiday="hairline"], [data-holiday="blueprint"]) .tb-fill { height: 3px; background: var(--hl-hi) !important; }
+:is([data-holiday="hairline"], [data-holiday="blueprint"]) .tb-pace { height: 3px; background: var(--hl-edge); }
+:is([data-holiday="hairline"], [data-holiday="blueprint"]) .glass-overfill + .glass-edge { border-color: var(--hl-hi); }
+:is([data-holiday="hairline"], [data-holiday="blueprint"]) .glass-danger + .glass-edge { border-color: var(--hl-hi); border-style: dashed; }
+
+/* Blueprint: a drafting sheet, white line on blue (dark) or blue line on white (light).
+   Shares Hairline's line-art rules above; the water is section-hatched (petdefs.js tones). */
+:root[data-holiday="blueprint"] {
+    --page-a: #f4f7fb; --page-b: #f4f7fb; --page-c: #f4f7fb;
+    --ink: #0b2e59; --ink-2: #1f4e8c; --muted: #4f7bb3; --faint: #6f93c4; --fainter: #a9c1e0;
+    --head: #0b2e59; --title: #0b2e59;
+    --line: #e3ebf6; --line-2: #cddbee; --card: #f4f7fb; --card-edge: #b9cde6;
+    --panel: #f4f7fb; --solid: #ffffff; --solid-2: #eaf0f8; --shadow: none;
+    --accent: #0b2e59; --accent-ink: #1f4e8c; --accent-soft: #e3ebf6; --chip-line: #b9cde6;
+    --input: #ffffff; --input-line: #b9cde6;
+    --gold-ink: #0b2e59; --gold-bg: #e3ebf6; --gold-ink-2: #1f4e8c; --silver-ink: #4f7bb3; --silver-bg: #eaf0f8;
+    --glass-edge: #1f4e8c; --glass-fill: transparent; --glass-inner: rgba(11,46,89,.08);
+    --track: #e3ebf6; --pace: #1f4e8c;
+    --cell: #eaf0f8; --cell-none: #f4f7fb; --cell-some: #cddbee; --cell-goal: #4f7bb3; --cell-cap: #1f4e8c; --cell-over: #a9c1e0;
+    --pc-bg: #ffffff; --pc-hover: #eaf0f8; --pc-locked: #f4f7fb; --pc-eq-bg: #e3ebf6; --pc-eq: #0b2e59;
+    --scrim: rgba(11,46,89,.35);
+    --hl-hi: #0b2e59; --hl-edge: #1f4e8c; --hl-mid: #8aa9d1; --hl-lo: #c9d9ee;
+    --font: "Geist", "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+    --mono: "Geist Mono", "Cascadia Mono", Consolas, monospace;
+    color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root[data-holiday="blueprint"]:not([data-theme="light"]) {
+    --page-a: #0f3a6e; --page-b: #0f3a6e; --page-c: #0f3a6e;
+    --ink: #eaf3ff; --ink-2: #cfe3ff; --muted: #9fc0e8; --faint: #7fa7d9; --fainter: #4f7bb3;
+    --head: #ffffff; --title: #ffffff;
+    --line: #1b4a82; --line-2: #2a5a92; --card: #0f3a6e; --card-edge: #3a6aa3;
+    --panel: #0f3a6e; --solid: #12427a; --solid-2: #174b87; --shadow: none;
+    --accent: #ffffff; --accent-ink: #ffffff; --accent-soft: #174b87; --chip-line: #4f7bb3;
+    --input: #0f3a6e; --input-line: #4f7bb3;
+    --gold-ink: #ffffff; --gold-bg: #174b87; --gold-ink-2: #cfe3ff; --silver-ink: #9fc0e8; --silver-bg: #174b87;
+    --glass-edge: #cfe3ff; --glass-fill: transparent; --glass-inner: rgba(255,255,255,.1);
+    --track: #1b4a82; --pace: #cfe3ff;
+    --cell: #12427a; --cell-none: #0f3a6e; --cell-some: #2a5a92; --cell-goal: #9fc0e8; --cell-cap: #ffffff; --cell-over: #4f7bb3;
+    --pc-bg: #12427a; --pc-hover: #174b87; --pc-locked: #0f3a6e; --pc-eq-bg: #174b87; --pc-eq: #ffffff;
+    --scrim: rgba(4,20,44,.7);
+    --hl-hi: #ffffff; --hl-edge: #cfe3ff; --hl-mid: #7fa7d9; --hl-lo: #2f5f97;
+    --font: "Geist", "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+    --mono: "Geist Mono", "Cascadia Mono", Consolas, monospace;
+    color-scheme: dark;
+  }
+}
+:root[data-holiday="blueprint"][data-theme="dark"] {
+    --page-a: #0f3a6e; --page-b: #0f3a6e; --page-c: #0f3a6e;
+    --ink: #eaf3ff; --ink-2: #cfe3ff; --muted: #9fc0e8; --faint: #7fa7d9; --fainter: #4f7bb3;
+    --head: #ffffff; --title: #ffffff;
+    --line: #1b4a82; --line-2: #2a5a92; --card: #0f3a6e; --card-edge: #3a6aa3;
+    --panel: #0f3a6e; --solid: #12427a; --solid-2: #174b87; --shadow: none;
+    --accent: #ffffff; --accent-ink: #ffffff; --accent-soft: #174b87; --chip-line: #4f7bb3;
+    --input: #0f3a6e; --input-line: #4f7bb3;
+    --gold-ink: #ffffff; --gold-bg: #174b87; --gold-ink-2: #cfe3ff; --silver-ink: #9fc0e8; --silver-bg: #174b87;
+    --glass-edge: #cfe3ff; --glass-fill: transparent; --glass-inner: rgba(255,255,255,.1);
+    --track: #1b4a82; --pace: #cfe3ff;
+    --cell: #12427a; --cell-none: #0f3a6e; --cell-some: #2a5a92; --cell-goal: #9fc0e8; --cell-cap: #ffffff; --cell-over: #4f7bb3;
+    --pc-bg: #12427a; --pc-hover: #174b87; --pc-locked: #0f3a6e; --pc-eq-bg: #174b87; --pc-eq: #ffffff;
+    --scrim: rgba(4,20,44,.7);
+    --hl-hi: #ffffff; --hl-edge: #cfe3ff; --hl-mid: #7fa7d9; --hl-lo: #2f5f97;
+    --font: "Geist", "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+    --mono: "Geist Mono", "Cascadia Mono", Consolas, monospace;
+    color-scheme: dark;
+}
+[data-holiday="blueprint"] h1 { font-family: var(--mono); font-weight: 500; text-transform: uppercase; letter-spacing: .1em;
+  font-size: clamp(24px, 4vw, 40px); }
+[data-holiday="blueprint"] .participant-card, [data-holiday="blueprint"] .panel { border-style: dashed; }
+
+/* Synthwave: neon dusk (dark) or pastel vaporwave (light). Pets and water keep their colours. */
+:root[data-holiday="synthwave"] {
+    --page-a: #ffe3f3; --page-b: #f6e6ff; --page-c: #dff4ff;
+    --ink: #3b2156; --ink-2: #4f2f70; --muted: #7a5f99; --faint: #9a82b5; --fainter: #c4b2d8;
+    --head: #e23d9b; --title: #4a2d7a;
+    --line: #f1e2f6; --line-2: #e6d0f0;
+    --card: rgba(255,255,255,.62); --card-edge: rgba(255,255,255,.95);
+    --panel: rgba(255,255,255,.86); --solid: #ffffff; --solid-2: #f8eefc;
+    --shadow: 0 14px 40px rgba(170,90,200,.16);
+    --accent: #e23d9b; --accent-ink: #6a3fc2; --accent-soft: #fde6f4; --chip-line: #efc3e2;
+    --input: #ffffff; --input-line: #e3c6ee;
+    --glass-edge: rgba(120,200,235,.9); --glass-fill: rgba(255,255,255,.4); --glass-inner: rgba(255,255,255,.85);
+    --track: #f0dff7; --pace: #6a3fc2;
+    --cell: #f6ebfb; --cell-none: #fbf5fd; --cell-some: #e6d0f0;
+    --pc-bg: #f6ebfb; --pc-hover: #efdcf7; --pc-locked: #fbf5fd;
+    --font: "Geist", "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+    --mono: "Geist Mono", "Cascadia Mono", Consolas, monospace;
+    color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root[data-holiday="synthwave"]:not([data-theme="light"]) {
+    --page-a: #12051f; --page-b: #1a0830; --page-c: #2a0b3d;
+    --ink: #f6e9ff; --ink-2: #e2cdf5; --muted: #b48fd6; --faint: #9a78bd; --fainter: #5e4580;
+    --head: #ff5fc8; --title: #8ef6ff;
+    --line: #2a1442; --line-2: #3d1d5e;
+    --card: rgba(30,10,50,.66); --card-edge: rgba(255,95,200,.35);
+    --panel: rgba(24,8,40,.9); --solid: #1d0a33; --solid-2: #2a1046;
+    --shadow: 0 0 26px rgba(255,46,136,.16);
+    --accent: #ff2e88; --accent-ink: #7ff3ff; --accent-soft: #3a0f3f; --chip-line: #6b2a7a;
+    --input: #150726; --input-line: #4a2370;
+    --glass-edge: rgba(127,243,255,.85); --glass-fill: rgba(127,243,255,.05); --glass-inner: rgba(255,255,255,.12);
+    --track: #2a1442; --pace: #7ff3ff;
+    --cell: #241040; --cell-none: #1a0a2e; --cell-some: #3d1d5e;
+    --pc-bg: #1e0b35; --pc-hover: #2a1046; --pc-locked: #170828;
+    --scrim: rgba(8,0,16,.7);
+    --font: "Geist", "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+    --mono: "Geist Mono", "Cascadia Mono", Consolas, monospace;
+    color-scheme: dark;
+  }
+}
+:root[data-holiday="synthwave"][data-theme="dark"] {
+    --page-a: #12051f; --page-b: #1a0830; --page-c: #2a0b3d;
+    --ink: #f6e9ff; --ink-2: #e2cdf5; --muted: #b48fd6; --faint: #9a78bd; --fainter: #5e4580;
+    --head: #ff5fc8; --title: #8ef6ff;
+    --line: #2a1442; --line-2: #3d1d5e;
+    --card: rgba(30,10,50,.66); --card-edge: rgba(255,95,200,.35);
+    --panel: rgba(24,8,40,.9); --solid: #1d0a33; --solid-2: #2a1046;
+    --shadow: 0 0 26px rgba(255,46,136,.16);
+    --accent: #ff2e88; --accent-ink: #7ff3ff; --accent-soft: #3a0f3f; --chip-line: #6b2a7a;
+    --input: #150726; --input-line: #4a2370;
+    --glass-edge: rgba(127,243,255,.85); --glass-fill: rgba(127,243,255,.05); --glass-inner: rgba(255,255,255,.12);
+    --track: #2a1442; --pace: #7ff3ff;
+    --cell: #241040; --cell-none: #1a0a2e; --cell-some: #3d1d5e;
+    --pc-bg: #1e0b35; --pc-hover: #2a1046; --pc-locked: #170828;
+    --scrim: rgba(8,0,16,.7);
+    --font: "Geist", "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+    --mono: "Geist Mono", "Cascadia Mono", Consolas, monospace;
+    color-scheme: dark;
+}
+[data-holiday="synthwave"] h1 { font-style: italic; font-weight: 800; letter-spacing: -.02em;
+  text-shadow: 3px 3px 0 #7fe6ff; }
+@media (prefers-color-scheme: dark) {
+  [data-holiday="synthwave"]:not([data-theme="light"]) h1 { color: #ffd1f0; text-shadow: 0 0 6px #ff2e88, 0 0 20px rgba(255,46,136,.7), 0 0 42px rgba(166,52,255,.5); }
+  [data-holiday="synthwave"]:not([data-theme="light"]) .glass-edge { box-shadow: 0 0 10px rgba(127,243,255,.55), inset 0 0 8px rgba(127,243,255,.25); }
+}
+[data-holiday="synthwave"][data-theme="dark"] h1 { color: #ffd1f0; text-shadow: 0 0 6px #ff2e88, 0 0 20px rgba(255,46,136,.7), 0 0 42px rgba(166,52,255,.5); }
+[data-holiday="synthwave"][data-theme="dark"] .glass-edge { box-shadow: 0 0 10px rgba(127,243,255,.55), inset 0 0 8px rgba(127,243,255,.25); }
+[data-holiday="synthwave"] .btn.primary, [data-holiday="synthwave"] .tab[aria-selected="true"] {
+  background: linear-gradient(90deg, #ff2e88, #a634ff); border-color: transparent; color: #fff; }
+[data-holiday="synthwave"] .tb-fill { background: linear-gradient(90deg, #ff2e88, #a634ff, #7ff3ff) !important; }
 .holiday-bg { position: fixed; inset: 0; width: 100%; height: 100%; z-index: -1; pointer-events: none; }
 .holiday-fx { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 45; pointer-events: none; }
 

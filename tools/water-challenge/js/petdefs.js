@@ -193,7 +193,68 @@ function drawEye(ctx, s, r, dead) {
 /* A shape's own opacity for its fill (fo) or outline (so), 0..1; missing = solid. */
 export const opacityOf = v => fin(v) ? Math.max(0, Math.min(1, v)) : 1;
 
+/* Line art (rev 1.39.0, the Hairline theme): every shape is an opaque plate in the page's
+   colour with a hairline edge, bright outside and dim inside; colour, hue and finish are
+   dropped and eyes are small lit dots. Set by ui.js for the page that wears the theme. */
+/* style -> tones; hatch = how water is drawn: "level" lines (Hairline) or 45 degree "diag"
+   section hatching (Blueprint) */
+const LINE_TONES = {
+  hairline: {
+    dark:  { plate: "#08090a", hi: "#fafafa", edge: "#a1a1aa", mid: "#52525b", lo: "#27272a", hatch: "level" },
+    light: { plate: "#fafafa", hi: "#09090b", edge: "#52525b", mid: "#a1a1aa", lo: "#e4e4e7", hatch: "level" }   /* lit = darkest on light */
+  },
+  blueprint: {
+    dark:  { plate: "#0f3a6e", hi: "#ffffff", edge: "#cfe3ff", mid: "#7fa7d9", lo: "#2f5f97", hatch: "diag" },
+    light: { plate: "#f4f7fb", hi: "#0b2e59", edge: "#1f4e8c", mid: "#8aa9d1", lo: "#c9d9ee", hatch: "diag" }
+  }
+};
+export const lineArt = Object.assign({ on: false, style: "hairline", w: 0.9, dark: true }, LINE_TONES.hairline.dark);
+let sysDark = null;
+/* The tones follow the page: the theme button (html data-theme) or the computer's setting. */
+export function syncLineArt() {
+  if (typeof document === "undefined") return;
+  if (!sysDark && typeof matchMedia === "function") sysDark = matchMedia("(prefers-color-scheme: dark)");
+  const t = document.documentElement.dataset.theme, d = t === "dark" || (t !== "light" && !!(sysDark && sysDark.matches));
+  Object.assign(lineArt, (LINE_TONES[lineArt.style] || LINE_TONES.hairline)[d ? "dark" : "light"], { dark: d });
+}
+/* style: "hairline" / "blueprint" (true = hairline), or off */
+export function setLineArt(style) {
+  lineArt.on = !!style;
+  if (style) lineArt.style = style === true ? "hairline" : style;
+  Object.assign(lineArt, (LINE_TONES[lineArt.style] || LINE_TONES.hairline)[lineArt.dark ? "dark" : "light"]);
+  syncLineArt();
+}
+/* lineArt.w CSS px in the ctx's current units (canvases here are scaled by the device ratio) */
+function hairOf(ctx) {
+  const m = ctx.getTransform ? ctx.getTransform() : null, dpr = (typeof window !== "undefined" && window.devicePixelRatio) || 1;
+  const k = m ? Math.hypot(m.a, m.b) / dpr : 1;
+  return lineArt.w / Math.max(k, 0.01);
+}
+function drawLines(ctx, shapes, r, dead) {
+  const ga = ctx.globalAlpha, w = hairOf(ctx);
+  ctx.lineWidth = w; ctx.lineJoin = "round"; ctx.lineCap = "round";
+  for (const s of shapes) {
+    if (s.show === "alive" && dead) continue;
+    if (s.show === "dead" && !dead) continue;
+    if (s.t === "eye") {
+      const x = s.x * r, y = s.y * r, k = s.s || 1;
+      ctx.beginPath();
+      if (dead) { const e = r * 0.09 * k; ctx.moveTo(x - e, y - e); ctx.lineTo(x + e, y + e); ctx.moveTo(x + e, y - e); ctx.lineTo(x - e, y + e); ctx.strokeStyle = lineArt.hi; ctx.stroke(); }
+      else { ctx.arc(x, y, Math.max(w * 1.4, r * 0.045 * k), 0, 6.2832); ctx.fillStyle = lineArt.hi; ctx.fill(); }
+      continue;
+    }
+    tracePath(ctx, s, r);
+    const solid = s.fill && opacityOf(s.fo) >= 0.6;               /* a see-through part stays a line */
+    if (solid) { ctx.globalAlpha = ga; ctx.fillStyle = lineArt.plate; ctx.fill(); }
+    ctx.strokeStyle = solid ? lineArt.edge : lineArt.mid;
+    ctx.globalAlpha = ga * (s.fill || s.stroke ? 1 : 0);
+    ctx.stroke();
+  }
+  ctx.globalAlpha = ga; ctx.lineCap = "butt"; ctx.lineJoin = "miter";
+}
+
 export function drawShapes(ctx, shapes, r, hue, pal, dead, finish) {
+  if (lineArt.on) { drawLines(ctx, shapes, r, dead); return; }
   const ga = ctx.globalAlpha;
   for (const s of shapes) {
     if (s.show === "alive" && dead) continue;

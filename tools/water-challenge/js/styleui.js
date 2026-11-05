@@ -7,12 +7,12 @@ import { S, findParticipant } from "./model.js";
 import * as store from "./store.js";
 import { SLOTS, COSMETICS, itemsIn, PAINT_COST, drawDecor, drawEffect, decorBehind, decorDry } from "./cosmetics.js";
 import { CUP_H } from "./styleart.js";
-import { defs, fxSpot, anchorY, zoneOf } from "./petdefs.js";
+import { defs, fxSpot, anchorY, zoneOf, lineArt } from "./petdefs.js";
 import { ownsCosmetic, cosmeticBlock, buyCosmetic, wearCosmetic, lookOf, paintBlock, paintPet, shellBalance, shellRun, shellAward, shellsEarned, pouredOn } from "./shop.js";
 import { hueOf, petLabel } from "./pets.js";
 import { drawCritter } from "./art.js";
 import { $, esc, todayKey } from "./util.js";
-import { setMsg, ui, setHtml } from "./ui.js";
+import { setMsg, ui, setHtml, render } from "./ui.js";
 
 let hooks = null, owner = null, running = false;
 const TABS = [{ key: "colour", name: "Colour", note: "Recolour any pet you have alive. Each recolour costs " + PAINT_COST + " shell" + (PAINT_COST === 1 ? "" : "s") + "." }, ...SLOTS];
@@ -24,14 +24,18 @@ export function initStyle(h, getOwner) {
   $("styleTabs").addEventListener("click", e => {
     const b = e.target.closest("[data-tab]");
     if (!b) return;
+    const was = COSMETICS[ui.styleTry];
     ui.styleTab = b.dataset.tab; ui.styleTry = null;
     renderStyle();
+    if (was && was.slot === "theme") render();                          /* back to the worn theme */
   });
   $("styleItems").addEventListener("click", e => {
     const b = e.target.closest("[data-item]");
     if (!b) return;
+    const was = COSMETICS[ui.styleTry];
     ui.styleTry = ui.styleTry === b.dataset.item ? null : b.dataset.item;
     renderStyle();
+    if ((was && was.slot === "theme") || (COSMETICS[ui.styleTry] || {}).slot === "theme") render();   /* a theme shows on the whole page */
   });
   $("styleAct").addEventListener("click", e => {
     const b = e.target.closest("[data-do]");
@@ -101,7 +105,7 @@ export function renderStyle() {
   const it = COSMETICS[ui.styleTry];
   if (!it || it.slot !== tab.key) {
     const on = look[tab.key] && COSMETICS[tab.key + ":" + look[tab.key]];
-    setHtml("styleAct", '<p class="hint">' + (on ? 'Wearing <b>' + esc(on.name) + '</b>. ' : '') + 'Pick one to try it on in the glass.</p>' +
+    setHtml("styleAct", '<p class="hint">' + (on ? 'Wearing <b>' + esc(on.name) + '</b>. ' : '') + (tab.key === "theme" ? 'Pick one to see it on the whole page.' : 'Pick one to try it on in the glass.') + '</p>' +
       (on ? '<button type="button" class="btn muted" data-do="off" data-item="' + on.id + '">Take off ' + esc(on.name) + '</button>' : ''));
   } else {
     const owned = ownsCosmetic(p, it.id), worn = look[it.slot] === it.key, why = owned ? "" : cosmeticBlock(p, it.id);
@@ -191,31 +195,53 @@ function drawRoom() {
   const layer = (draw, tint) => {
     L.setTransform(1, 0, 0, 1, 0, 0); L.clearRect(0, 0, lay.width, lay.height); L.setTransform(dpr, 0, 0, dpr, 0, 0);
     draw(L);
-    if (tint && C.UNDERWATER_TINT) {
+    if (tint && C.UNDERWATER_TINT && !lineArt.on) {                   /* line art has no colour to tint with */
       L.save(); L.globalCompositeOperation = "source-atop"; L.globalAlpha = C.UNDERWATER_TINT;
       inside(L); L.clip(); water(L); L.fillStyle = p.color; L.fill(); L.restore();
     }
     ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.drawImage(lay, 0, 0); ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   };
 
-  /* glass and water */
+  /* glass and water, as the page draws them under the theme being shown (rev 1.40.3):
+     line art (Hairline, Blueprint) = hatched or level-lined water under a thin surface line */
+  const LA = lineArt.on;
   ctx.save(); inside(ctx);
-  ctx.fillStyle = cs.getPropertyValue("--glass-fill").trim() || "rgba(255,255,255,0.34)"; ctx.fill();
-  ctx.clip(); water(ctx); ctx.fillStyle = p.color; ctx.fill();
-  const g = ctx.createLinearGradient(0, top, 0, gy + H);
-  g.addColorStop(0, "rgba(255,255,255,0.10)"); g.addColorStop(1, "rgba(0,20,40,0.16)");
-  ctx.fillStyle = g; ctx.fill();
-  water(ctx); ctx.strokeStyle = "rgba(255,255,255,0.55)"; ctx.lineWidth = 2.5; ctx.stroke();
+  if (LA) {
+    ctx.clip(); water(ctx); ctx.clip();
+    ctx.lineWidth = lineArt.w; ctx.strokeStyle = lineArt.lo; ctx.beginPath();
+    if (lineArt.hatch === "diag") for (let x = gx - H; x < gx + W; x += 7) { ctx.moveTo(x, gy + H); ctx.lineTo(x + H, gy); }
+    else for (let y = gy + H - 6; y > top + 8; y -= 9) { ctx.moveTo(gx, y); ctx.lineTo(gx + W, y); }
+    ctx.stroke();
+    ctx.restore(); ctx.save();
+    ctx.beginPath(); ctx.moveTo(gx, top + wave(0));
+    for (let x = 4; x < W; x += 4) ctx.lineTo(gx + x, top + wave(x));
+    ctx.lineTo(gx + W, top + wave(W));
+    ctx.strokeStyle = lineArt.edge; ctx.lineWidth = lineArt.w; ctx.stroke();
+  } else {
+    ctx.fillStyle = cs.getPropertyValue("--glass-fill").trim() || "rgba(255,255,255,0.34)"; ctx.fill();
+    ctx.clip(); water(ctx); ctx.fillStyle = p.color; ctx.fill();
+    const g = ctx.createLinearGradient(0, top, 0, gy + H);
+    g.addColorStop(0, "rgba(255,255,255,0.10)"); g.addColorStop(1, "rgba(0,20,40,0.16)");
+    ctx.fillStyle = g; ctx.fill();
+    water(ctx); ctx.strokeStyle = "rgba(255,255,255,0.55)"; ctx.lineWidth = 2.5; ctx.stroke();
+  }
   ctx.restore();
 
   const decor = look.decor, box = { x: gx, y: gy, W, H }, surf = x => top + wave(x - gx);
   const drawItem = () => layer(c => drawDecor(c, decor, box, surf, t), !decorDry(decor));
   if (decor && decorBehind(decor)) drawItem();
-  /* the outline and its shine, as .glass-edge */
-  ctx.strokeStyle = cs.getPropertyValue("--glass-edge").trim() || "rgba(126,191,229,0.8)"; ctx.lineWidth = 4;
+  /* the outline and its shine, as .glass-edge (line art: a hairline and no shine; Synthwave
+     at night: the neon glow) */
+  const root = document.documentElement, neon = root.dataset.holiday === "synthwave" && cs.colorScheme === "dark";
+  ctx.save();
+  if (neon) { ctx.shadowColor = "rgba(127,243,255,.6)"; ctx.shadowBlur = 10; }
+  ctx.strokeStyle = cs.getPropertyValue("--glass-edge").trim() || "rgba(126,191,229,0.8)"; ctx.lineWidth = LA ? 1 : 4;
   ctx.beginPath(); ctx.roundRect(gx - 2, gy - 1.5, W + 4, H + 3.5, [rTop - 1.5, rTop - 1.5, rBot - 2, rBot - 2]); ctx.stroke();
-  ctx.fillStyle = "rgba(255,255,255,0.5)";
-  ctx.beginPath(); ctx.roundRect(gx + 8, gy + 7, 9, Math.max(0, H - 33), 4.5); ctx.fill();
+  ctx.restore();
+  if (!LA) {
+    ctx.fillStyle = "rgba(255,255,255,0.5)";
+    ctx.beginPath(); ctx.roundRect(gx + 8, gy + 7, 9, Math.max(0, H - 33), 4.5); ctx.fill();
+  }
   if (decor && !decorBehind(decor)) drawItem();
 
   /* the pet swims slowly across and back at its own depth, hopping now and then; below

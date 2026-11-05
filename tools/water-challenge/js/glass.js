@@ -7,7 +7,7 @@
 import * as C from "./config.js";
 import { rnd } from "./util.js";
 import { drawCritter, drawHeadstone } from "./art.js";
-import { defs as petDefs, fxSpot, anchorY, zoneOf, bodyBox, restY as restAt } from "./petdefs.js";
+import { defs as petDefs, fxSpot, anchorY, zoneOf, bodyBox, restY as restAt, lineArt, syncLineArt } from "./petdefs.js";
 import { drawDecor, drawEffect, decorBehind, decorDry } from "./cosmetics.js";
 
 const clock = () => performance.now() / 1000;
@@ -349,6 +349,7 @@ function drawGlass(st) {
     ctx.lineTo(W + B, top + waveBuf[waveN - 1]);
   };
 
+  if (lineArt.on) { drawWaterLines(ctx, st, W, H, top, step, surface); return; }
   /* body, with a soft depth gradient over the person's colour, out under the border */
   ctx.beginPath();
   ctx.moveTo(-B, H + B);
@@ -405,6 +406,35 @@ function drawGlass(st) {
     ctx.strokeStyle = "rgba(255,255,255," + r.a.toFixed(3) + ")";
     ctx.lineWidth = 2;
     ctx.stroke();
+  }
+}
+
+/* Line art (the Hairline theme): the water is a lit surface line over faint level lines,
+   its bubbles small rings; at the goal the surface turns bright, past the cap it breaks
+   into dashes. No fill, no colour. */
+function drawWaterLines(ctx, st, W, H, top, step, surface) {
+  const B = BLEED, goal = st.color === C.OVERFILL_COLOR || !!st.goalFx, danger = st.color === C.DANGER_COLOR;
+  ctx.save();
+  ctx.beginPath(); ctx.moveTo(-B, H + B); surface(); ctx.lineTo(W + B, H + B); ctx.closePath(); ctx.clip();
+  ctx.lineWidth = lineArt.w; ctx.strokeStyle = lineArt.lo;
+  ctx.beginPath();
+  if (lineArt.hatch === "diag") { for (let x = -H; x < W; x += 7) { ctx.moveTo(x, H); ctx.lineTo(x + H, 0); } }   /* section hatching */
+  else for (let y = H - 6; y > top + 8; y -= 9) { ctx.moveTo(0, y); ctx.lineTo(W, y); }
+  ctx.stroke();
+  ctx.strokeStyle = lineArt.mid;
+  for (const b of st.bubbles) {
+    const wob = Math.sin(b.y * 0.055 + b.seed) * C.BUBBLE_WOBBLE;
+    ctx.beginPath(); ctx.arc(b.x + wob, H - b.y, b.r, 0, 6.2832); ctx.stroke();
+  }
+  ctx.restore();
+  ctx.beginPath(); ctx.moveTo(-B, top + waveBuf[0]); surface();
+  ctx.strokeStyle = goal || danger ? lineArt.hi : lineArt.edge; ctx.lineWidth = lineArt.w * (goal ? 1.6 : 1);
+  if (danger) ctx.setLineDash([4, 3]);
+  ctx.stroke(); ctx.setLineDash([]);
+  for (const r of st.rings) {
+    ctx.save(); ctx.translate(r.x === undefined ? W / 2 : r.x, top + 2); ctx.scale(1, 0.26);
+    ctx.beginPath(); ctx.arc(0, 0, r.r, 0, 6.2832); ctx.restore();
+    ctx.save(); ctx.globalAlpha = r.a; ctx.strokeStyle = lineArt.edge; ctx.lineWidth = lineArt.w; ctx.stroke(); ctx.restore();
   }
 }
 
@@ -528,9 +558,9 @@ function drawStream(ctx, st, p, top, offX, offY) {
   const yStart = p.t > C.POUR_TAIL ? surf * ease((p.t - C.POUR_TAIL) / (1 - C.POUR_TAIL)) : 0;
   if (yEnd - yStart > 1) {
     const g = ctx.createLinearGradient(0, 0, 0, surf);
-    g.addColorStop(0, rgba(p.color, 0));
-    g.addColorStop(0.22, rgba(p.color, 0.85));
-    g.addColorStop(1, rgba(p.color, 0.9));
+    g.addColorStop(0, rgba(lineArt.on ? "#a1a1aa" : p.color, 0));
+    g.addColorStop(0.22, rgba(lineArt.on ? "#a1a1aa" : p.color, 0.85));
+    g.addColorStop(1, rgba(lineArt.on ? "#a1a1aa" : p.color, 0.9));
     const wob = y => Math.sin(y * 0.09 - st.m.t * 18) * 0.9;
     const half = y => p.w * (0.62 - 0.22 * (y / surf)) ;          /* narrows as it falls */
     ctx.beginPath();
@@ -694,6 +724,7 @@ function airBubbles(ctx, m, dx, topY, top, offX, offY, r) {
 /* Whatever sits below the surface takes on the water's colour, so a pet reads as
    in the glass rather than pasted on it. Only touches pixels already drawn. */
 function tintUnderwater(ctx, st, W, H, top, offX, offY) {
+  if (lineArt.on) return;                                             /* line art has no colour to tint with */
   if (!C.UNDERWATER_TINT || st.level <= 0.01) return;
   ctx.save();
   ctx.globalCompositeOperation = "source-atop";
@@ -1174,6 +1205,7 @@ function frame(now) {
   last = now; lastDrawn = now;
   frames++;
   if (now - fpsT > 1000) { stats.fps = frames; frames = 0; fpsT = now; }
+  if (lineArt.on) syncLineArt();                                       /* light or dark lines, as the page is now */
   try { stepVisits(f); } catch (e) { stats.errors++; stats.lastError = "visits: " + (e.message || e); }
   for (const k in anim) {
     const st = anim[k];

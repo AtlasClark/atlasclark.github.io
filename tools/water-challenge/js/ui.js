@@ -16,7 +16,7 @@ import { petKindFor, ownsEquipped, graveEquipped, petHueFor, isGrave, gravesOf, 
 import { crownSvg, jesterSvg, hatSvg, drawPortrait, drawCritter, drawHeadstone, drawGoldPile, drawCoin, hatKeyFor, drawMedal, holidayOn, glassHatSvg, EVENTS, eventRange, eventDefault, setEventRanges } from "./art.js";
 import * as G from "./glass.js";
 import { diag, dir, cloud, sourceName } from "./store.js";
-import { defs as petDefs, hats as petHats, petSource } from "./petdefs.js";
+import { defs as petDefs, hats as petHats, petSource, setLineArt, lineArt } from "./petdefs.js";
 import { shownKind, hiddenPets, shownBalance, hiddenIds, rollHoldLeft, rollCardDone } from "./reveal.js";
 import { balance, spentTotal, spendsOn, earnedTotal, chestWinnings, shopDay, lookOf, winShare } from "./shop.js";
 import { COSMETICS, drawShell } from "./cosmetics.js";
@@ -424,11 +424,24 @@ export function htaDismiss() {
 /* National Hydration Day: the water background and the banner with the rules and
    the team goal (hydration.js, hydfx.js). */
 let evHtml = "", evTimer = 0;
+/* The theme this page wears (rev 1.39.0): one being tried in the Style shop, else the one
+   this browser's glass wears. A holiday still wins (renderEventBanner). */
+function wornTheme() {
+  const t = COSMETICS[ui.styleTry];
+  if (t && t.slot === "theme" && ui.tab === "shop") return t.key;
+  const p = S.mine && findParticipant(S.mine);
+  return p ? lookOf(p).theme || "" : "";
+}
+
 function renderEventBanner() {
   const on = isHydrationDay(), el = $("eventBanner"), hol = holidayOn();
   setHydrationDay(on);
-  /* a holiday's theme, else (unless this browser turned seasons off) the season's */
-  setHolidayTheme(on ? "" : hol && hol.theme ? hol.theme : seasonsOn() ? seasonOf(todayKey()) : "");
+  /* a holiday's theme, else a bought theme this glass wears (or one being tried in the
+     Style shop), else (unless this browser turned seasons off) the season's */
+  const worn = wornTheme(), name = on ? "" : hol && hol.theme ? hol.theme : worn || (seasonsOn() ? seasonOf(todayKey()) : "");
+  setHolidayTheme(name);
+  const la = name === "hairline" || name === "blueprint" ? name : "";
+  if ((lineArt.on ? lineArt.style : "") !== la) { setLineArt(la); resetIcons(); }   /* pet icons redraw as lines, or back */
   if (!on) { el.hidden = true; evHtml = ""; clearInterval(evTimer); evTimer = 0; return; }
   ensureIcons();
   const H = C.HYD_DAY, t = teamSplash(), pct = t.goal ? Math.min(100, Math.round(t.total / t.goal * 100)) : 0;

@@ -13,7 +13,7 @@ import { reconcilePets, equipPet } from "./pets.js";
 import { rollCardQueued } from "./reveal.js";
 import * as G from "./glass.js";
 import { startLive, onLive, emit } from "./live.js";
-import { loadPetDefs, useFolderDefs, useSiteDefs } from "./petdefs.js";
+import { loadPetDefs, useFolderDefs, useSiteDefs, lineArt, syncLineArt } from "./petdefs.js";
 import { bottleOn, bottleCfg, signedIn, loadBottle, setRelay, newRelayKey, pingRelay, signIn, signOut, fetchSips, applySips } from "./bottle.js";
 import { openRadial, wireRadial } from "./radial.js";
 import { makeMsg, msgOf, toggleMsg, openMsgs, cleanText } from "./msg.js";
@@ -64,6 +64,7 @@ function applyTheme(t) {
   $("themeBtn").dataset.tip = tip + " · click to change";
   $("themeBtn").setAttribute("aria-label", tip);
   $("themeBtn").dataset.mode = t;
+  if (lineArt.on) { syncLineArt(); resetIcons(); render(); }          /* Hairline's pet icons are drawn in the page's tones */
 }
 function initTheme() {
   let t = "auto";
