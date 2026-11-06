@@ -59,6 +59,9 @@ export class FlatRec {
     this.out.push({ op: "stroke", style: this.strokeStyle, w: this.lineWidth * Math.sqrt(Math.abs(m[0] * m[3] - m[1] * m[2])),
                     cap: this.lineCap, pts: this.subs.flat() });
   }
+  rect(x, y, w, h) { this.subs.push([this.pt(x, y), this.pt(x + w, y), this.pt(x + w, y + h), this.pt(x, y + h), this.pt(x, y)]); }
+  roundRect(x, y, w, h) { this.rect(x, y, w, h); }
+  clip() { }
   clearRect() { }
   fillText() { }
 }

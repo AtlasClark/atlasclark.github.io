@@ -46,7 +46,8 @@ const ITEMS = [
   ["decor", "seaweed",   "Seaweed",        15, "Sways with the water."],
   ["decor", "flag",      "Pirate flag",    18, "This glass is claimed."],
   ["decor", "castle",    "Sandcastle",     22, "A fixer-upper."],
-  ["decor", "lights",    "Fairy lights",   25, "Strung round the glass."]
+  ["decor", "lights",    "Fairy lights",   25, "Strung round the glass."],
+  ["decor", "sub",       "Submarine",      100, "Parked on the bottom."]
 ];
 export const COSMETICS = Object.fromEntries(ITEMS.map(([slot, key, name, price, blurb]) =>
   [slot + ":" + key, { id: slot + ":" + key, slot, key, name, price, blurb }]));
@@ -192,14 +193,56 @@ export function cupOrigin(key, box, surf, t) {
 export const decorBehind = key => !!(hats["decor:" + key] || {}).behind;
 /* Water never tints it (it hangs outside the glass). */
 export const decorDry = key => !!(CUP_PLACE[key] || {}).dry;
+/* The radius of a glass's inside bottom corners, for an inside W wide (as ui.js sizes the glass). */
+export const insideRadius = W => Math.max(0, 0.212 * (W + 8) - 4);
 export function drawDecor(ctx, key, box, surf, t) {
   const h = hats["decor:" + key];
   if (!h) return;
-  const o = cupOrigin(key, box, surf, t), pv = (CUP_PLACE[key] || {}).pivot;
+  const pl = CUP_PLACE[key] || {}, o = cupOrigin(key, box, surf, t), pv = pl.pivot, W = box.W;
   ctx.save();
+  if (pl.inside) {                                                       /* kept inside the glass's round bottom */
+    ctx.beginPath(); ctx.roundRect(box.x, box.y - W, W, box.H + W, [0, 0, insideRadius(W), insideRadius(W)]); ctx.clip();
+  }
   ctx.translate(o.x, o.y);
-  if (o.a && pv) { ctx.translate(pv[0] * box.W, pv[1] * box.W); ctx.rotate(o.a); ctx.translate(-pv[0] * box.W, -pv[1] * box.W); }
+  if (o.a && pv) { ctx.translate(pv[0] * W, pv[1] * W); ctx.rotate(o.a); ctx.translate(-pv[0] * W, -pv[1] * W); }
   else if (o.a) ctx.rotate(o.a);
-  drawShapes(ctx, h.shapes, box.W, 0, h.pal, false);
+  if (!pl.tilt) drawShapes(ctx, h.shapes, W, 0, h.pal, false);
+  else {
+    /* the "tilt" shapes rock with the tide: two slow swells, about a 9 s and a 3 s period */
+    const a = pl.tilt.amp * (0.7 * Math.sin(t * 0.7) + 0.3 * Math.sin(t * 1.9 + 1)), [px, py] = pl.tilt.pivot.map(v => v * W);
+    const S = h.shapes;
+    for (let i = 0; i < S.length;) {
+      const on = S[i].g === "tilt";
+      let j = i;
+      while (j < S.length && (S[j].g === "tilt") === on) j++;
+      if (on) { ctx.save(); ctx.translate(px, py); ctx.rotate(a); ctx.translate(-px, -py); }
+      drawShapes(ctx, S.slice(i, j), W, 0, h.pal, false);
+      if (on) ctx.restore();
+      i = j;
+    }
+    if (pl.bubbles) {                                                    /* from the mast, as it leans */
+      const [bx, by] = pl.bubbles, c = Math.cos(a), s = Math.sin(a);
+      const sx = px + (bx * W - px) * c - (by * W - py) * s, sy = py + (bx * W - px) * s + (by * W - py) * c;
+      bubbles(ctx, sx, sy, surf(o.x + sx) - o.y, W, t);
+    }
+  }
+  ctx.restore();
+}
+/* A thin stream of bubbles from (x, y) up to the surface (local y top), looping. */
+const BUBBLES = 6;
+function bubbles(ctx, x, y, top, W, t) {
+  const dist = y - top - W * 0.02;
+  if (dist < W * 0.08) return;                                           /* no water above it */
+  const v = W * 0.16;
+  ctx.save();
+  for (let k = 0; k < BUBBLES; k++) {
+    const rise = (t * v * (1 + 0.12 * Math.sin(k * 2.3)) + k * dist / BUBBLES) % dist, u = rise / dist;
+    const r = W * (0.007 + 0.007 * u + 0.0015 * ((k * 7) % 3)), bx = x + Math.sin(t * 2.2 + k * 1.7) * W * 0.012 * u, by = y - rise;
+    ctx.globalAlpha = Math.max(0, Math.min(1, u / 0.08, (1 - u) / 0.08));
+    ctx.beginPath(); ctx.arc(bx, by, r, 0, Math.PI * 2);
+    ctx.fillStyle = "rgba(255,255,255,0.16)"; ctx.fill();
+    ctx.strokeStyle = "rgba(255,255,255,0.7)"; ctx.lineWidth = Math.max(0.6, W * 0.0035); ctx.stroke();
+    ctx.beginPath(); ctx.arc(bx - r * 0.35, by - r * 0.35, r * 0.25, 0, Math.PI * 2); ctx.fillStyle = "rgba(255,255,255,0.7)"; ctx.fill();
+  }
   ctx.restore();
 }

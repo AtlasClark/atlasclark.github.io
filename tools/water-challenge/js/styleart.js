@@ -13,7 +13,10 @@ export const CUP_H = 1.93;                       /* inside height / inside width
 /* Where each cup item sits. at: "bottom" | "rim" | "surface" (x: share of the width
    from the left wall, dy: lift in widths); bob, wobble, spin: how it moves (px, rad);
    hz: wobble speed (default 0.8 rad/s); pivot: [x, y] in widths from the origin that a
-   wobble turns about (default the origin); dry: never tinted by the water (outside the glass). */
+   wobble turns about (default the origin); dry: never tinted by the water (outside the glass);
+   inside: clipped to the glass's inside (round bottom corners); tilt: the shapes with g "tilt"
+   rock about pivot (widths) by up to amp rad, slow like a tide; bubbles: [x, y] in widths where
+   bubbles rise from (they follow the tilt) up to the surface. */
 export const CUP_PLACE = {
   straw:     { at: "bottom" },
   spoon:     { at: "bottom" },
@@ -27,7 +30,8 @@ export const CUP_PLACE = {
   mint:      { at: "surface", x: 0.66, bob: 1.4, wobble: 0.1 },
   orange:    { at: "rim" },
   flag:      { at: "rim", wobble: 0.035, hz: 2.2, pivot: [0.268, 0] },
-  lights:    { at: "rim", dry: true }
+  lights:    { at: "rim", dry: true },
+  sub:       { at: "bottom", inside: true, tilt: { amp: 0.035, pivot: [0, -0.065] }, bubbles: [0.156, -0.4] }
 };
 
 const FIX = c => ({ c });
@@ -171,7 +175,43 @@ export const CUP_ART = {
     ...LIGHTS.flatMap(([a, c, b], j) => swag(a, c, b, 8).flatMap(([x, y], i) => {
       const col = BULB[(i + j * 2) % BULB.length];
       return [E(x, y + 0.03, 0.05, 0.05, "g" + col), E(x, y + 0.03, 0.019, 0.027, col), E(x, y + 0.004, 0.011, 0.007, "cap")];
-    })) ] }
+    })) ] },
+
+  /* A deep-sea submersible on a sandy floor, tail to the right: dark front dome, long white
+     hull, a tail that sweeps up into a tooth-like tip, titanium ring, blue cable bundle, mast,
+     skids. Kelp behind. No name or logo. Shapes with g "tilt" rock with the tide and the
+     mast lets off bubbles (CUP_PLACE.sub, drawn by cosmetics.js); the scene is clipped to the glass. */
+  "decor:sub": { behind: true, pal: { sand: FIX("#e6c98f"), sand2: FIX("#d3b276"), pebble: FIX("rgba(120,90,45,0.35)"), ripple: FIX("rgba(150,115,60,0.35)"),
+      hull: FIX("#eef1f4"), shade: FIX("rgba(70,90,115,0.2)"), seam: FIX("rgba(90,105,125,0.45)"), ring: FIX("#b7bec7"),
+      dome: FIX("#6f7882"), domeHi: FIX("rgba(255,255,255,0.28)"), frame: FIX("#5b636d"), dark: FIX("#2b3138"),
+      cable: FIX("#4fb2e3"), cable2: FIX("#8dd3f2"), red: FIX("#e0344b"), kelp: FIX("#5e7f2b"), kelp2: FIX("#7a9a34") }, shapes: [
+    frond(-0.4, 0.86, 0.06, 0.05, 6, 0.4, "kelp"), frond(-0.33, 0.62, 0.05, 0.04, 7, 2.1, "kelp2"),
+    frond(0.4, 0.74, 0.055, 0.045, 6, 1.2, "kelp"), frond(0.34, 0.5, 0.045, 0.035, 8, 3, "kelp2"),
+    E(-0.43, -0.5, 0.03, 0.012, "kelp2", { rot: -0.5 }), E(-0.37, -0.68, 0.028, 0.011, "kelp2", { rot: 0.5 }),
+    E(0.44, -0.42, 0.028, 0.011, "kelp2", { rot: 0.5 }), E(0.37, -0.6, 0.026, 0.01, "kelp2", { rot: -0.5 }),
+    P([[-0.5, 0.02], [-0.5, -0.085], [-0.3, -0.105, -0.1, -0.1], [0.1, -0.095, 0.26, -0.08], [0.4, -0.075, 0.5, -0.09], [0.5, 0.02]], "sand2"),
+    ...[
+      S([[-0.26, -0.062], [0.15, -0.062]], "frame", 0.016),
+      S([[-0.2, -0.13], [-0.22, -0.065]], "frame", 0.014), S([[-0.05, -0.12], [-0.05, -0.065]], "frame", 0.014),
+      S([[0.07, -0.12], [0.09, -0.065]], "frame", 0.014),
+      P([[-0.34, -0.135], [-0.26, -0.135], [-0.26, -0.095], [-0.34, -0.095]], "dark"), E(-0.345, -0.115, 0.012, 0.022, "frame"),
+      E(-0.24, -0.215, 0.09, 0.095, "dome"), E(-0.285, -0.245, 0.022, 0.048, "domeHi"),
+      P([[-0.24, -0.31], [0.08, -0.31], [0.08, -0.12], [-0.24, -0.12]], "hull"),
+      P([[0, -0.31], [0.42, -0.325], [0.37, -0.12, 0, -0.12]], "hull"),
+      P([[-0.24, -0.155], [0.25, -0.155], [0.17, -0.123, 0, -0.12], [-0.24, -0.12]], "shade"),
+      P([[-0.062, -0.315], [-0.038, -0.315], [-0.038, -0.115], [-0.062, -0.115]], "ring"),
+      S([[-0.15, -0.31], [-0.15, -0.12]], "seam", 0.004), S([[0.1, -0.175], [0.32, -0.2]], "seam", 0.003),
+      ...[-0.21, -0.11, 0.0, 0.05].map(x => E(x, -0.135, 0.004, 0.004, "seam")),
+      S([[-0.11, -0.265], [-0.11, -0.235]], "dark", 0.014), E(-0.11, -0.267, 0.008, 0.005, "red"),
+      P([[-0.14, -0.235], [-0.08, -0.235], [-0.07, -0.2], [-0.15, -0.2]], "dark"),
+      S([[0.15, -0.31], [0.155, -0.385]], "frame", 0.01), E(0.156, -0.39, 0.011, 0.013, "red"),
+      S([[-0.26, -0.3], [-0.22, -0.332, -0.18, -0.316], [-0.14, -0.302, -0.11, -0.324], [-0.08, -0.336, -0.056, -0.31], [-0.048, -0.29, -0.046, -0.25]], "cable", 0.012),
+      S([[-0.24, -0.31], [-0.2, -0.328, -0.16, -0.31], [-0.12, -0.296, -0.09, -0.322], [-0.07, -0.33, -0.05, -0.31]], "cable2", 0.007)
+    ].map(sh => Object.assign(sh, { g: "tilt" })),
+    P([[-0.5, 0.02], [-0.5, -0.05], [-0.3, -0.06, -0.1, -0.05], [0.15, -0.042, 0.35, -0.056], [0.45, -0.06, 0.5, -0.045], [0.5, 0.02]], "sand"),
+    S([[-0.4, -0.03], [-0.2, -0.036, 0, -0.03]], "ripple", 0.004), S([[0.1, -0.024], [0.25, -0.03, 0.4, -0.022]], "ripple", 0.004),
+    E(-0.24, -0.022, 0.012, 0.007, "pebble"), E(0.06, -0.016, 0.009, 0.006, "pebble"), E(0.3, -0.03, 0.011, 0.006, "pebble"),
+    E(-0.06, -0.034, 0.006, 0.004, "pebble"), E(0.4, -0.012, 0.007, 0.005, "pebble") ] }
 };
 
 /* Effect particles: one shape each, drawn many times by the effect's own motion. */
