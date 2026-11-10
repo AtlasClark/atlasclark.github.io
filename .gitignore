@@ -7,6 +7,7 @@ Reference Project Folder/
 *.xlsx
 *.xlsm
 *.xls
+*.pcbv.json
 
 # Ops Dashboard data is local only. Never commit it.
 Daily_Dashboard/

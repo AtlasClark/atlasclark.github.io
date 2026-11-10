@@ -8,7 +8,7 @@
 */
 (function () {
   "use strict";
-  const REV = "rev 1.4.0";
+  const REV = "rev 1.5.0";
   const P = window.PCBV;
   const $ = s => document.querySelector(s);
   const $$ = s => Array.from(document.querySelectorAll(s));
@@ -24,7 +24,7 @@
   // ---------- state ----------
   const S = {
     board: null, bom: null, bomErr: "",
-    files: { ipc: null, ipcRev: "", ipcAlt: [], bom: null, TOP: null, BOTTOM: null },
+    files: { ipc: null, ipcRev: "", ipcAlt: [], bom: null, TOP: null, BOTTOM: null, align: null }, alignFile: null,
     imgs: { TOP: null, BOTTOM: null },          // {bmp, w, h}
     align: { TOP: null, BOTTOM: null },         // {x, y, s, how, score}
     side: "TOP", mode: "cad",
@@ -44,7 +44,8 @@
   // ======================================================================
   // File intake
   // ======================================================================
-  const RX_IPC = /\.(cvg|xml)$/i, RX_BOM = /\.(xlsx|xlsm|xls|csv|tsv)$/i, RX_IMG = /\.(png|jpe?g|webp|bmp)$/i;
+  const RX_IPC = /\.(cvg|xml)$/i, RX_BOM = /\.(xlsx|xlsm|xls|csv|tsv)$/i, RX_IMG = /\.(png|jpe?g|webp|bmp)$/i, RX_ALIGN = /\.json$/i;
+  const ALIGN_FORMAT = "pcb-viewer-alignment";
   // Altium export names: "<Project> PCB 3D Print Top" / "... Bottom". Otherwise the LAST side word wins,
   // so a project name such as "Bottom Plate" does not decide the side.
   const SIDE_WORD = { top: "TOP", front: "TOP", bottom: "BOTTOM", bot: "BOTTOM", btm: "BOTTOM", back: "BOTTOM", rear: "BOTTOM" };
@@ -61,7 +62,8 @@
     const ipcs = files.filter(f => RX_IPC.test(f.name));
     const boms = files.filter(f => RX_BOM.test(f.name));
     const imgs = files.filter(f => RX_IMG.test(f.name));
-    if (!ipcs.length && !boms.length && !imgs.length) { toast("No usable files. Expected IPC-2581 (.cvg), BOM (.xlsx/.csv), and board images.", true); return; }
+    const jsons = files.filter(f => RX_ALIGN.test(f.name));
+    if (!ipcs.length && !boms.length && !imgs.length && !jsons.length) { toast("No usable files. Expected IPC-2581 (.cvg), BOM (.xlsx/.csv), and board images.", true); return; }
     busy("Reading files…");
     const notes = [];
     let askMap = false;
@@ -86,7 +88,7 @@
         S.files.ipc = cands[0].f; S.files.ipcRev = board.rev; S.files.ipcAlt = cands.slice(1).map(c => c.f.name + " (rev " + c.rev + ")");
         if (!boms.length) { S.bom = null; S.files.bom = null; S.bomErr = ""; }
         if (!imgs.length) { S.imgs = { TOP: null, BOTTOM: null }; S.files.TOP = S.files.BOTTOM = null; }
-        S.align = { TOP: null, BOTTOM: null };
+        S.align = { TOP: null, BOTTOM: null }; S.alignFile = null; S.files.align = null;
         S.side = "TOP";
         buildCaches();
       }
@@ -103,7 +105,15 @@
         const sd = !S.imgs.TOP ? "TOP" : !S.imgs.BOTTOM ? "BOTTOM" : null;
         if (sd) { await setImage(sd, f); notes.push(`“${f.name}” has no TOP/BOT in its name; used as ${sd.toLowerCase()} image.`); }
       }
-      // ---- align photos to board ----
+      // ---- alignment file (saved from this viewer) ----
+      let gotAlign = false;
+      for (const f of jsons) {
+        let d = null; try { d = JSON.parse(await f.text()); } catch {}
+        if (d && d.format === ALIGN_FORMAT && d.sides) { S.alignFile = d; S.files.align = f; gotAlign = true; break; }
+      }
+      if (jsons.length && !gotAlign && !ipcs.length) notes.push("No PCB Viewer alignment file found in: " + jsons.map(f => f.name).join(", "));
+      // ---- align photos to board: file in this batch > earlier file > browser > auto-fit ----
+      if (S.board && S.alignFile) applyAlignFile(!gotAlign, notes);
       if (S.board) for (const sd of ["TOP", "BOTTOM"]) if (S.imgs[sd] && !S.align[sd]) initAlign(sd);
     } catch (e) {
       console.error(e);
@@ -869,7 +879,7 @@
     const imgRow = sd => {
       const im = S.imgs[sd], a = S.align[sd];
       if (!im) return file(sd === "TOP" ? "Top img" : "Bot img", null);
-      const how = !a ? "not aligned" : a.how === "saved" ? "saved alignment" : a.how === "manual" ? "manual alignment" : `auto-fit · ${Math.round(a.score * 100)}% match`;
+      const how = !a ? "not aligned" : a.how === "file" ? "from alignment file" : a.how === "saved" ? "saved alignment" : a.how === "manual" ? "manual alignment" : `auto-fit · ${Math.round(a.score * 100)}% match`;
       return file(sd === "TOP" ? "Top img" : "Bot img", f[sd], `${im.w}×${im.h}px · ${how}`) +
         `<div class="row-actions"><button type="button" class="hud-btn" data-align="${sd}">Align ${sd === "TOP" ? "top" : "bottom"}…</button><button type="button" class="hud-btn" data-refit="${sd}">Auto-fit</button></div>`;
     };
@@ -884,6 +894,8 @@
         ${S.bom ? `<div class="row-actions"><button type="button" class="hud-btn" data-mapcols>BOM columns…</button></div>` : ""}
         ${imgRow("TOP")}
         ${imgRow("BOTTOM")}
+        ${file("Alignment", f.align, S.alignFile && S.alignFile.saved ? `saved ${esc(String(S.alignFile.saved).slice(0, 10))}` : "")}
+        <div class="row-actions"><button type="button" class="hud-btn" data-savealign ${S.imgs.TOP || S.imgs.BOTTOM ? "" : "disabled"}>Save alignment…</button><button type="button" class="hud-btn" data-loadalign>Load alignment…</button></div>
       </div>
       <h3 class="sub"><span>Board</span></h3>
       <dl class="kv">
@@ -1222,6 +1234,53 @@
   new ResizeObserver(() => resize()).observe(stage);
   if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { readColors(); redraw(); });
 
+  // ---------- alignment file: save / apply ----------
+  // Positions are in board units, view space (bottom side mirrored), per image size.
+  function applyAlignFile(onlyEmpty, notes) {
+    const d = S.alignFile, b = S.board;
+    if (d.board && d.board !== b.stepName) { notes.push(`Alignment file is for “${d.board}”, not this board. It was not used.`); return; }
+    const k = (+d.toMM > 0 ? +d.toMM : b.toMM) / b.toMM;            // file units -> board units
+    for (const sd of ["TOP", "BOTTOM"]) {
+      const a = d.sides[sd], im = S.imgs[sd];
+      if (!a || !im || (onlyEmpty && S.align[sd])) continue;
+      if (!(isFinite(a.x) && isFinite(a.y) && a.s > 0)) continue;
+      if (a.w !== im.w || a.h !== im.h) {
+        notes.push(`Alignment file is for a ${a.w}×${a.h} ${sd.toLowerCase()} image; this one is ${im.w}×${im.h}. ${S.align[sd] ? "Current alignment kept." : "Auto-fit used."}`);
+        continue;
+      }
+      S.align[sd] = { x: a.x * k, y: a.y * k, s: a.s * k, how: "file" };
+    }
+  }
+  async function saveAlignFile() {
+    if (!S.board) return;
+    const sides = {};
+    for (const sd of ["TOP", "BOTTOM"]) {
+      const a = S.align[sd], im = S.imgs[sd];
+      if (a && im) sides[sd] = { image: S.files[sd] ? S.files[sd].name : "", w: im.w, h: im.h, x: a.x, y: a.y, s: a.s };
+    }
+    if (!Object.keys(sides).length) { toast("No photo is loaded, so there is no alignment to save.", true); return; }
+    const d = { format: ALIGN_FORMAT, version: 1, board: S.board.stepName, units: S.board.units, toMM: S.board.toMM, saved: new Date().toISOString(), viewer: REV, sides };
+    const text = JSON.stringify(d, null, 2) + "\n";
+    const name = (S.board.stepName.replace(/[\\/:*?"<>|]+/g, "_").trim() || "board") + " alignment.pcbv.json";
+    const done = () => { S.alignFile = d; renderPanel(); toast("Alignment saved. Keep the file in the project folder; it loads with the project."); };
+    if (window.showSaveFilePicker) {
+      try {
+        const h = await showSaveFilePicker({ suggestedName: name, types: [{ description: "PCB Viewer alignment", accept: { "application/json": [".json"] } }] });
+        const w = await h.createWritable(); await w.write(text); await w.close();
+        S.files.align = { name: h.name }; done(); return;
+      } catch (e) { if (e && e.name === "AbortError") return; }      // other errors: fall back to a download
+    }
+    const url = URL.createObjectURL(new Blob([text], { type: "application/json" }));
+    const a = document.createElement("a"); a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
+    S.files.align = { name }; done();
+  }
+  document.addEventListener("click", e => {
+    if (e.target.closest("[data-savealign]")) saveAlignFile();
+    else if (e.target.closest("[data-loadalign]")) $("#alignInput").click();
+  });
+  $("#alignInput").addEventListener("change", e => { const fs = Array.from(e.target.files || []); e.target.value = ""; if (fs.length) loadFiles(fs); });
+
   // ---------- close project: drop all project data from memory ----------
   function closeProject() {
     for (const sd of ["TOP", "BOTTOM"]) {
@@ -1230,7 +1289,7 @@
     }
     Object.assign(S, {
       board: null, bom: null, bomErr: "", boardKey: "", bomKey: "",
-      files: { ipc: null, ipcRev: "", ipcAlt: [], bom: null, TOP: null, BOTTOM: null },
+      files: { ipc: null, ipcRev: "", ipcAlt: [], bom: null, TOP: null, BOTTOM: null, align: null }, alignFile: null,
       imgs: { TOP: null, BOTTOM: null }, align: { TOP: null, BOTTOM: null },
       side: "TOP", mode: "cad", sel: null, hist: [], hover: null, query: "", matches: null, netMatches: null, aligning: null
     });

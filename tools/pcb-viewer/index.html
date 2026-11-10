@@ -50,7 +50,8 @@
       </button>
     </div>
     <input id="folderInput" type="file" webkitdirectory multiple hidden>
-    <input id="filesInput" type="file" multiple accept=".cvg,.xml,.xlsx,.xlsm,.csv,.tsv,.txt,.png,.jpg,.jpeg,.webp,.bmp" hidden>
+    <input id="filesInput" type="file" multiple accept=".cvg,.xml,.xlsx,.xlsm,.csv,.tsv,.txt,.png,.jpg,.jpeg,.webp,.bmp,.json" hidden>
+    <input id="alignInput" type="file" accept=".json" hidden>
   </header>
 
   <main class="main">
@@ -82,7 +83,8 @@
             <label><input type="checkbox" data-layer="drills" checked> Drill holes</label>
             <label><input type="checkbox" data-layer="mech"> Mechanical / doc</label>
             <div class="pop-row"><span>Photo opacity</span><input type="range" id="photoAlpha" min="0.2" max="1" step="0.05" value="1">
-              <button type="button" class="hud-btn" id="alignBtn" title="Line up the photo of this side with the board">Align photo…</button></div>
+              <button type="button" class="hud-btn" id="alignBtn" title="Line up the photo of this side with the board">Align photo…</button>
+              <button type="button" class="hud-btn" data-savealign title="Write both photo alignments to a file for the project folder">Save alignment…</button></div>
           </div>
         </div>
       </div>
@@ -105,6 +107,7 @@
           <button type="button" class="hud-btn sq" id="scUp" title="Larger by 0.1% (Shift: 1%) ]" aria-label="Scale up">+</button>
         </span>
         <button type="button" class="hud-btn" id="alignAuto">Auto-fit</button>
+        <button type="button" class="hud-btn" data-savealign title="Write both photo alignments to a file for the project folder">Save to file…</button>
         <button type="button" class="hud-btn primary" id="alignDone">Done</button>
       </div>
 
@@ -123,6 +126,7 @@
             <li><b>BOM</b><span>.xlsx / .csv · Atlas PN, Mfr PN</span></li>
             <li><b>Top image</b><span>.png / .jpg · name ends “Top”</span></li>
             <li><b>Bottom image</b><span>.png / .jpg · name ends “Bottom”</span></li>
+            <li><b>Alignment</b><span>.pcbv.json · optional · saved from here</span></li>
           </ul>
           <div class="drop-actions">
             <button class="btn primary" type="button" id="dropFolderBtn">Open project folder</button>
