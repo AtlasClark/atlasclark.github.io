@@ -24,7 +24,7 @@ import { goalWave } from "./hydfx.js";
 import { holidayGoal, seasonsOn, setSeasonsOn, seasonOf } from "./themefx.js";
 import { ui, render, setTab, setMsg, showBanner, tickMasks, relayout, forceRebuild, resetIcons,
          toggleSwatches, openBank, auditStreak, showDiag, closeOverlays, fillSettings, renderRoster,
-         renderActivityNow, showUnlock, uiHooks, htaDismiss } from "./ui.js";
+         renderActivityNow, showUnlock, uiHooks, htaDismiss, togglePetFold } from "./ui.js";
 import { $, esc, bus, todayKey, localStamp, fmt, fmtOz, trim, parseKey, shiftKey, clockStamp, monthDayOk } from "./util.js";
 import { EVENTS, eventDefault } from "./art.js";
 
@@ -833,6 +833,8 @@ function wire() {
     }
   };
   const equipFrom = e => {
+    const fold = e.target.closest("[data-act=petfold]"), foldCard = e.target.closest(".pet-card");
+    if (fold && foldCard) { togglePetFold(foldCard.dataset.name); render(); return; }
     const tab = e.target.closest("[data-act=pen]"), tabCard = e.target.closest(".pet-card");
     if (tab && tabCard) { ui.petPen[tabCard.dataset.name] = Number(tab.dataset.pen); render(); return; }
     const t = e.target.closest("[data-act=equip]"), card = e.target.closest(".pet-card");

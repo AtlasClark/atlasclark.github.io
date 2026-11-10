@@ -567,6 +567,16 @@ export function ensureIcons() {
   document.head.appendChild(el);
 }
 
+/* Pets tab cards fold to their header line, per person, in this browser only
+   (localStorage awc-pets-folded {name: true}); nothing is saved to the challenge. */
+const PET_FOLD_KEY = "awc-pets-folded";
+let petFolds = {};
+try { petFolds = JSON.parse(localStorage.getItem(PET_FOLD_KEY)) || {}; } catch { petFolds = {}; }
+export function togglePetFold(name) {
+  if (petFolds[name]) delete petFolds[name]; else petFolds[name] = true;
+  try { localStorage.setItem(PET_FOLD_KEY, JSON.stringify(petFolds)); } catch { }
+}
+
 function renderPets() {
   if (!S.participants.length) { setHtml("pets", '<p class="empty-state">Nobody on the roster yet.</p>'); return; }
   ensureIcons();
@@ -585,10 +595,13 @@ function renderPets() {
     const pen = pens.includes(ui.petPen[p.name]) ? ui.petPen[p.name] : pensOf(p).at(-1), order = petGridOrder(pen), shut = pen === 3 && !pen3Open(p);
     const inPen = k => penOf(k) === pen, heldHere = [...held.keys()].filter(inPen);
     const alive = penAlive(p, pen) - heldHere.length, buried = penBuried(p, pen) + heldHere.filter(k => held.get(k)).length;
-    h.push('<div class="pet-card" data-name="' + n + '">');
-    h.push('<div class="pet-head"><i class="dot" style="background:' + p.color + '"></i>' + esc(p.name) +
+    const folded = !!petFolds[p.name];
+    h.push('<div class="pet-card' + (folded ? ' folded' : '') + '" data-name="' + n + '">');
+    h.push('<button type="button" class="pet-head" data-act="petfold" aria-expanded="' + !folded + '" title="' + (folded ? 'Show' : 'Hide') + ' ' + n + '&rsquo;s pets">' +
+           '<i class="fold-chev" aria-hidden="true"></i><i class="dot" style="background:' + p.color + '"></i>' + esc(p.name) +
            '<span class="pet-count">' + alive + ' / ' + C.PET_COUNT +
-           (buried ? '<b class="graven"> &middot; ' + buried + ' buried</b>' : '') + '</span></div>');
+           (buried ? '<b class="graven"> &middot; ' + buried + ' buried</b>' : '') + '</span></button>');
+    if (folded) { h.push('</div>'); continue; }
     if (open) {
       h.push('<div class="pen-tabs" role="tablist">' + pens.map(x =>
         '<button type="button" role="tab" class="pen-tab' + (x === pen ? ' on' : '') + (x === 3 && !pen3Open(p) ? ' closed' : '') +

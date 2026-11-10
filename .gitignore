@@ -55,3 +55,6 @@ water-challenge-backup-*.json
 tools/water-challenge/cloud/.wrangler/
 tools/water-challenge/cloud/.dev.vars
 tools/water-challenge/cloud/node_modules/
+
+# Water Challenge rulebook source (published as a private artifact; local only)
+water-rulebook.html
