@@ -15,7 +15,8 @@ import { monsterEarned } from "./monster.js";
 
 const isShell = s => C.SHELL_KINDS.includes(s.kind);
 const isShard = s => C.SHARD_KINDS.includes(s.kind);
-const notTokens = s => isShell(s) || isShard(s);
+const isSplinko = s => s.kind === C.SPLINKO_KIND;
+const notTokens = s => isShell(s) || isShard(s) || isSplinko(s);
 export const spentTotal = p => (p.spends || []).reduce((a, s) => a + (notTokens(s) ? 0 : Number(s.cost) || 0), 0);
 export const chestWinnings = p => (p.spends || []).reduce((a, s) => a + (s.chest ? Number(s.chest.won) || 0 : 0), 0);
 export const earnedTotal = p => tokensEarned(p) + capBonus(p) + chestWinnings(p) + hydrationEarned(p).tokens + monsterEarned(p).tokens;
@@ -62,7 +63,7 @@ setSpendCheck((m, disk) => {
     if ((s.kind === "fuse" || s.kind === "shard") && n[Number(s.tier)] < 0) return "not enough " + (C.PET_BINS[Number(s.tier)] || {}).name + " shards";
   }
   if (added.some(s => !notTokens(s) && Number(s.cost) > 0) && balance(m) < 0) return "not enough tokens";
-  if (added.some(s => isShell(s) && Number(s.cost) > 0) && shellBalance(m) < 0) return "not enough shells";
+  if (added.some(s => (isShell(s) && Number(s.cost) > 0) || (isSplinko(s) && Number(s.bet) > 0)) && shellBalance(m) < 0) return "not enough shells";
   return "";
 });
 
@@ -161,6 +162,25 @@ export async function plinkoPlay(p) {
            reward, was, slot: d.slot, path: d.path };
 }
 
+/* ---- shell Plinko: the same drop, paid in shells --------------------------------- */
+/* What a cup pays on a stake: the multiplier, rounded up to whole shells. */
+export const splinkoPay = (bin, bet) => Math.ceil(bet * C.splinkoMult(bin) - 1e-9);
+export function splinkoBlock(p, bet) {
+  if (!C.SPLINKO_BETS.includes(bet)) return "Pick " + C.SPLINKO_BETS.join(", ") + " shells.";
+  if (shellBalance(p) < bet) return "Needs " + bet + " shells.";
+  return "";
+}
+/* Takes the stake and pays the cup now; the board only shows it. */
+export async function splinkoPlay(p, bet, rnd = Math.random) {
+  if (splinkoBlock(p, bet)) return null;
+  const before = copy(p);
+  const path = Array.from({ length: C.PLINKO_ROWS }, () => rnd() < 0.5 ? 0 : 1);
+  const slot = path.reduce((a, b) => a + b, 0), bin = C.PLINKO_SLOTS[slot], won = splinkoPay(bin, bet);
+  const s = spend(p, C.SPLINKO_KIND, 0, { bet, won, bin, slot });
+  if (!(await saveOrUndo(p, before, null))) return null;
+  return { id: s.id, at: Date.now(), name: p.name, color: p.color, kind: C.PET_NO_PET, bin, slot, path, shell: { bet, won } };
+}
+
 /* The centre cup: the token goes into the chest; if the chest held anything, a
    CHEST_CHANCE roll wins all of it, this token included. */
 async function chestPlay(p, d, rnd = Math.random, prior = copy(p)) {
@@ -242,19 +262,20 @@ export async function pickPet(p, k) {
 }
 
 /* Plinko drops of p this page must not show yet (wins, repeats and their shards, chest
-   drops): [{ id, pet, fresh, revived, was, chest }].
+   drops, shell drops): [{ id, pet, fresh, revived, was, chest, shell }].
    The result is saved before the ball falls, so a drop stays hidden until its ball
    lands here (landed ids), or for holdMs after it when this page never shows the ball. */
 export function pendingDrops(p, inFlight, landed, now, holdMs) {
   const out = new Map();
   for (const s of p.spends || []) {
-    if (s.kind !== "plinko" || landed.has(s.id) || !(s.fresh || s.chest || Number(s.pet) >= 0)) continue;
+    const shell = isSplinko(s);
+    if (landed.has(s.id) || !(shell || (s.kind === "plinko" && (s.fresh || s.chest || Number(s.pet) >= 0)))) continue;
     const age = now - new Date(s.at).getTime();
-    if (age > -5000 && age < holdMs) out.set(s.id, s);              /* a few seconds of clock skew between PCs */
+    if (age > -5000 && age < holdMs) out.set(s.id, shell ? { id: s.id, pet: C.PET_NO_PET, shell: { bet: s.bet, won: s.won } } : s);   /* a few seconds of clock skew between PCs */
   }
   for (const ev of inFlight) {
-    if (ev.name !== p.name || !(ev.fresh || ev.chest || ev.kind >= 0) || landed.has(ev.id)) continue;
-    out.set(ev.id, { id: ev.id, pet: ev.kind, fresh: ev.fresh, revived: ev.revived, was: ev.was, chest: ev.chest });
+    if (ev.name !== p.name || !(ev.fresh || ev.chest || ev.kind >= 0 || ev.shell) || landed.has(ev.id)) continue;
+    out.set(ev.id, { id: ev.id, pet: ev.kind, fresh: ev.fresh, revived: ev.revived, was: ev.was, chest: ev.chest, shell: ev.shell });
   }
   return [...out.values()];
 }
@@ -264,7 +285,7 @@ export function pendingDrops(p, inFlight, landed, now, holdMs) {
    pets back from the grave, repeats, chest), pets bought (old) or brought in with
    shards, shards combined, the rerolls. */
 export function shopDay(p, key) {
-  const d = { drops: 0, spent: 0, fresh: [], revived: [], repeats: 0, empty: 0, chestIn: 0, chestWon: 0, buys: [], picks: [], fuses: [], rerolls: [], style: [] };
+  const d = { drops: 0, spent: 0, fresh: [], revived: [], repeats: 0, empty: 0, chestIn: 0, chestWon: 0, buys: [], picks: [], fuses: [], rerolls: [], style: [], sDrops: 0, sBet: 0, sWon: 0 };
   for (const s of spendsOn(p, key)) {
     if (!notTokens(s)) d.spent += Number(s.cost) || 0;
     if (s.kind === "plinko") {
@@ -274,7 +295,8 @@ export function shopDay(p, key) {
       else if (s.revived) d.revived.push(Number(s.pet));
       else if (s.fresh) d.fresh.push(Number(s.pet));
       else d.repeats++;
-    } else if (s.kind === "buy") d.buys.push(s);
+    } else if (isSplinko(s)) { d.sDrops++; d.sBet += Number(s.bet) || 0; d.sWon += Number(s.won) || 0; }
+    else if (s.kind === "buy") d.buys.push(s);
     else if (s.kind === "shard") d.picks.push(s);
     else if (s.kind === "fuse") d.fuses.push(s);
     else if (s.kind === "reroll") d.rerolls.push(s);
@@ -359,7 +381,9 @@ function runs(p) {
   return out;
 }
 export const shellAward = run => Math.min(C.SHELL_MAX, Math.max(1, run));
-export function shellsEarned(p) { return Object.values(runs(p)).reduce((a, r) => a + shellAward(r), 0) + hydrationEarned(p).shells + monsterEarned(p).shells + winShells(p); }
+export function shellsEarned(p) { return Object.values(runs(p)).reduce((a, r) => a + shellAward(r), 0) + hydrationEarned(p).shells + monsterEarned(p).shells + winShells(p) + splinkoWon(p); }
+/* Shells won back on shell Plinko (the stakes are in shellsSpent). */
+export const splinkoWon = p => (p.spends || []).reduce((a, s) => a + (isSplinko(s) ? Number(s.won) || 0 : 0), 0);
 /* Day wins pay WIN_SHELLS, split between that day's winners (model.dayWinners). */
 export const winShare = n => n ? Math.ceil(C.WIN_SHELLS / n) : 0;
 export function winShells(p) {
@@ -368,7 +392,7 @@ export function winShells(p) {
   for (const d of days) { const w = dayWinners(d); if (w.includes(p.name)) n += winShare(w.length); }
   return n;
 }
-export const shellsSpent = p => (p.spends || []).reduce((a, s) => a + (isShell(s) ? Number(s.cost) || 0 : 0), 0);
+export const shellsSpent = p => (p.spends || []).reduce((a, s) => a + (isShell(s) ? Number(s.cost) || 0 : isSplinko(s) ? Number(s.bet) || 0 : 0), 0);
 export const shellBalance = p => shellsEarned(p) - shellsSpent(p);
 /* The run of pour days in a row up to today (or the last pour day before it, across
    any weekend days without a pour, before today's first pour). */

@@ -333,11 +333,17 @@ function renderActivity() {
     if (p.graveDay === key && Number(p.deadKind) >= 0) pets.push({ kind: "grave", p, pet: Number(p.deadKind), ts: t.grave });
     /* buys and rerolls one row each; Plinko folded to one row per person (a ball
        still falling stays out until it lands) */
-    const hid = hiddenIds(p), drops = [];
+    const hid = hiddenIds(p), drops = [], sdrops = [];
     for (const s of spendsOn(p, key)) {
       if (hid.has(s.id)) continue;
       if (held && s.kind === "reroll" && Number(s.pet) === Number(p.rollKind)) continue;   /* its card is still turning */
-      if (s.kind === "plinko") drops.push(s); else pets.push({ kind: "spend", p, s, ts: s.at });
+      if (s.kind === "plinko") drops.push(s);
+      else if (s.kind === C.SPLINKO_KIND) sdrops.push(s);
+      else pets.push({ kind: "spend", p, s, ts: s.at });
+    }
+    if (sdrops.length) {                                             /* shell drops: one row per person too */
+      sdrops.sort((a, b) => atOf(a.at) - atOf(b.at));
+      pets.push({ kind: "splinko", p, drops: sdrops, ts: sdrops[sdrops.length - 1].at, from: sdrops[0].at });
     }
     if (drops.length === 1) pets.push({ kind: "spend", p, s: drops[0], ts: drops[0].at });
     else if (drops.length) {
@@ -358,6 +364,8 @@ function renderActivity() {
     if (a.kind === "spend") return '<li class="ev-shop">' + spendLine(a.p, a.s, when) + '</li>';
     if (a.kind === "plinko") return '<li class="ev-shop" title="' + a.drops.length + ' drops, ' + esc(prettyTime(a.from)) + ' to ' +
                                     esc(prettyTime(a.ts)) + '">' + plinkoLine(a.p, a.drops, key, when) + '</li>';
+    if (a.kind === "splinko") return '<li class="ev-shop" title="' + a.drops.length + ' drop' + (a.drops.length === 1 ? '' : 's') + ', ' +
+                                     esc(prettyTime(a.from)) + ' to ' + esc(prettyTime(a.ts)) + '">' + splinkoLine(a.p, a.drops, when) + '</li>';
     if (a.kind === "roll") {
       return '<li class="ev-pet">' + '<span class="tag">' + (a.fresh ? "new pet" : "pet") + '</span>' + when +
              '<strong>' + esc(a.p.name) + '</strong> ' + rollVerb(a.fresh) + esc(petLabel(a.pet)) +
@@ -821,6 +829,14 @@ function plinkoLine(p, drops, key, when) {
   return '<span class="tag">plinko</span>' + when + '<strong>' + esc(p.name) + '</strong> dropped ' + d.drops + ' tokens' +
          (bits.length ? ': ' + bits.join(' &middot; ') : '');
 }
+/* A person's shell drops as one line: what went in, what came back. */
+function splinkoLine(p, drops, when) {
+  const bet = drops.reduce((a, s) => a + (Number(s.bet) || 0), 0), won = drops.reduce((a, s) => a + (Number(s.won) || 0), 0);
+  const best = drops.reduce((a, s) => Math.max(a, C.splinkoMult(Number(s.bin))), 0);
+  return '<span class="tag">plinko</span>' + when + '<strong>' + esc(p.name) + '</strong> dropped ' + bet + ' shell' + (bet === 1 ? '' : 's') +
+         (drops.length > 1 ? ' in ' + drops.length + ' drops' : '') + ' and got ' + won + ' back' +
+         (best > 1 ? ' <span class="rar mult">best &times;' + best + '</span>' : '');
+}
 const tierLabel = t => (C.PET_BINS[Number(t)] || { name: "?" }).name;
 /* What a "shard" spend paid: "a Rare shard", "2 Rare shards". */
 const shardWords = s => { const n = Number(s.cost) || 1; return n === 1 ? aAn(tierLabel(s.tier)) + " shard" : n + " " + tierLabel(s.tier) + " shards"; };
@@ -839,6 +855,7 @@ function spendLine(p, s, when) {
                                 ' shards into 1 ' + esc(tierLabel(Number(s.tier) + 1));
   if (s.kind === "reroll") return '<span class="tag">reroll</span>' + when + name + 'rerolled the ' + esc(petLabel(Number(s.from))) +
                                   ' into ' + (k >= 0 ? (s.fresh ? "the " : "another ") + esc(petLabel(k)) : "nothing");
+  if (s.kind === C.SPLINKO_KIND) return splinkoLine(p, [s], when);
   if (s.kind === "cosmetic") return '<span class="tag">style</span>' + when + name + 'bought ' + esc((COSMETICS[s.item] || { name: "a look" }).name) +
                                     ' <span class="rar">' + s.cost + ' shells</span>';
   if (s.kind === "paint") return '<span class="tag">style</span>' + when + name + 'recoloured the ' + esc(petLabel(k)) +
@@ -924,7 +941,7 @@ function recapHtml() {
                                           (s.revived ? ' (back from the grave)' : '')));
     if (d.fresh.length) ev.push(line(icon(d.fresh[0]), 'won ' + names(d.fresh) + ' on Plinko'));
     if (d.revived.length) ev.push(line(icon(d.revived[0]), 'won ' + names(d.revived) + ' back from the grave on Plinko'));
-    if (d.drops || d.buys.length || d.picks.length || d.fuses.length || d.rerolls.length) shop.push({ p, d });
+    if (d.drops || d.sDrops || d.buys.length || d.picks.length || d.fuses.length || d.rerolls.length) shop.push({ p, d });
   }
   h.push('<div><h4>Pets</h4>' + (ev.length ? '<ul class="rc-pets">' + ev.join("") + '</ul>' : '<p class="dim">No pet news.</p>') + '</div>');
 
@@ -966,9 +983,9 @@ export function weekStats(today = todayKey()) {
       for (const s of [...sd.buys, ...sd.picks]) (s.revived ? r.revived : r.found).push(Number(s.pet));
       r.revived.push(...sd.revived);
       if (grave !== null) r.drowned.push(grave);
-      if (sd.drops || sd.buys.length || sd.picks.length || sd.fuses.length || sd.rerolls.length) {
-        if (!r.shop) r.shop = { drops: 0, spent: 0, fresh: [], revived: [], repeats: 0, empty: 0, chestIn: 0, chestWon: 0, buys: [], picks: [], fuses: [], rerolls: [] };
-        for (const f of ["drops", "spent", "repeats", "empty", "chestIn", "chestWon"]) r.shop[f] += sd[f];
+      if (sd.drops || sd.sDrops || sd.buys.length || sd.picks.length || sd.fuses.length || sd.rerolls.length) {
+        if (!r.shop) r.shop = { drops: 0, spent: 0, fresh: [], revived: [], repeats: 0, empty: 0, chestIn: 0, chestWon: 0, buys: [], picks: [], fuses: [], rerolls: [], sDrops: 0, sBet: 0, sWon: 0 };
+        for (const f of ["drops", "spent", "repeats", "empty", "chestIn", "chestWon", "sDrops", "sBet", "sWon"]) r.shop[f] += sd[f];
         for (const f of ["fresh", "revived", "buys", "picks", "fuses", "rerolls"]) r.shop[f].push(...sd[f]);
       }
     }
@@ -1077,6 +1094,7 @@ function recapShop(shop) {
     if (d.repeats) bits.push(d.repeats + ' repeat' + (d.repeats === 1 ? '' : 's'));
     if (d.chestIn) bits.push(d.chestIn + ' into the chest');
     if (d.empty) bits.push(d.empty + ' returned');
+    if (d.sDrops) bits.push(d.sDrops + ' shell drop' + (d.sDrops === 1 ? '' : 's') + ' (' + d.sBet + ' in, ' + d.sWon + ' back)');
     if (d.buys.length) bits.push(d.buys.length + ' bought');
     if (d.picks && d.picks.length) bits.push(d.picks.length + ' from shards');
     if (d.fuses && d.fuses.length) bits.push(d.fuses.length + ' combine' + (d.fuses.length === 1 ? '' : 's'));

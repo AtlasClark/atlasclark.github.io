@@ -1,4 +1,4 @@
-/* The Plinko board. Draws pegs and rarity slots and animates any number of balls,
+/* The Plinko board. Draws pegs and cups and animates any number of balls,
    each along a given left/right path. A ball can start part-way through (offsetMs),
    which is how a drop made on another machine is joined late. Timing is wall-clock,
    so a hidden tab catches up instead of falling behind. */
@@ -7,6 +7,8 @@ import * as C from "./config.js";
 
 const SLOT_LABEL = ["Com", "Unc", "Rare", "Epic", "???"];
 const label = bin => bin === C.CHEST ? "\u2605" : SLOT_LABEL[bin];     /* the Community Chest: a star */
+const multLabel = bin => "\u00d7" + C.splinkoMult(bin);              /* what the cup does to a shell stake */
+const SHELL = "#f08d6c";                                              /* the Style shop's shell colour */
 const FALL_IN = 0.3, INTO_SLOT = 0.38;                 /* seconds before the first peg / after the last */
 
 export class PlinkoBoard {
@@ -17,6 +19,7 @@ export class PlinkoBoard {
     this.hits = [];       /* peg flashes */
     this.wins = [];       /* labels over slots */
     this.running = false;
+    this.mode = "token";  /* which line of a cup is lit for this player: "token" | "shell" */
     this.resize(canvas.parentElement.clientWidth || 360);
   }
 
@@ -47,7 +50,9 @@ export class PlinkoBoard {
 
   duration() { return FALL_IN + C.PLINKO_ROWS * C.PLINKO_ROW_SECS + INTO_SLOT; }
 
-  /* ev: { id, name, color, path:[0|1...], slot, bin, kind, label } */
+  setMode(mode) { if (mode !== this.mode) { this.mode = mode; this.draw(performance.now()); } }
+
+  /* ev: { id, name, color, path:[0|1...], slot, bin, kind, label, shell? { bet, won } } */
   drop(ev, offsetMs = 0) {
     this.balls.push({ ev, t0: performance.now() - Math.max(0, offsetMs), hit: -1, landed: false });
     this.start();
@@ -114,11 +119,20 @@ export class PlinkoBoard {
       ctx.globalAlpha = glow ? 1 : 0.78;
       roundRect(ctx, x, y, w, this.slotH, 7);
       ctx.fill();
-      ctx.globalAlpha = 1;
-      ctx.fillStyle = "#17324d";
-      ctx.font = "800 " + Math.max(8, Math.min(11, this.s * 0.3)) + "px 'Segoe UI', sans-serif";
+      /* a cup is both: its rarity (a token drop) over its multiplier (a shell drop);
+         the line for the way this player is dropping now is the strong one */
+      const shell = this.mode === "shell", fs = Math.max(8, Math.min(11, this.s * 0.3));
       ctx.textAlign = "center";
-      ctx.fillText(label(bin), x + w / 2, y + this.slotH / 2 + 4);
+      ctx.fillStyle = "#17324d";
+      ctx.globalAlpha = shell ? 0.5 : 1;
+      ctx.font = (shell ? "700 " : "800 ") + fs + "px 'Segoe UI', sans-serif";
+      ctx.fillText(label(bin), x + w / 2, y + this.slotH * 0.4);
+      ctx.globalAlpha = shell ? 1 : 0.6;
+      ctx.font = (shell ? "800 " : "700 ") + Math.max(8, fs - (shell ? 0 : 1)) + "px 'Segoe UI', sans-serif";
+      ctx.fillText(multLabel(bin), x + w / 2, y + this.slotH * 0.8);
+      ctx.globalAlpha = 0.25;                                          /* a hairline between the two */
+      ctx.fillRect(x + w * 0.2, y + this.slotH * 0.52, w * 0.6, 1);
+      ctx.globalAlpha = 1;
     }
 
     /* pegs */
@@ -147,8 +161,8 @@ export class PlinkoBoard {
       ctx.arc(p.x, p.y, this.ballR, 0, 6.2832);
       ctx.fillStyle = b.ev.color || "#60a5fa";
       ctx.fill();
-      ctx.lineWidth = 1.5;
-      ctx.strokeStyle = "rgba(255,255,255,.9)";
+      ctx.lineWidth = b.ev.shell ? 2.6 : 1.5;                           /* a shell drop wears a shell-coloured rim */
+      ctx.strokeStyle = b.ev.shell ? SHELL : "rgba(255,255,255,.9)";
       ctx.stroke();
       ctx.beginPath();
       ctx.arc(p.x - this.ballR * 0.3, p.y - this.ballR * 0.35, this.ballR * 0.3, 0, 6.2832);

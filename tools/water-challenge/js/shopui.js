@@ -4,9 +4,9 @@
 import * as C from "./config.js";
 import { S, findParticipant, tokensEarned, capBonus } from "./model.js";
 import * as store from "./store.js";
-import { balance, spentTotal, rerollBlock, reroll, plinkoBlock, plinkoPlay, plinkoOdds, chestOdds, chestWinnings,
+import { balance, spentTotal, rerollBlock, reroll, plinkoBlock, plinkoPlay, plinkoOdds, chestOdds, chestWinnings, splinkoBlock, splinkoPlay,
          fuseBlock, fuse, pickBlock, pickPet, shardCost, shardsText, tierOf } from "./shop.js";
-import { landed as landedIds, setFlying, HOLD_MS, hiddenPets, shownBalance, shownChest, anyPending, rollHoldLeft, shownShards } from "./reveal.js";
+import { landed as landedIds, setFlying, HOLD_MS, hiddenPets, shownBalance, shownChest, anyPending, rollHoldLeft, shownShards, shownShells } from "./reveal.js";
 import { onLive, emit } from "./live.js";
 import { petLabel, petGridOrder, rarityLabel, petBinIndex, isGrave, announce, penOf, pensOf, penAlive, rewardMsg, rewardPen } from "./pets.js";
 import { PlinkoBoard } from "./plinko.js";
@@ -16,6 +16,16 @@ import { initStyle, renderStyle } from "./styleui.js";
 
 let hooks = null;            /* { settle, guard, askConfirm, pollSoon } from app.js */
 let board = null, holdTimer = 0;
+/* What this browser drops on Plinko: tokens (pets) or shells (multipliers), and the shell
+   stake. Kept per browser (localStorage awc-plinko {mode, bet}). */
+const PLINKO_KEY = "awc-plinko";
+const drop = { mode: "token", bet: C.SPLINKO_BETS[1] };
+try {
+  const o = JSON.parse(localStorage.getItem(PLINKO_KEY)) || {};
+  if (o.mode === "shell") drop.mode = "shell";
+  if (C.SPLINKO_BETS.includes(o.bet)) drop.bet = o.bet;
+} catch { }
+const keepDrop = () => { try { localStorage.setItem(PLINKO_KEY, JSON.stringify(drop)); } catch { } };
 const feed = [];
 setFlying(() => board ? board.inFlight() : []);
 
@@ -28,6 +38,14 @@ export function initShop(h) {
   $("shopBalance").addEventListener("click", e => { if (e.target.closest("[data-act=whoami]")) hooks.whoAmI(); });
   initStyle(Object.assign({}, h, { rerender: () => renderShop() }), shopFor);
   $("plinkoDrop").addEventListener("click", dropToken);
+  $("plinkoBets").innerHTML = C.SPLINKO_BETS.map(b => '<button type="button" class="seg" data-bet="' + b + '">' + b + '</button>').join("");
+  $("plinkoMode").addEventListener("click", e => {
+    const m = e.target.closest("[data-mode]"), b = e.target.closest("[data-bet]");
+    if (m) drop.mode = m.dataset.mode === "shell" ? "shell" : "token";
+    else if (b) drop.bet = Number(b.dataset.bet);
+    else return;
+    keepDrop(); renderShop();
+  });
   $("rerollBox").addEventListener("click", e => { if (e.target.closest("#rerollBtn")) doReroll(); });
   $("buyPens").addEventListener("click", e => {
     const b = e.target.closest("[data-pen]");
@@ -91,10 +109,15 @@ export function renderShop() {
   setHtml("chestPot", '<span class="chest-star">&#9733;</span> Community Chest: <b>' + pot + '</b> token' + (pot === 1 ? '' : 's') +
     ' <span class="dim">&middot; ' + (pot ? Math.round(C.CHEST_CHANCE * 100) + '% chance to win it all from the centre cup' : 'empty: the next centre landing starts it') + '</span>');
 
-  const pb = plinkoBlock(p);
+  const shell = drop.mode === "shell", pb = shell ? splinkoBlock(p, drop.bet) : plinkoBlock(p);
+  board.setMode(drop.mode);
+  for (const b of $("plinkoMode").querySelectorAll("[data-mode]")) { const on = b.dataset.mode === drop.mode; b.classList.toggle("on", on); b.setAttribute("aria-pressed", String(on)); }
+  for (const b of $("plinkoBets").children) { const on = Number(b.dataset.bet) === drop.bet; b.classList.toggle("on", on); b.setAttribute("aria-pressed", String(on)); }
+  $("plinkoBets").hidden = !shell;
+  $("plinkoEyebrow").textContent = shell ? drop.bet + " shells per drop" : "1 token per drop";
   $("plinkoDrop").disabled = !!pb;
-  setHtml("plinkoDrop", 'Drop a token for ' + esc(p.name));
-  $("plinkoNote").textContent = pb || "";
+  setHtml("plinkoDrop", shell ? 'Drop ' + drop.bet + ' shells for ' + esc(p.name) : 'Drop a token for ' + esc(p.name));
+  $("plinkoNote").textContent = pb || (shell ? "You have " + shownShells(p) + " shells." : "");
   $("plinkoDrop").style.setProperty("--pc", p.color);
 
   const rb = rerollBlock(p), k = Number(p.rollKind), rolledToday = p.petRollDay === todayKey() && k >= 0, held = rollHoldLeft(p);
@@ -145,7 +168,9 @@ function renderFeed() {
   setHtml("plinkoFeed", feed.length
     ? feed.slice(0, 12).map(f => '<li><span class="t">' + esc(prettyTime(f.ts)) + '</span><i class="dot" style="background:' + f.color + '"></i><strong>' +
         esc(f.name) + '</strong> &rarr; ' +
-        (f.chest ? '<span class="rar chest">&#9733; Chest</span> ' +
+        (f.shell ? '<span class="rar mult">&times;' + C.splinkoMult(Number(f.bin)) + '</span> ' + Number(f.shell.bet) + ' &rarr; ' +
+                   '<span class="pill' + (f.shell.won > f.shell.bet ? ' good' : '') + '">' + Number(f.shell.won) + ' shell' + (Number(f.shell.won) === 1 ? '' : 's') + '</span>'
+         : f.chest ? '<span class="rar chest">&#9733; Chest</span> ' +
                    (f.chest.won ? '<span class="pill good">won ' + f.chest.won + ' tokens</span>' : '<span class="dim">+1 token</span>')
          : '<span class="rar r' + Number(f.bin) + '">' + esc(binName(f.bin)) + '</span> ' +
            (f.kind < 0 ? '<span class="dim">nothing left there, token returned</span>'
@@ -157,7 +182,7 @@ function renderFeed() {
 function addFeed(ev) {
   if (feed.some(f => f.id === ev.id)) return;
   feed.unshift({ id: ev.id, ts: localStamp(new Date(ev.at)), name: ev.name, color: ev.color, bin: ev.bin, kind: ev.kind,
-                 fresh: ev.fresh, revived: ev.revived, chest: ev.chest });
+                 fresh: ev.fresh, revived: ev.revived, chest: ev.chest, shell: ev.shell });
   renderFeed();
 }
 
@@ -165,7 +190,10 @@ function landed(ev) {
   landedIds.add(ev.id);
   addFeed(ev);
   render();                                        /* whatever this drop changed shows now */
-  if (ev.chest && ev.chest.won) {
+  if (ev.shell) {
+    if (ev.mine) setMsg("\u00d7" + C.splinkoMult(Number(ev.bin)) + ": " + ev.shell.bet + " shells in, " + ev.shell.won + " back.", ev.shell.won >= ev.shell.bet);
+    else if (ev.shell.won >= 50) setMsg(ev.name + " hit \u00d7" + C.splinkoMult(Number(ev.bin)) + " on Plinko: " + ev.shell.won + " shells!", true);
+  } else if (ev.chest && ev.chest.won) {
     setMsg(ev.name + " won the Community Chest: " + ev.chest.won + " tokens!", true);
   } else if (ev.chest) {
     if (ev.mine) setMsg("Into the Community Chest. It holds " + shownChest() + ".", true);
@@ -186,16 +214,18 @@ async function dropToken() {
   $("plinkoDrop").disabled = true;
   let res = null;
   await store.serial(async () => {
-    res = await plinkoPlay(fresh(p));
+    const shell = drop.mode === "shell";
+    res = shell ? await splinkoPlay(fresh(p), drop.bet) : await plinkoPlay(fresh(p));
     if (!res) return;
     /* the ball is in the air before anything redraws, so the win stays hidden until it lands */
-    const label = res.chest ? (res.chest.won ? "\u2605 +" + res.chest.won + " tokens!" : "\u2605 +1 to the chest")
+    const label = res.shell ? "\u00d7" + C.splinkoMult(res.bin) + "  +" + res.shell.won
+                : res.chest ? (res.chest.won ? "\u2605 +" + res.chest.won + " tokens!" : "\u2605 +1 to the chest")
                 : res.kind < 0 ? "nothing left" : (res.fresh ? "+" : "") + petLabel(res.kind);
     const ev = emit("drop", Object.assign({}, res, { label }));
     board.drop(Object.assign({ mine: true }, ev));
     await hooks.settle();
   });
-  if (!res) { setMsg("Drop failed: " + (plinkoBlock(p) || "couldn't save") + ".", false); renderShop(); return; }
+  if (!res) { setMsg("Drop failed: " + ((drop.mode === "shell" ? splinkoBlock(p, drop.bet) : plinkoBlock(p)) || "couldn't save") + ".", false); renderShop(); return; }
   renderShop();                    /* the balance drops at once; the result shows on landing */
 }
 

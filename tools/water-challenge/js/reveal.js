@@ -8,7 +8,7 @@ import * as C from "./config.js";
 import { S, petEventTimes } from "./model.js";
 import { todayKey } from "./util.js";
 import { petKindFor } from "./store.js";
-import { pendingDrops, balance, chestRaw, shards } from "./shop.js";
+import { pendingDrops, balance, chestRaw, shards, shellBalance } from "./shop.js";
 
 export const HOLD_MS = C.LIVE_SHOW_MS + 3000;
 export const landed = new Set();                  /* drop ids whose ball landed on this page */
@@ -55,6 +55,11 @@ export function shownKind(p) {
 
 export function shownBalance(p) {
   return balance(p) - pending(p).reduce((a, d) => a + (d.chest ? Number(d.chest.won) || 0 : 0), 0);
+}
+
+/* Shells as this page may show them: a shell drop's stake is gone at once, its win waits for the ball. */
+export function shownShells(p) {
+  return shellBalance(p) - pending(p).reduce((a, d) => a + (d.shell ? Number(d.shell.won) || 0 : 0), 0);
 }
 
 /* Shards as this page may show them: no repeat still falling or still on its card. */

@@ -228,12 +228,17 @@
         </div>
         <div id="shopGrid" class="shop-grid">
           <div class="panel shop-plinko">
-            <div class="panel-heading"><p class="eyebrow">1 token per drop</p><h2>Plinko</h2></div>
+            <div class="panel-heading"><p class="eyebrow" id="plinkoEyebrow">1 token per drop</p><h2>Plinko</h2></div>
             <p class="hint">Each peg is a 50/50 bounce. The slot sets the rarity, and you win any pet of that rarity; one you have alive gives a shard.
-              The centre cup is the Community Chest: your token goes in, with a 5% chance to win everything in it.</p>
+              The centre cup is the Community Chest: your token goes in, with a 5% chance to win everything in it.
+              Drop shells instead and the cup multiplies them.</p>
             <p id="plinkoOdds" class="plinko-odds"></p>
             <p id="chestPot" class="chest-pot"></p>
             <div id="plinkoWrap" class="plinko-wrap"><canvas id="plinkoCanvas"></canvas></div>
+            <div class="plinko-mode" id="plinkoMode">
+              <span class="seg-group" role="group" aria-label="What to drop"><button type="button" class="seg" data-mode="token"><span class="coin sm"></span>Tokens</button><button type="button" class="seg" data-mode="shell"><span class="shellico sm"></span>Shells</button></span>
+              <span class="seg-group" id="plinkoBets" role="group" aria-label="Shells per drop" hidden></span>
+            </div>
             <div class="plinko-go"><button type="button" id="plinkoDrop" class="btn primary">Drop a token</button>
               <span id="plinkoNote" class="hint"></span></div>
             <ul id="plinkoFeed" class="plinko-feed"></ul>

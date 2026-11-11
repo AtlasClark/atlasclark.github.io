@@ -8,9 +8,10 @@ import * as store from "./store.js";
 import { SLOTS, COSMETICS, itemsIn, PAINT_COST, drawDecor, drawEffect, decorBehind, decorDry } from "./cosmetics.js";
 import { CUP_H } from "./styleart.js";
 import { defs, fxSpot, anchorY, zoneOf, lineArt } from "./petdefs.js";
-import { ownsCosmetic, cosmeticBlock, buyCosmetic, wearCosmetic, lookOf, paintBlock, paintPet, shellBalance, shellRun, shellAward, shellsEarned, pouredOn } from "./shop.js";
+import { ownsCosmetic, cosmeticBlock, buyCosmetic, wearCosmetic, lookOf, paintBlock, paintPet, shellRun, shellAward, shellsEarned, pouredOn } from "./shop.js";
 import { hueOf, petLabel } from "./pets.js";
 import { drawCritter } from "./art.js";
+import { shownShells } from "./reveal.js";
 import { $, esc } from "./util.js";
 import { setMsg, ui, setHtml, render } from "./ui.js";
 
@@ -60,7 +61,7 @@ export function renderStyle() {
   if (!p) return;
   const tab = TABS.find(t => t.key === ui.styleTab) || TABS[1], look = lookOf(p);
   /* the shell purse: balance, the run of days in a row, and what tomorrow brings */
-  const run = shellRun(p), today = pouredOn(p), bal = shellBalance(p);
+  const run = shellRun(p), today = pouredOn(p), bal = shownShells(p);
   setHtml("styleBal", '<span class="shellico"></span><b>' + bal + '</b> shell' + (bal === 1 ? '' : 's') +
     ' <span class="dim">&middot; ' + shellsEarned(p) + ' earned</span><span class="run" title="' + run + ' day' + (run === 1 ? '' : 's') + ' in a row">' +
     [1, 2, 3, 4, 5].map(i => '<i' + (i <= Math.min(run, C.SHELL_MAX) ? ' class="on"' : '') + '></i>').join("") + '</span>' +

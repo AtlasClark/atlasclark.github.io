@@ -1,8 +1,8 @@
 /* Water Challenge (web) - constants: rules, tunables and the on-disk contract
    (FORMAT_REV, UTF-16 LE + BOM JSON, unknown fields kept). */
 
-export const REV         = "rev 1.44.0";
-export const APP_VERSION = "web 1.44.0";   /* stamped as writerVersion */
+export const REV         = "rev 1.45.0";
+export const APP_VERSION = "web 1.45.0";   /* stamped as writerVersion */
 /* Every file is written at FORMAT_REV. A file stamped higher came from a newer
    build, and the page asks for a reload. */
 export const FORMAT_REV    = 22;
@@ -41,6 +41,16 @@ export const PLINKO_SLOTS = [4, 3, 2, 1, 0, CHEST, 0, 1, 2, 3, 4];
 /* The centre cup: the drop's token goes into the chest, then (if the chest held
    anything before) this chance to win all of it. */
 export const CHEST_CHANCE = 0.05;
+/* Shell Plinko (rev 1.45.0): the same board, dropped with shells. The cup multiplies the
+   stake: SPLINKO_MULT by rarity (Common .. ???), SPLINKO_CENTRE for the middle cup; the
+   payout is rounded up to whole shells. A "splinko" spend keeps { bet, won } and costs 0
+   (so a page from before this rev counts nothing for it). About 79-85% comes back on
+   average; the most one drop can win is 10 x 10 = 100 shells (1 drop in 512). */
+export const SPLINKO_KIND   = "splinko";
+export const SPLINKO_BETS   = [2, 5, 10];
+export const SPLINKO_MULT   = [0.5, 1, 2, 4, 10];
+export const SPLINKO_CENTRE = 0.3;
+export const splinkoMult = bin => bin === CHEST ? SPLINKO_CENTRE : (SPLINKO_MULT[bin] ?? 0);
 export const PLINKO_ROW_SECS = 0.26;
 export const LIVE_SUBDIR  = "_live";       /* drops shared with every open shop */
 export const LIVE_POLL_MS = 1000;
