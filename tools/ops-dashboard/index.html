@@ -1,8 +1,9 @@
 <!DOCTYPE html>
 <!--
   Ops Dashboard — Atlas Devices tools
-  Scope: personal operations tracker. Projects (kanban), fab/assembly orders,
-  purchase orders, scopes of work, daily notes and to-dos. All data stays in
+  Scope: personal operations tracker. Production (part numbers with their
+  batches), projects (kanban), fab/assembly orders, purchase orders, scopes
+  of work, daily notes and to-dos. All data stays in
   this browser (localStorage + IndexedDB snapshots) and, when linked, in a JSON
   backup file on the operator's disk (File System Access API, Chrome/Edge).
   The CSP below blocks all network requests from scripts; the page loads
@@ -619,6 +620,56 @@
   .empty-state { font-family: var(--mono); font-size: 12px; letter-spacing: .03em; color: var(--text-faint); }
   .empty-state .big { filter: grayscale(1); opacity: .35; }
 
+  /* ---- production: part rows that open to their batches ---- */
+  .prod-toggle {
+    display: inline-flex; align-items: center; gap: 9px; background: none; border: none; padding: 0;
+    color: inherit; font: inherit; cursor: pointer; text-align: left; white-space: nowrap;
+  }
+  .prod-toggle .chev { color: var(--text-faint); font-size: 11px; transition: transform .15s; }
+  tr.open .prod-toggle .chev { transform: rotate(90deg); color: var(--accent-text); }
+  table.data tr.open > td { border-bottom-color: transparent; }
+  table.data tr.prod-detail > td { background: var(--bg); padding: 4px 16px 16px 38px; }
+  .pill.sm { padding: 2px 8px; margin: 1px 4px 1px 0; }
+  .qty-of { color: var(--text-faint); }
+  .qbd { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 6px 0 10px; }
+  .qbd .lbl, .b-head { font: 500 10.5px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--text-faint); }
+  .qbd .lbl { margin-right: 4px; }
+  .qbd-chip {
+    display: inline-flex; align-items: baseline; gap: 8px; padding: 4px 10px; border: 1px solid var(--border);
+    border-radius: 8px; background: var(--surface); font: 400 11.5px var(--mono); color: var(--text-dim);
+  }
+  .qbd-chip b { font-weight: 500; color: var(--text); }
+  .qbd-chip.soon { border-color: color-mix(in srgb, var(--yellow) 55%, transparent); color: var(--yellow); }
+  .qbd-chip.late { border-color: color-mix(in srgb, var(--red) 55%, transparent); color: var(--red); }
+  .qbd-chip.done, .qbd-chip.done b { color: var(--text-faint); }
+  .batches {
+    max-width: 940px; min-width: 640px; margin-bottom: 10px; overflow: hidden;
+    border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface);
+  }
+  .b-row {
+    display: grid; grid-template-columns: minmax(110px, 1.2fr) 84px 168px 200px minmax(60px, 2fr) 60px;
+    gap: 14px; align-items: center; padding: 6px 12px; border-bottom: 1px solid var(--border);
+  }
+  .b-row:last-child { border-bottom: none; }
+  .b-row .num { text-align: right; }
+  .b-row .due { margin-left: 0; }
+  .b-note { font-size: 12px; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .b-actions { display: flex; gap: 2px; justify-content: flex-end; opacity: 0; transition: opacity .15s; }
+  .b-row:hover .b-actions, .b-actions:focus-within { opacity: 1; }
+  .status-wrap { position: relative; display: inline-flex; align-items: center; color: var(--c); }
+  .status-wrap::after { content: "▾"; position: absolute; right: 9px; font-size: 10px; pointer-events: none; }
+  .status-sel {
+    appearance: none; -webkit-appearance: none; height: 26px; padding: 0 24px 0 11px; border-radius: 999px; cursor: pointer;
+    font: 500 10.5px var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--c);
+    border: 1px solid color-mix(in srgb, var(--c) 45%, transparent);
+    background: color-mix(in srgb, var(--c) 12%, transparent);
+  }
+  .status-sel option { color: var(--text); background: var(--surface); text-transform: none; }
+  .batch-add { display: flex; flex-wrap: wrap; gap: 7px; align-items: center; }
+  .batch-add input, .batch-add .btn { height: 34px; }
+  .batch-add input { padding: 0 11px; width: 170px; }
+  .batch-add input[type="number"] { width: 96px; }
+
   /* ---- brand links home ---- */
   a.brand { color: inherit; text-decoration: none; }
   /* ---- status bar (revision, storage) ---- */
@@ -650,11 +701,12 @@
     </a>
     <div class="clock" id="clock"></div>
     <nav class="tabs">
-      <button class="tab-btn active" data-tab="projects"><span class="n">01</span>Projects <span class="count" id="cnt-projects">0</span></button>
-      <button class="tab-btn" data-tab="orders"><span class="n">02</span>Orders <span class="count" id="cnt-orders">0</span></button>
-      <button class="tab-btn" data-tab="pos"><span class="n">03</span>POs <span class="count" id="cnt-pos">0</span></button>
-      <button class="tab-btn" data-tab="sow"><span class="n">04</span>Scopes <span class="count" id="cnt-sow">0</span></button>
-      <button class="tab-btn" data-tab="notes"><span class="n">05</span>Notes <span class="count" id="cnt-notes">0</span></button>
+      <button class="tab-btn active" data-tab="production"><span class="n">01</span>Production <span class="count" id="cnt-production">0</span></button>
+      <button class="tab-btn" data-tab="projects"><span class="n">02</span>Projects <span class="count" id="cnt-projects">0</span></button>
+      <button class="tab-btn" data-tab="orders"><span class="n">03</span>Orders <span class="count" id="cnt-orders">0</span></button>
+      <button class="tab-btn" data-tab="pos"><span class="n">04</span>POs <span class="count" id="cnt-pos">0</span></button>
+      <button class="tab-btn" data-tab="sow"><span class="n">05</span>Scopes <span class="count" id="cnt-sow">0</span></button>
+      <button class="tab-btn" data-tab="notes"><span class="n">06</span>Notes <span class="count" id="cnt-notes">0</span></button>
     </nav>
     <div class="actions">
       <button class="btn" id="backupStatus" title="Auto-backup status — click to set up or resume">💾 …</button>
@@ -672,8 +724,22 @@
   </header>
 
   <main>
+    <!-- ============ PRODUCTION ============ -->
+    <section class="tab-panel active" id="panel-production">
+      <div class="toolbar">
+        <button class="btn btn-primary" onclick="openPartModal()">＋ New Part</button>
+        <div class="search-wrap"><input type="text" id="prodSearch" placeholder="Search parts, batches…"></div>
+        <div class="chipbar" id="prodStatusChips"></div>
+        <button class="btn" id="prodExpandBtn" onclick="toggleAllParts()">Expand all</button>
+        <div class="spacer"></div>
+        <label class="inline"><input type="checkbox" id="showDoneParts"> Show completed</label>
+        <div class="stat-strip" id="prodStats" style="padding:0"></div>
+      </div>
+      <div class="table-wrap" id="prodTableWrap"></div>
+    </section>
+
     <!-- ============ PROJECTS ============ -->
-    <section class="tab-panel active" id="panel-projects">
+    <section class="tab-panel" id="panel-projects">
       <div class="toolbar">
         <button class="btn btn-primary" onclick="openProjectModal()">＋ New Project</button>
         <div class="search-wrap"><input type="text" id="projSearch" placeholder="Search projects…"></div>
@@ -835,10 +901,12 @@ function phaseOf(o) {
 function orderCreated(o) {
   return o.createdDate || (o.created ? new Date(o.created).toISOString().slice(0, 10) : "");
 }
+const BATCH_STATUSES = ["Queued", "In-Production", "On-Hold", "Completed"];
+const BATCH_COLORS = { "Queued": "var(--blue)", "In-Production": "var(--yellow)", "On-Hold": "var(--orange)", "Completed": "var(--green)" };
 const LABEL_PALETTE = ["var(--blue)", "var(--purple)", "var(--teal)", "var(--pink)", "var(--orange)", "var(--green)", "var(--yellow)", "var(--red)"];
 /* Declared before load() runs (cleanState uses them). Ids made by uid() always pass. */
 const ID_RE = /^[\w-]{1,64}$/;
-const LINK_KEYS = ["p", "o", "po", "s", "n"];   // keys of LINK_TYPES
+const LINK_KEYS = ["pd", "p", "o", "po", "s", "n"];   // keys of LINK_TYPES
 function okId(v) { return typeof v === "string" && ID_RE.test(v); }
 
 /* ---------------- state ---------------- */
@@ -853,7 +921,8 @@ let ui = {
   poSearch: "", poFilter: "All", poSortKey: "estDelivery", poSortDir: 1,
   noteSearch: "", noteSort: "newest", noteLabel: "All",
   sowSearch: "", sowSort: "target", sowStatus: "All",
-  expandedOrders: {},
+  prodSearch: "", prodStatus: "All", prodSortKey: "next", prodSortDir: 1,
+  expandedOrders: {}, expandedParts: {},
 };
 let editingId = null;
 let modalSaveFn = null;
@@ -882,9 +951,18 @@ function cleanState(data) {
   const strs = v => Array.isArray(v) ? v.filter(x => typeof x === "string") : [];
   const known = (v, all, def) => all.includes(v) ? v : def;
   const swap = new Map();   // bad id -> new id, so note links still find their item
-  ["projects", "orders", "pos", "sows", "notes", "todos"].forEach(k => {
+  ["production", "projects", "orders", "pos", "sows", "notes", "todos"].forEach(k => {
     d[k] = list(d[k]);
     d[k].forEach(x => { if (!okId(x.id)) { const n = uid(); swap.set(x.id, n); x.id = n; } });
+  });
+  d.production.forEach(p => {
+    p.batches = list(p.batches);
+    p.batches.forEach(b => {
+      if (!okId(b.id)) b.id = uid();
+      b.status = known(b.status, BATCH_STATUSES, "Queued");
+      b.qty = Number.isFinite(Number(b.qty)) && Number(b.qty) >= 0 ? Number(b.qty) : 0;
+      if (typeof b.date !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(b.date)) b.date = "";
+    });
   });
   d.projects.forEach(p => {
     p.status = known(p.status, PROJECT_STATUSES, "Queued");
@@ -927,15 +1005,16 @@ function save() {
 }
 function countOf(d) {
   const c = {
+    parts: (d.production || []).length,
     projects: (d.projects || []).length, orders: (d.orders || []).length,
     pos: (d.pos || []).length, sows: (d.sows || []).length,
     notes: (d.notes || []).length, todos: (d.todos || []).length,
   };
-  c.total = c.projects + c.orders + c.pos + c.sows + c.notes + c.todos;
+  c.total = c.parts + c.projects + c.orders + c.pos + c.sows + c.notes + c.todos;
   return c;
 }
 function countSummary(c) {
-  return [["projects", c.projects], ["orders", c.orders], ["POs", c.pos], ["scopes", c.sows], ["notes", c.notes], ["to-dos", c.todos]]
+  return [["parts", c.parts], ["projects", c.projects], ["orders", c.orders], ["POs", c.pos], ["scopes", c.sows], ["notes", c.notes], ["to-dos", c.todos]]
     .filter(([, n]) => n).map(([k, n]) => n + " " + k).join(", ") || "nothing";
 }
 
@@ -995,6 +1074,13 @@ function seed() {
   const t = todayStr();
   return {
     theme: "dark",
+    production: [
+      { id: uid(), pn: "EX-1001", desc: "Sample: control board assembly", created: Date.now(), batches: [
+        { id: uid(), batch: "B-001", qty: 50, status: "Completed", date: t, notes: "" },
+        { id: uid(), batch: "B-002", qty: 100, status: "In-Production", date: new Date(Date.now() + 14 * 864e5).toISOString().slice(0, 10), notes: "" },
+        { id: uid(), batch: "B-003", qty: 100, status: "Queued", date: "", notes: "" },
+      ] },
+    ],
     projects: [
       { id: uid(), title: "Sample: Enclosure redesign Rev C", desc: "Update mounting bosses and add strain relief per field feedback.", status: "In-Progress", priority: "High", due: t, tags: ["mechanical", "rev-c"], created: Date.now() },
       { id: uid(), title: "Sample: Firmware v2.4 release", desc: "Final validation pass and release notes.", status: "Queued", priority: "Medium", due: "", tags: ["firmware"], created: Date.now() - 1 },
@@ -1009,7 +1095,7 @@ function seed() {
     sows: [],
     todos: [],
     notes: [
-      { id: uid(), title: "Welcome to Atlas Ops 👋", body: "This dashboard saves everything locally in your browser.\n\n• Drag project cards between columns\n• Click table headers to sort\n• Use ⭳ to export a JSON backup\n\nDelete these sample entries whenever you're ready.", date: t, labels: ["general"], pinned: true, created: Date.now() },
+      { id: uid(), title: "Welcome to Atlas Ops 👋", body: "This dashboard saves everything locally in your browser.\n\n• Open a part on the Production tab to see its batches\n• Drag project cards between columns\n• Click table headers to sort\n• Use ⭳ to export a JSON backup\n\nDelete these sample entries whenever you're ready.", date: t, labels: ["general"], pinned: true, created: Date.now() },
     ],
   };
 }
@@ -1068,6 +1154,241 @@ document.addEventListener("keydown", e => {
 function val(id) { return document.getElementById(id).value.trim(); }
 function fld(label, inner) { return `<div class="field"><label>${label}</label>${inner}</div>`; }
 function selOpts(list, sel) { return list.map(o => `<option ${o === sel ? "selected" : ""}>${o}</option>`).join(""); }
+
+/* =====================================================================
+   PRODUCTION — one row per part number. A part holds its batches:
+   batch number, quantity, status and fulfillment date.
+   ===================================================================== */
+function parts() { return state.production || (state.production = []); }
+function fmtQty(n) { return Number(n || 0).toLocaleString(); }
+function partInfo(p) {
+  const bs = p.batches || [];
+  const sum = l => l.reduce((n, b) => n + (b.qty || 0), 0);
+  const open = bs.filter(b => b.status !== "Completed");
+  return {
+    total: sum(bs), done: sum(bs) - sum(open), open,
+    next: open.map(b => b.date).filter(Boolean).sort()[0] || "",   // earliest open fulfillment date
+    late: open.filter(b => b.date && daysUntil(b.date) < 0).length,
+    closed: bs.length > 0 && !open.length,                          // a part with no batches stays open
+  };
+}
+/* quantity by date: the batch quantities of one part, grouped by fulfillment date */
+function qtyByDate(p) {
+  const m = new Map();
+  (p.batches || []).forEach(b => {
+    const k = b.date || "";
+    const g = m.get(k) || { date: k, qty: 0, open: 0 };
+    g.qty += b.qty || 0;
+    if (b.status !== "Completed") g.open += b.qty || 0;
+    m.set(k, g);
+  });
+  return [...m.values()].sort((a, b) => (a.date || "9999") < (b.date || "9999") ? -1 : 1);
+}
+
+function openPartModal(id) {
+  editingId = id || null;
+  const p = id ? parts().find(x => x.id === id) : { pn: "", desc: "" };
+  openModal(id ? "Edit Part" : "New Part", `
+    ${fld("Part number", `<input id="f_pn" value="${esc(p.pn)}" placeholder="Part number">`)}
+    ${fld("Description", `<input id="f_desc" value="${esc(p.desc)}" placeholder="What it is">`)}
+  `, () => {
+    const pn = val("f_pn");
+    if (!pn) { toast("Part number is required", "warn"); return false; }
+    if (parts().some(x => x.id !== editingId && String(x.pn).toLowerCase() === pn.toLowerCase())) {
+      toast("That part number is already in the list", "warn"); return false;
+    }
+    const data = { pn, desc: val("f_desc") };
+    if (editingId) Object.assign(parts().find(x => x.id === editingId), data);
+    else {
+      const n = { id: uid(), created: Date.now(), batches: [], ...data };
+      parts().push(n);
+      ui.expandedParts[n.id] = true;   // open it, ready for its first batch
+    }
+    save(); renderProduction(); toast(editingId ? "Part updated" : "Part added");
+  });
+}
+function deletePart(id) {
+  const p = parts().find(x => x.id === id);
+  if (!p) return;
+  const n = (p.batches || []).length;
+  if (!confirm(`Delete ${p.pn}${n ? ` and its ${n} batch${n > 1 ? "es" : ""}` : ""}?`)) return;
+  state.production = parts().filter(x => x.id !== id);
+  save(); renderProduction(); toast("Part deleted", "warn");
+}
+function togglePart(id) { ui.expandedParts[id] = !ui.expandedParts[id]; renderProduction(); }
+function toggleAllParts() {
+  const rows = partsFiltered();
+  const open = rows.some(p => !ui.expandedParts[p.id]);   // any row shut -> open all
+  rows.forEach(p => { ui.expandedParts[p.id] = open; });
+  renderProduction();
+}
+
+/* Used by the batch dialog and the add row. Returns null when a value is not valid (a toast says why). */
+function batchInput(p, bid, batch, qty, date) {
+  if (!batch) { toast("Batch number is required", "warn"); return null; }
+  if (p.batches.some(x => x.id !== bid && String(x.batch).toLowerCase() === batch.toLowerCase())) {
+    toast("That batch number is already on this part", "warn"); return null;
+  }
+  const n = Number(qty);
+  if (qty === "" || !Number.isFinite(n) || n < 0) { toast("Quantity must be a number", "warn"); return null; }
+  return { batch, qty: n, date };
+}
+function openBatchModal(pid, bid) {
+  const p = parts().find(x => x.id === pid);
+  if (!p) return;
+  const b = bid ? p.batches.find(x => x.id === bid) : { batch: "", qty: "", status: "Queued", date: "", notes: "" };
+  if (!b) return;
+  openModal((bid ? "Edit Batch" : "New Batch") + " · " + p.pn, `
+    <div class="field-row">
+      ${fld("Batch number", `<input id="f_batch" value="${esc(b.batch)}" placeholder="Batch number">`)}
+      ${fld("Quantity", `<input type="number" min="0" step="1" id="f_qty" value="${esc(b.qty)}">`)}
+    </div>
+    <div class="field-row">
+      ${fld("Status", `<select id="f_bstatus">${selOpts(BATCH_STATUSES, b.status)}</select>`)}
+      ${fld("Fulfillment date", `<input type="date" id="f_bdate" value="${esc(b.date)}">`)}
+    </div>
+    ${fld("Notes", `<textarea id="f_notes" placeholder="Anything to remember">${esc(b.notes)}</textarea>`)}
+  `, () => {
+    const data = batchInput(p, bid || null, val("f_batch"), val("f_qty"), val("f_bdate"));
+    if (!data) return false;
+    data.status = val("f_bstatus"); data.notes = val("f_notes");
+    if (bid) Object.assign(b, data);
+    else p.batches.push({ id: uid(), created: Date.now(), ...data });
+    save(); renderProduction(); toast(bid ? "Batch updated" : "Batch added");
+  });
+}
+function addBatchInline(pid) {
+  const p = parts().find(x => x.id === pid);
+  if (!p) return;
+  const g = k => document.getElementById(`nb-${k}-${pid}`).value.trim();
+  const data = batchInput(p, null, g("batch"), g("qty"), g("date"));
+  if (!data) return;
+  p.batches.push({ id: uid(), created: Date.now(), status: "Queued", notes: "", ...data });
+  save(); renderProduction();
+  const el = document.getElementById("nb-batch-" + pid);
+  if (el) el.focus();
+}
+function setBatchStatus(pid, bid, status) {
+  const p = parts().find(x => x.id === pid), b = p && p.batches.find(x => x.id === bid);
+  if (!b || !BATCH_STATUSES.includes(status)) return;
+  b.status = status;
+  save(); renderProduction();
+}
+function deleteBatch(pid, bid) {
+  const p = parts().find(x => x.id === pid), b = p && p.batches.find(x => x.id === bid);
+  if (!b || !confirm(`Delete batch ${b.batch}?`)) return;
+  p.batches = p.batches.filter(x => x.id !== bid);
+  save(); renderProduction(); toast("Batch deleted", "warn");
+}
+
+function partsFiltered() {
+  const q = ui.prodSearch.toLowerCase();
+  const showDone = document.getElementById("showDoneParts").checked;
+  return parts().filter(p => {
+    const bs = p.batches || [];
+    if (ui.prodStatus !== "All" && !bs.some(b => b.status === ui.prodStatus)) return false;
+    if (!showDone && ui.prodStatus !== "Completed" && partInfo(p).closed) return false;
+    return !q || (p.pn + " " + (p.desc || "") + " " + bs.map(b => b.batch + " " + (b.notes || "")).join(" ")).toLowerCase().includes(q);
+  });
+}
+const PROD_SORT = {
+  pn: p => String(p.pn), desc: p => String(p.desc || ""),
+  batches: p => (p.batches || []).length, qty: p => partInfo(p).total,
+  next: p => partInfo(p).next || "9999-12-31",
+};
+function partDetailHtml(p) {
+  const bs = [...(p.batches || [])].sort((a, b) =>
+    (a.date || "9999").localeCompare(b.date || "9999") || String(a.batch).localeCompare(String(b.batch), undefined, { numeric: true }));
+  const enter = `onkeydown="if(event.key==='Enter')addBatchInline('${p.id}')"`;
+  return `<tr class="prod-detail"><td colspan="7">
+    ${bs.length ? `<div class="qbd"><span class="lbl">Qty by date</span>${qtyByDate(p).map(g => {
+      const n = g.date ? daysUntil(g.date) : null;
+      const cls = !g.open ? "done" : n !== null && n < 0 ? "late" : n !== null && n <= 3 ? "soon" : "";
+      const tip = !g.open ? "All completed" : fmtQty(g.open) + " still open" + (cls === "late" ? ", " + (-n) + "d late" : "");
+      return `<span class="qbd-chip ${cls}" title="${tip}">${g.date ? fmtDate(g.date) : "No date"}<b>${fmtQty(g.qty)}</b></span>`;
+    }).join("")}</div>
+    <div class="batches">
+      <div class="b-row b-head"><span>Batch #</span><span class="num">Qty</span><span>Status</span><span>Fulfillment</span><span>Notes</span><span></span></div>
+      ${bs.map(b => `<div class="b-row">
+        <span class="mono">${esc(b.batch)}</span>
+        <span class="mono num">${fmtQty(b.qty)}</span>
+        <span><span class="status-wrap" style="--c:${BATCH_COLORS[b.status]}"><select class="status-sel" title="Change status" onchange="setBatchStatus('${p.id}','${b.id}',this.value)">${selOpts(BATCH_STATUSES, b.status)}</select></span></span>
+        <span>${dueBadge(b.date, b.status === "Completed") || "—"}</span>
+        <span class="b-note" title="${esc(b.notes)}">${esc(b.notes)}</span>
+        <span class="b-actions">
+          <button class="icon-btn" title="Edit" onclick="openBatchModal('${p.id}','${b.id}')">✎</button>
+          <button class="icon-btn" title="Delete" onclick="deleteBatch('${p.id}','${b.id}')">🗑</button>
+        </span>
+      </div>`).join("")}
+    </div>` : `<div class="log-empty" style="margin:6px 0 10px">No batches yet.</div>`}
+    <div class="batch-add">
+      <input id="nb-batch-${p.id}" placeholder="Batch number" ${enter}>
+      <input id="nb-qty-${p.id}" type="number" min="0" step="1" placeholder="Qty" ${enter}>
+      <input id="nb-date-${p.id}" type="date" title="Fulfillment date" ${enter}>
+      <button class="btn btn-primary" onclick="addBatchInline('${p.id}')">＋ Add batch</button>
+    </div>
+  </td></tr>`;
+}
+
+function renderProduction() {
+  const rows = partsFiltered();
+  const key = PROD_SORT[ui.prodSortKey], dir = ui.prodSortDir;
+  rows.sort((a, b) => {
+    const x = key(a), y = key(b);
+    return (typeof x === "string" ? x.localeCompare(y, undefined, { numeric: true, sensitivity: "base" }) : x - y) * dir;
+  });
+
+  const all = parts().flatMap(p => p.batches || []);
+  document.getElementById("prodStatusChips").innerHTML = ["All", ...BATCH_STATUSES].map(st =>
+    `<button class="chip ${ui.prodStatus === st ? "active" : ""}" onclick="ui.prodStatus='${st}';renderProduction()">
+      ${st !== "All" ? `<span class="dot" style="background:${BATCH_COLORS[st]}"></span>` : ""}${st}${st !== "All" ? " · " + all.filter(b => b.status === st).length : ""}</button>`
+  ).join("");
+  const xb = document.getElementById("prodExpandBtn");
+  xb.textContent = rows.length && rows.every(p => ui.expandedParts[p.id]) ? "Collapse all" : "Expand all";
+  xb.disabled = !rows.length;
+
+  const wrap = document.getElementById("prodTableWrap");
+  if (!rows.length) {
+    wrap.innerHTML = `<div class="empty-state"><div class="big">🏭</div>${parts().length ? "No parts match." : "No parts yet."} Add one with <b>＋ New Part</b>.</div>`;
+  } else {
+    wrap.innerHTML = `<table class="data"><thead><tr>
+      ${th("prod", "pn", "Part #")}${th("prod", "desc", "Description")}${th("prod", "batches", "Batches")}${th("prod", "qty", "Quantity")}<th style="cursor:default">Status</th>${th("prod", "next", "Next Fulfillment")}<th style="cursor:default"></th>
+    </tr></thead><tbody>
+    ${rows.map(p => {
+      const bs = p.batches || [], i = partInfo(p), open = !!ui.expandedParts[p.id];
+      return `<tr data-id="${p.id}" class="${open ? "open" : ""}">
+        <td class="mono"><button class="prod-toggle" aria-expanded="${open}" title="${open ? "Hide" : "Show"} batches" onclick="togglePart('${p.id}')"><span class="chev">▸</span><b>${esc(p.pn)}</b></button></td>
+        <td>${esc(p.desc) || "—"}</td>
+        <td class="mono">${bs.length}</td>
+        <td><div class="mono" title="Completed of total">${fmtQty(i.done)} <span class="qty-of">/ ${fmtQty(i.total)}</span></div>
+            <div class="prog" style="margin-top:5px"><div style="width:${i.total ? i.done / i.total * 100 : 0}%"></div></div></td>
+        <td>${BATCH_STATUSES.map(st => {
+          const n = bs.filter(b => b.status === st).length;
+          return n ? `<span class="pill sm" style="color:${BATCH_COLORS[st]};background:color-mix(in srgb, ${BATCH_COLORS[st]} 14%, transparent)">${n} ${st}</span>` : "";
+        }).join("") || `<span class="qty-of">No batches</span>`}</td>
+        <td>${i.closed ? `<span class="due">✓ All completed</span>` : (dueBadge(i.next, false) || "—")}</td>
+        <td><div style="display:flex;align-items:center;gap:6px;justify-content:flex-end">
+          ${refBadge("pd", p.id)}
+          <div class="row-actions">
+            <button class="icon-btn" title="Edit" onclick="openPartModal('${p.id}')">✎</button>
+            <button class="icon-btn" title="Delete" onclick="deletePart('${p.id}')">🗑</button>
+          </div>
+        </div></td>
+      </tr>${open ? partDetailHtml(p) : ""}`;
+    }).join("")}
+    </tbody></table>`;
+  }
+
+  const openParts = parts().filter(p => !partInfo(p).closed);
+  const openB = all.filter(b => b.status !== "Completed");
+  const late = openB.filter(b => b.date && daysUntil(b.date) < 0).length;
+  document.getElementById("cnt-production").textContent = openParts.length;
+  document.getElementById("prodStats").innerHTML =
+    `<div class="stat"><b>${openParts.length}</b> open parts</div>` +
+    `<div class="stat"><b>${openB.length}</b> open batches</div>` +
+    `<div class="stat"><b>${fmtQty(openB.reduce((n, b) => n + (b.qty || 0), 0))}</b> qty open</div>` +
+    (late ? `<div class="stat" style="border-color:var(--red)"><b style="color:var(--red)">${late}</b> late</div>` : "");
+}
 
 /* =====================================================================
    PROJECTS — kanban
@@ -1294,7 +1615,7 @@ function toggleOrderHold(id) {
 function sortBy(uiPrefix, key) {
   if (ui[uiPrefix + "SortKey"] === key) ui[uiPrefix + "SortDir"] *= -1;
   else { ui[uiPrefix + "SortKey"] = key; ui[uiPrefix + "SortDir"] = 1; }
-  uiPrefix === "order" ? renderOrders() : renderPos();
+  ({ order: renderOrders, po: renderPos, prod: renderProduction })[uiPrefix]();
 }
 function th(uiPrefix, key, label) {
   const active = ui[uiPrefix + "SortKey"] === key;
@@ -1626,6 +1947,7 @@ function renderSows() {
    NOTE LINKS — connect notes to projects, orders, POs, and other notes
    ===================================================================== */
 const LINK_TYPES = {
+  pd: { name: "Part", icon: "⚙", color: "var(--green)" },
   p: { name: "Project", icon: "◆", color: "var(--accent)" },
   o: { name: "Order", icon: "📦", color: "var(--orange)" },
   po: { name: "PO", icon: "🧾", color: "var(--teal)" },
@@ -1635,6 +1957,7 @@ const LINK_TYPES = {
 let modalLinks = [];
 
 function linkLabel(l) {
+  if (l.t === "pd") { const x = parts().find(v => v.id === l.id); return x && (x.pn + (x.desc ? " · " + x.desc : "")); }
   if (l.t === "p") { const x = state.projects.find(v => v.id === l.id); return x && x.title; }
   if (l.t === "o") { const x = state.orders.find(v => v.id === l.id); return x && (x.number ? x.number + " · " + x.item : x.item); }
   if (l.t === "po") { const x = state.pos.find(v => v.id === l.id); return x && (x.po + (x.vendor ? " · " + x.vendor : "")); }
@@ -1682,6 +2005,15 @@ function gotoLink(t, id) {
     switchTab("notes");
     let el = document.querySelector(`.note-card[data-id="${id}"]`);
     if (!el) { ui.noteLabel = "All"; ui.noteSearch = ""; document.getElementById("noteSearch").value = ""; renderNotes(); el = document.querySelector(`.note-card[data-id="${id}"]`); }
+    flashEl(el);
+  } else if (t === "pd") {
+    switchTab("production");
+    let el = document.querySelector(`#prodTableWrap tr[data-id="${id}"]`);
+    if (!el) {
+      ui.prodSearch = ""; ui.prodStatus = "All";
+      document.getElementById("prodSearch").value = ""; document.getElementById("showDoneParts").checked = true;
+      renderProduction(); el = document.querySelector(`#prodTableWrap tr[data-id="${id}"]`);
+    }
     flashEl(el);
   } else if (t === "p") {
     switchTab("projects");
@@ -1742,7 +2074,8 @@ function openNoteModal(id) {
     ${fld("Labels (comma-separated)", `<input id="f_labels" value="${esc((n.labels || []).join(", "))}" placeholder="e.g. production, meeting, follow-up">`)}
     ${fld("Linked items", `
       <select id="f_linkpick" onchange="addModalLink(this.value);this.value=''">
-        <option value="">— link a project, order, PO, or another note —</option>
+        <option value="">— link a part, project, order, PO, scope, or another note —</option>
+        ${og(parts(), "pd", x => x.pn + (x.desc ? " · " + x.desc : ""))}
         ${og(state.projects, "p", x => x.title)}
         ${og(state.orders, "o", x => (x.number ? x.number + " · " : "") + x.item)}
         ${og(state.pos, "po", x => x.po + (x.vendor ? " · " + x.vendor : ""))}
@@ -1936,6 +2269,8 @@ document.getElementById("themeBtn").addEventListener("click", () => {
 });
 
 const bind = (id, key, fn) => document.getElementById(id).addEventListener("input", e => { ui[key] = e.target.value; fn(); });
+bind("prodSearch", "prodSearch", renderProduction);
+document.getElementById("showDoneParts").addEventListener("change", renderProduction);
 bind("projSearch", "projSearch", renderProjects);
 bind("orderSearch", "orderSearch", renderOrders);
 bind("poSearch", "poSearch", renderPos);
@@ -1983,7 +2318,7 @@ document.getElementById("importFile").addEventListener("change", e => {
    The file handle is remembered in IndexedDB; after a browser restart
    you click the 💾 button once to re-grant write access.
    ===================================================================== */
-const REV = "rev 1.0.2";   // site port of local build 2026-10-09-o
+const REV = "rev 1.1.0";   // site port of local build 2026-10-09-o
 const LS_BACKUP_TS = "atlas_ops_last_backup";
 let backupHandle = null, backupTimer = null, backupPaused = false, backupError = "";
 
@@ -2336,7 +2671,7 @@ function tickClock() {
 }
 setInterval(tickClock, 15000);
 
-function renderAll() { renderProjects(); renderOrders(); renderPos(); renderSows(); renderNotes(); renderTodos(); }
+function renderAll() { renderProduction(); renderProjects(); renderOrders(); renderPos(); renderSows(); renderNotes(); renderTodos(); }
 document.getElementById("rev").textContent = REV;
 
 /* =====================================================================
