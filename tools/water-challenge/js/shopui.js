@@ -2,7 +2,7 @@
    shop replayed live), today's reroll, and shards (combine, bring in a pet). */
 
 import * as C from "./config.js";
-import { S, findParticipant, activeParticipants, tokensEarned, capBonus } from "./model.js";
+import { S, findParticipant, tokensEarned, capBonus } from "./model.js";
 import * as store from "./store.js";
 import { balance, spentTotal, rerollBlock, reroll, plinkoBlock, plinkoPlay, plinkoOdds, chestOdds, chestWinnings,
          fuseBlock, fuse, pickBlock, pickPet, shardCost, shardsText, tierOf } from "./shop.js";
@@ -10,7 +10,7 @@ import { landed as landedIds, setFlying, HOLD_MS, hiddenPets, shownBalance, show
 import { onLive, emit } from "./live.js";
 import { petLabel, petGridOrder, rarityLabel, petBinIndex, isGrave, announce, penOf, pensOf, penAlive, rewardMsg, rewardPen } from "./pets.js";
 import { PlinkoBoard } from "./plinko.js";
-import { $, esc, has, todayKey, prettyTime, localStamp, bus, aAn } from "./util.js";
+import { $, esc, has, todayKey, prettyTime, localStamp, bus } from "./util.js";
 import { setMsg, ensureIcons, ui, render, setHtml } from "./ui.js";
 import { initStyle, renderStyle } from "./styleui.js";
 

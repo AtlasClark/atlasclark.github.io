@@ -16,7 +16,7 @@ import * as G from "./geom.js";
 import { CloudDir, hello } from "../js/cloud.js";
 import { kvGet } from "../js/store.js";
 
-const REV = "studio 1.20.2";
+const REV = "studio 1.20.3";
 const PETS_URL = "../pets/pets.json";
 const $ = id => document.getElementById(id);
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));

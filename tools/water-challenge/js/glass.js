@@ -183,7 +183,7 @@ const zone = pet => zoneOf(petDefs[pet.critterKind || 0]);
 /* Where pet's origin sits in water's glass: on the surface (with the wave at x, if
    given), halfway down the water, or standing on the floor (anchorY, petdefs.js). */
 function homeY(pet, water, x) {
-  const surf = surfaceY(water) + (x === undefined ? 0 : waveAt(water, x));
+  const surf = surfaceY(water) + (x === undefined ? 0 : swellAt(water, x));
   return anchorY(petDefs[pet.critterKind || 0], petR(), surf, floorY());
 }
 /* Drift across the glass, plus whatever ground a dive covered. The drift is narrowed
@@ -204,15 +204,24 @@ export function canDive(st) {
   return depthAt(st.level) >= need && depthAt(st.target) >= need;
 }
 
-function ringAt(st, x, big) {
-  st.rings.push({ r: 2, a: big ? 0.45 : 0.3, x });
+/* Something broke the surface at x: a ripple sets off from there (st.rings: { x, t seconds
+   since it began, a height in px }), and a big one throws up a few droplets. k scales it. */
+function ringAt(st, x, big, k = 1) {
+  st.rings.push({ x, t: 0, a: C.RIPPLE_AMP[big ? 1 : 0] * k * (dims.W / 124) });
   st.amp = Math.max(st.amp, big ? 7 : 4);
+  if (big && motionOn()) {
+    for (let i = 0; i < 5 && st.drops.length < 40; i++) {
+      st.drops.push({ x: x + rnd(-4, 4), y: -1, vx: rnd(-55, 55), vy: rnd(-120, -60), r: rnd(0.9, 1.8) });
+    }
+  }
 }
 
 export function splash(name) {
   const st = animState(name);
   st.amp = C.SPLASH_AMP;
-  for (let i = 0; i < C.SPLASH_RINGS; i++) st.rings.push({ r: 1 + i * 7, a: 0.5 - i * 0.13 });
+  for (let i = 0; i < C.SPLASH_RINGS; i++) {                          /* from the middle, one after the other */
+    st.rings.push({ x: dims.W / 2, t: -i * 0.18, a: C.RIPPLE_AMP[1] * (1 - i * 0.25) * (dims.W / 124) });
+  }
 }
 
 export function startSink(name, kind, hue) {
@@ -322,9 +331,65 @@ function leapPath(m, s) {
 const waveBuf = [];
 let waveN = 0;
 
-function waveAt(st, x) {
+/* The surface at x, in px below its level: the slow swell plus any ripples passing. */
+function swellAt(st, x) {
   return st.amp * (Math.sin(x * C.WAVE_K1 + st.phase) * 0.62 +
                    Math.sin(x * C.WAVE_K2 - st.phase * 1.35) * 0.38);
+}
+const waveAt = (st, x) => st.rings.length ? swellAt(st, x) + rippleAt(st, x) : swellAt(st, x);
+
+/* Ripples, seen from the side: where something hit, the surface dips for a moment; a
+   short wave packet then runs out along the surface both ways, fading, and comes back
+   weaker off each wall (a mirror source behind the wall). Nothing is drawn in the air. */
+function rippleAt(st, x) {
+  const W = dims.W, k = W / 124, sig = C.RIPPLE_WIDTH * k, q = 6.2832 / (C.RIPPLE_LEN * k), s2 = sig * sig, reach = 3 * sig;
+  let y = 0;
+  for (const g of st.rings) {
+    if (g.t < 0) continue;                                            /* not set off yet */
+    const fade = 1 - g.t / C.RIPPLE_LIFE;
+    if (fade <= 0) continue;
+    const A = g.a * fade * fade, front = C.RIPPLE_SPEED * k * g.t;
+    if (g.t < 0.28) { const d = x - g.x; y += g.a * 1.1 * (1 - g.t / 0.28) * Math.exp(-d * d / (s2 * 0.6)); }   /* the dip */
+    let s = Math.abs(x - g.x) - front;
+    if (s > -reach && s < reach) y -= A * Math.cos(s * q) * Math.exp(-s * s / s2);
+    s = x + g.x - front;                                              /* off the left wall */
+    if (s > -reach && s < reach) y -= A * C.RIPPLE_ECHO * Math.cos(s * q) * Math.exp(-s * s / s2);
+    s = 2 * W - g.x - x - front;                                      /* off the right wall */
+    if (s > -reach && s < reach) y -= A * C.RIPPLE_ECHO * Math.cos(s * q) * Math.exp(-s * s / s2);
+  }
+  return y;
+}
+/* The surface points i0..i1 of waveBuf as one smooth curve (quadratics through the
+   midpoints, so 4 px samples show no corners). Begins with a lineTo to the first point. */
+function curveTo(ctx, i0, i1, top, step, W) {
+  const px = i => Math.min(i * step, W);
+  ctx.lineTo(px(i0), top + waveBuf[i0]);
+  for (let i = i0 + 1; i < i1; i++) {
+    ctx.quadraticCurveTo(px(i), top + waveBuf[i], (px(i) + px(i + 1)) / 2, top + (waveBuf[i] + waveBuf[i + 1]) / 2);
+  }
+  ctx.lineTo(px(i1), top + waveBuf[i1]);
+}
+/* A glint riding each ripple's two fronts: a short, brighter stretch of the surface line
+   itself (the points of waveBuf), so it never leaves the water. */
+function drawGlints(ctx, st, W, top, step, style, width) {
+  const k = W / 124, sig = C.RIPPLE_WIDTH * k;
+  ctx.save();
+  ctx.strokeStyle = style; ctx.lineWidth = width; ctx.lineCap = "round"; ctx.lineJoin = "round";
+  for (const g of st.rings) {
+    if (g.t < 0) continue;
+    const fade = 1 - g.t / C.RIPPLE_LIFE, front = C.RIPPLE_SPEED * k * g.t;
+    if (fade <= 0) continue;
+    ctx.globalAlpha = fade * Math.min(1, g.a / (C.RIPPLE_AMP[0] * k));
+    for (const dir of [-1, 1]) {
+      const c = g.x + dir * front, i0 = Math.max(0, Math.ceil((c - sig * 0.7) / step)), i1 = Math.min(waveN - 1, Math.floor((c + sig * 0.7) / step));
+      if (i1 <= i0) continue;                                         /* gone into the wall */
+      ctx.beginPath();
+      curveTo(ctx, i0, i1, top, step, W);
+      ctx.stroke();
+      if (front < sig) break;                                         /* still one bump at the start */
+    }
+  }
+  ctx.restore();
 }
 function buildWave(st, W, step) {
   let i = 0;
@@ -345,7 +410,7 @@ function drawGlass(st) {
 
   const surface = () => {
     ctx.lineTo(-B, top + waveBuf[0]);
-    for (let i = 0; i < waveN; i++) ctx.lineTo(Math.min(i * step, W), top + waveBuf[i]);
+    curveTo(ctx, 0, waveN - 1, top, step, W);
     ctx.lineTo(W + B, top + waveBuf[waveN - 1]);
   };
 
@@ -374,17 +439,7 @@ function drawGlass(st) {
     ctx.fill();
   }
   if (st.goalFx) drawGoalFx(ctx, st, W, H, top);
-  ctx.restore();
-  if (st.goalFx === "potion") drawBoil(ctx, st, W, H, top);
-
-  ctx.beginPath();
-  ctx.moveTo(-B, top + waveBuf[0]);
-  surface();
-  ctx.strokeStyle = "rgba(255,255,255,0.55)";
-  ctx.lineWidth = 2.5;
-  ctx.stroke();
-
-  if (W >= C.GHOST_MIN_W) {
+  if (W >= C.GHOST_MIN_W) {                                           /* a faint second line, kept under the surface */
     ctx.beginPath();
     ctx.moveTo(0, top + waveBuf[0] + 5);
     for (let i = 0; i < waveN; i++) {
@@ -395,18 +450,17 @@ function drawGlass(st) {
     ctx.lineWidth = 4;
     ctx.stroke();
   }
+  ctx.restore();
+  if (st.goalFx === "potion") drawBoil(ctx, st, W, H, top);
 
-  for (const r of st.rings) {
-    ctx.save();
-    ctx.translate(r.x === undefined ? W / 2 : r.x, top + 2);
-    ctx.scale(1, 0.26);
-    ctx.beginPath();
-    ctx.arc(0, 0, r.r, 0, 6.2832);
-    ctx.restore();
-    ctx.strokeStyle = "rgba(255,255,255," + r.a.toFixed(3) + ")";
-    ctx.lineWidth = 2;
-    ctx.stroke();
-  }
+  ctx.beginPath();
+  ctx.moveTo(-B, top + waveBuf[0]);
+  surface();
+  ctx.strokeStyle = "rgba(255,255,255,0.55)";
+  ctx.lineWidth = 2.5;
+  ctx.stroke();
+
+  if (st.rings.length) drawGlints(ctx, st, W, top, step, "rgba(255,255,255,0.75)", 3);
 }
 
 /* Line art (the Hairline theme): the water is a lit surface line over faint level lines,
@@ -431,11 +485,7 @@ function drawWaterLines(ctx, st, W, H, top, step, surface) {
   ctx.strokeStyle = goal || danger ? lineArt.hi : lineArt.edge; ctx.lineWidth = lineArt.w * (goal ? 1.6 : 1);
   if (danger) ctx.setLineDash([4, 3]);
   ctx.stroke(); ctx.setLineDash([]);
-  for (const r of st.rings) {
-    ctx.save(); ctx.translate(r.x === undefined ? W / 2 : r.x, top + 2); ctx.scale(1, 0.26);
-    ctx.beginPath(); ctx.arc(0, 0, r.r, 0, 6.2832); ctx.restore();
-    ctx.save(); ctx.globalAlpha = r.a; ctx.strokeStyle = lineArt.edge; ctx.lineWidth = lineArt.w; ctx.stroke(); ctx.restore();
-  }
+  if (st.rings.length) drawGlints(ctx, st, W, top, step, lineArt.hi, lineArt.w * 2);
 }
 
 /* An event day's goal glass (ui sets st.goalFx from GOAL_FX): something themed moving in
@@ -649,7 +699,7 @@ function drawPetLayer(st) {
 function drawFloating(ctx, water, pet, W, H, top, offX, offY, r) {
   const m = pet.m, moving = motionOn(), flip = moving ? m.flip : 1, mid = bodyMid(pet);
   const x0 = petX(pet);
-  const slope = (waveAt(water, x0 + 5) - waveAt(water, x0 - 5)) / 10, z = zone(pet);
+  const slope = (swellAt(water, x0 + 5) - swellAt(water, x0 - 5)) / 10, z = zone(pet);
   let dy = homeY(pet, water, x0), ang = z === "surface" ? Math.atan(slope) * (flip < 0 ? -1 : 1) : 0;
   if (moving && m.drop >= 0) {
     if (m.dropWait > 0) return;                                     /* still on the unlock card */
@@ -664,7 +714,7 @@ function drawFloating(ctx, water, pet, W, H, top, offX, offY, r) {
     dy += Math.sin(m.t * C.AIR_BOB_HZ * 2 * Math.PI) * r * C.AIR_BOB_R;
     ang = Math.sin(m.t * 1.1) * C.AIR_SWAY;
     if (m.skim >= 0) {                                              /* down until it just touches, and up again */
-      const gap = Math.max(0, surfaceY(water) + waveAt(water, x0) - (dy + bodyBox(defOf(pet)).bottom * r));
+      const gap = Math.max(0, surfaceY(water) + swellAt(water, x0) - (dy + bodyBox(defOf(pet)).bottom * r));
       dy += gap * Math.sin(Math.PI * Math.min(1, m.skim));
       ang -= 0.25 * Math.sin(2 * Math.PI * Math.min(1, m.skim));
     }
@@ -776,18 +826,17 @@ export function stepState(st, f) {
   stepMotion(st, f);
   const waterH = depthAt(st.level);
   for (const b of st.bubbles) { b.y += b.v * f; if (b.y > waterH - 3 || waterH < 10) resetBubble(b); }
-  st.rings = st.rings.filter(g => {
-    g.r += C.RING_GROWTH * f;
-    g.a *= Math.pow(C.RING_FADE, f);
-    return g.a > 0.03 && g.r < dims.W;
-  });
+  if (st.rings.length) {
+    for (const g of st.rings) g.t += dt;
+    if (st.rings[0].t >= C.RIPPLE_LIFE) st.rings = st.rings.filter(g => g.t < C.RIPPLE_LIFE);
+  }
 }
 
 function stepPour(st, p, dt) {
   p.t += dt / p.dur;
   if (p.t >= C.POUR_LAND && p.t < 1) {
     p.ring -= dt;
-    if (p.ring <= 0) { ringAt(st, p.x, false); p.ring = 0.12; }
+    if (p.ring <= 0) { ringAt(st, p.x, false, 0.55); p.ring = 0.16; }
     st.amp = Math.max(st.amp, 4);
     for (let i = 0; i < 2 && st.drops.length < 40; i++) {
       st.drops.push({ x: p.x + rnd(-p.w / 2, p.w / 2), y: -1, vx: rnd(-40, 40), vy: rnd(-95, -40), r: rnd(0.9, 1.9) });

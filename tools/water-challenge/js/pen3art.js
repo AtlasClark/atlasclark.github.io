@@ -49,16 +49,6 @@ function teeth(x0, x1, y, n, h, dir, fill) {
   }
   return out;
 }
-/* Feathers: n rounded tips along a line, for wings. */
-function feathers(x0, y0, x1, y1, n, len, fill) {
-  const out = [];
-  for (let i = 0; i < n; i++) {
-    const u = (i + 0.5) / n, x = x0 + (x1 - x0) * u, y = y0 + (y1 - y0) * u;
-    out.push(E(x, y + len * 0.5, len * 0.32, len * 0.6, fill, { rot: 0.15 }));
-  }
-  return out;
-}
-
 export const PEN3_ART = [
   /* 0 Kappa (Common): a river imp with a beak, a turtle shell and the dish of water on its head */
   { crown: [-0.38, -0.7], pal: base({ dish: FIX("#a9dcf2"), rim: FIX("#efe6cf"), beak: FIX("#e3a33a") }), swim: [

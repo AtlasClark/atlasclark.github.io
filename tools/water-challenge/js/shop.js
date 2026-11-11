@@ -327,7 +327,7 @@ export function lookOf(p) {
 }
 
 /* Recolour: a pet you have alive takes a new hue, for PAINT_COST. The latest "paint"
-   spend for a kind wins over the hue it was caught with (pets.js petHueFor). */
+   spend for a kind wins over the hue it was caught with (pets.js hueOf). */
 export function paintBlock(p, k) {
   if (!has(p.pets, k)) return "Only a pet you have alive.";
   if (shellBalance(p) < PAINT_COST) return "Needs " + PAINT_COST + " shell" + (PAINT_COST === 1 ? "" : "s") + ".";

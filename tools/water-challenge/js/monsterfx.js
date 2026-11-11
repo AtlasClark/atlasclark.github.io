@@ -22,7 +22,6 @@ export const MONSTERS = {
         flavor: "Someone gave the office AI a body. It read that people are 60% water and opened a ticket to fix that. Let's close it.",
         twist: "It learns. Pour the same amount twice in a row and it only takes half." }
 };
-export const MONSTER_KEYS = Object.keys(MONSTERS);
 
 /* Health 0..1 the scenes draw from (set by ui.js). */
 export const monster = { hp: 1, hitAt: -9 };

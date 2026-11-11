@@ -9,9 +9,9 @@ import { S, personalGoal, capFor, totalOn, metGoal, pastCap, atCap, dayScoreFor,
          challengeStart, challengeEnd, yearElapsed, teamYearTotal, yearTargets, seasonStats,
          recentDays, topOf, dayRec, dayLeaders, dayResult, wonDay, satOut, tokensEarned,
          duplicateNames, isAway, openAwaySince, goalForDate, petEventTimes, allDateKeys, dayWinners, wearsMedal } from "./model.js";
-import { petKindFor, ownsEquipped, graveEquipped, petHueFor, isGrave, gravesOf, petsOwned,
+import { petKindFor, isGrave, gravesOf,
          graveLine, petLabel, petName, petRarityOf, petBinIndex, petGridOrder, penFound,
-         penOf, penKinds, pen2Open, pensOf, penAlive, penBuried, pen3Earned, pen3Open, PEN3_CLOSED,
+         penOf, penKinds, pensOf, penAlive, penBuried, pen3Earned, pen3Open, PEN3_CLOSED,
          hashHue, hueOf, rarityLabel, undoEffect, rollOdds, isReward, rewardPen } from "./pets.js";
 import { crownSvg, jesterSvg, hatSvg, drawPortrait, drawCritter, drawHeadstone, drawGoldPile, drawCoin, hatKeyFor, drawMedal, holidayOn, glassHatSvg, EVENTS, eventRange, eventDefault, setEventRanges } from "./art.js";
 import * as G from "./glass.js";
@@ -530,10 +530,12 @@ function renderStaleWarning() {
 /* Icons are drawn once into a generated stylesheet; cells only carry a class,
    so the Pets tab stays a few KB of markup however big the roster gets. */
 let iconsReady = false;
+const ICON_CELL = 120;                             /* px per icon: a 60 x 60 drawing at 2x */
+let iconCanvas = null;
 function iconUrl(draw) {
   try {
-    const c = document.createElement("canvas");
-    c.width = 120; c.height = 120;
+    const c = iconCanvas || (iconCanvas = document.createElement("canvas"));
+    c.width = ICON_CELL; c.height = ICON_CELL;      /* setting the size also clears it */
     const ctx = c.getContext("2d");
     ctx.scale(2, 2);
     draw(ctx);
@@ -548,16 +550,34 @@ export function resetIcons() {
   for (const k of Object.keys(htmlCache)) delete htmlCache[k];
 }
 
+/* Every pet icon goes on one sprite sheet (a square grid of ICON_CELL cells): the page
+   encodes one PNG, not one per pet (rev 1.44.0: about 80 encodes and 350 KB of CSS before).
+   Each .pi-<key> only picks its cell; .pi elements are square, so percentages place it. */
 export function ensureIcons() {
   if (iconsReady) return;
   iconsReady = true;
-  const css = [];
-  for (const k of [1, 2, 3].flatMap(penKinds)) {
-    css.push(".pi-" + k + "{background-image:url(" + iconUrl(ctx => drawPortrait(ctx, 30, 42, 20, k, hashHue(C.PET_BASE_NAMES[k] + k))) + ")}");
-  }
-  css.push(".pi-grave{background-image:url(" + iconUrl(ctx => drawHeadstone(ctx, 30, 50, 26, 210)) + ")}");
-  css.push(".pi-rw1{background-image:url(" + iconUrl(ctx => drawCritter(ctx, 30, 50, 17, 0, false, false, C.HOMUNCULUS_KIND, 210)) + ")}");
-  css.push(".pi-rw2{background-image:url(" + iconUrl(ctx => drawPortrait(ctx, 30, 42, 20, C.AUTOMATON_KIND, C.PEN_REWARDS[2].hue)) + ")}");
+  const css = [], cells = [
+    ...[1, 2, 3].flatMap(penKinds).map(k => ["pi-" + k, ctx => drawPortrait(ctx, 30, 42, 20, k, hashHue(C.PET_BASE_NAMES[k] + k))]),
+    ["pi-grave", ctx => drawHeadstone(ctx, 30, 50, 26, 210)],
+    ["pi-rw1", ctx => drawCritter(ctx, 30, 50, 17, 0, false, false, C.HOMUNCULUS_KIND, 210)],
+    ["pi-rw2", ctx => drawPortrait(ctx, 30, 42, 20, C.AUTOMATON_KIND, C.PEN_REWARDS[2].hue)]];
+  try {
+    const cols = Math.ceil(Math.sqrt(cells.length)), rows = Math.ceil(cells.length / cols);
+    const sheet = document.createElement("canvas"), pct = (i, n) => (n > 1 ? i / (n - 1) * 100 : 0).toFixed(3) + "%";
+    sheet.width = cols * ICON_CELL; sheet.height = rows * ICON_CELL;
+    const ctx = sheet.getContext("2d");
+    cells.forEach(([cls, draw], i) => {
+      const cx = i % cols, cy = Math.floor(i / cols);
+      ctx.save();
+      ctx.beginPath(); ctx.rect(cx * ICON_CELL, cy * ICON_CELL, ICON_CELL, ICON_CELL); ctx.clip();   /* nothing spills into the next cell */
+      ctx.translate(cx * ICON_CELL, cy * ICON_CELL); ctx.scale(2, 2);
+      try { draw(ctx); } catch { }
+      ctx.restore();
+      css.push("." + cls + "{background-position:" + pct(cx, cols) + " " + pct(cy, rows) + "}");
+    });
+    css.unshift(".pi{background-image:url(" + sheet.toDataURL("image/png") + ");background-size:" + cols * 100 + "% " + rows * 100 + "%}");
+  } catch { }
+  /* the coin, shell and medal keep their own small images (the medal's box is not square) */
   css.push(".coin{background:center/contain no-repeat url(" + iconUrl(ctx => drawCoin(ctx, 30, 30, 58)) + ");box-shadow:none}");
   css.push(".shellico{background:center/contain no-repeat url(" + iconUrl(ctx => drawShell(ctx, 30, 30, 58)) + ")}");
   css.push(".medalico{background:center/contain no-repeat url(" + iconUrl(ctx => drawMedal(ctx, 30, 42, 70)) + ")}");

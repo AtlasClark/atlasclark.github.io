@@ -1,7 +1,7 @@
 /* Pet Studio canvas: draws the pet with the page's own renderer over guides
    (waterline, headroom, grid, reference image) and handles the tools. */
 
-import { drawShapes, tracePath, colourOf, fxSpot, medalSpot } from "../js/petdefs.js";
+import { drawShapes, tracePath, fxSpot, medalSpot } from "../js/petdefs.js";
 import { critterCrown, drawMedal, wearAt } from "../js/art.js";
 import { TALLEST_PET_R, UNDERWATER_TINT, WALL_GAP_R, narrowCup } from "../js/config.js";
 import * as G from "./geom.js";

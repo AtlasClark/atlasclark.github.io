@@ -3,7 +3,7 @@
    buy / wear / take-off. Data rules live in shop.js, drawing in cosmetics.js. */
 
 import * as C from "./config.js";
-import { S, findParticipant } from "./model.js";
+import { findParticipant } from "./model.js";
 import * as store from "./store.js";
 import { SLOTS, COSMETICS, itemsIn, PAINT_COST, drawDecor, drawEffect, decorBehind, decorDry } from "./cosmetics.js";
 import { CUP_H } from "./styleart.js";
@@ -11,7 +11,7 @@ import { defs, fxSpot, anchorY, zoneOf, lineArt } from "./petdefs.js";
 import { ownsCosmetic, cosmeticBlock, buyCosmetic, wearCosmetic, lookOf, paintBlock, paintPet, shellBalance, shellRun, shellAward, shellsEarned, pouredOn } from "./shop.js";
 import { hueOf, petLabel } from "./pets.js";
 import { drawCritter } from "./art.js";
-import { $, esc, todayKey } from "./util.js";
+import { $, esc } from "./util.js";
 import { setMsg, ui, setHtml, render } from "./ui.js";
 
 let hooks = null, owner = null, running = false;

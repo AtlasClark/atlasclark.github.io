@@ -8,8 +8,6 @@ import { $, fmt } from "./util.js";
 const RING = 86;               /* px from the centre to each preset */
 let open = null;               /* { name, onPick } while showing */
 
-export const radialOpen = () => !!open;
-
 /* o: { name, color, total, goal, amount, x, y, touch } in viewport px */
 export function openRadial(o, onPick) {
   const el = $("radial");

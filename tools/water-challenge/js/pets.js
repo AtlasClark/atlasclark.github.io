@@ -11,10 +11,7 @@ import { todayKey, has, bus } from "./util.js";
 export { petKindFor };
 
 export const isGrave = (p, k) => has(p.graves, k);
-export const graveEquipped = p => { const k = petKindFor(p); return k >= 0 && isGrave(p, k); };
-export const ownsEquipped = p => { const k = petKindFor(p); return k >= 0 && has(p.pets, k); };
 export const gravesOf = p => p.graves ? Object.keys(p.graves).length : 0;
-export const petsOwned = p => p.pets ? Object.keys(p.pets).length : 0;
 export const graveLine = k => C.GRAVE_LINES[k % C.GRAVE_LINES.length];
 export const petLabel = k => k === C.JOKE_KIND ? "..." : C.PET_NAMES[k];
 export function petName(k) {
@@ -37,10 +34,6 @@ export function hueOf(p, k) {
   if (has(p.pets, k)) return Number(p.pets[String(k)]);
   if (has(p.graves, k)) return Number(p.graves[String(k)]);
   return hashHue(p.name + k);
-}
-export function petHueFor(p) {
-  const k = petKindFor(p);
-  return k < 0 ? 0 : hueOf(p, k);
 }
 
 /* A goal roll's odds, in %, to one decimal and summing to exactly 100: the dragon's

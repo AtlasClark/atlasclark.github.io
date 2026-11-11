@@ -14,7 +14,7 @@
    onto (no lock files), and the Worker takes the evening backup itself. */
 
 import * as C from "./config.js";
-import { S, dataChanged, currentGoalFor, currentGoal, currentAnnualGoal, currentIdleMax,
+import { S, dataChanged, currentGoalFor, currentAnnualGoal, currentIdleMax,
          goalTunables, legacyFlat, challengeStart, forceLegacyStamps, personalGoal,
          defaultSettings } from "./model.js";
 import { todayKey, dateKey, localStamp, parseKey, has, shiftKey, monthDayOk } from "./util.js";

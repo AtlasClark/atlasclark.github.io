@@ -1,8 +1,8 @@
 /* Water Challenge (web) - constants: rules, tunables and the on-disk contract
    (FORMAT_REV, UTF-16 LE + BOM JSON, unknown fields kept). */
 
-export const REV         = "rev 1.43.1";
-export const APP_VERSION = "web 1.43.1";   /* stamped as writerVersion */
+export const REV         = "rev 1.44.0";
+export const APP_VERSION = "web 1.44.0";   /* stamped as writerVersion */
 /* Every file is written at FORMAT_REV. A file stamped higher came from a newer
    build, and the page asks for a reload. */
 export const FORMAT_REV    = 22;
@@ -328,9 +328,9 @@ export function narrowCup() {
 }
 export const DIVE_EVERY     = [25, 60];   /* random gap between dives */
 export const HOP_EVERY      = [9, 24];    /* random gap between small hops */
-/* Visits: now and then a pet leaps to the glass beside it (same row, left or right),
-   plays there, then leaps home. Only on screen: nothing is saved, and each screen
-   picks its own visits, since every screen lays the glasses out its own way. */
+/* Visits: now and then a pet beams over to another glass on the page, plays there, then
+   beams home. Nothing is saved: one timetable worked out from the clock, so every
+   screen shows the same visit (glass.js planFor). */
 export const VISIT_SLOT_SECS = 75;        /* one shared timetable: at most one visit per slot (rev 1.38.8) */
 export const VISIT_SLOT_CHANCE = 0.4;     /* the chance a slot has one: about one visit every 3 minutes */
 export const VISIT_START_SPREAD = 10;     /* seconds into its slot a visit may start */
@@ -388,9 +388,15 @@ export const POUR_EASE      = 0.05;
 export const DROP_SECS      = 0.9;
 export const REVEAL_SPIN    = [70, 70, 80, 90, 110, 140, 180, 240, 330];   /* ms between rarity flashes */
 export const REVEAL_HOLD_MS = 3200;       /* how long the revealed card stays */
-export const SPLASH_RINGS   = 3;
-export const RING_GROWTH    = 2.3;
-export const RING_FADE      = 0.915;
+/* Ripples (rev 1.44.0): a splash sends wavelets out along the water surface, both ways,
+   with an echo off each wall (glass.js rippleAt). Lengths are for a 124 px glass. */
+export const SPLASH_RINGS   = 3;          /* ripples a splash() sends, one after the other */
+export const RIPPLE_SPEED   = 62;         /* px per second along the surface */
+export const RIPPLE_LEN     = 24;         /* wavelength, px */
+export const RIPPLE_WIDTH   = 16;         /* half-width of the moving wave packet, px */
+export const RIPPLE_LIFE    = 1.5;        /* seconds until it has died away */
+export const RIPPLE_AMP     = [2.4, 4.2]; /* height in px: a small splash, a big one */
+export const RIPPLE_ECHO    = 0.55;       /* how much comes back off a wall */
 
 /* Card layout. Each row holds as many cards as stay at least CARD_COMFORT wide (up to
    MAX_COLS); the rest wrap to the next row, centred. Widening the screen adds one
