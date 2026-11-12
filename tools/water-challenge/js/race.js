@@ -90,7 +90,8 @@ export const racesOn = (p, k, day) => ((p && p.spends) || []).filter(s => isRace
    With no me (a house race) it is six strangers round a total drawn from R.house. */
 export function makeField(me, seed) {
   const r = rng(seed), mine = me ? sum(me.st) : R.house[0] + r() * (R.house[1] - R.house[0]), pool = [];
-  for (let k = 0; k < C.PET_MAX; k++) if (!me || k !== me.kind) pool.push(k);
+  /* the others never come from the third pen (rev 1.48.0); a person's own third-pen pet may still race */
+  for (let k = 0; k < C.PET_MAX; k++) if ((!me || k !== me.kind) && !(k >= C.PEN3_FIRST && k < C.PEN3_FIRST + C.PET_COUNT)) pool.push(k);
   const out = [];
   for (let i = 0; i < R.lanes - (me ? 1 : 0); i++) {
     const k = pool.splice(Math.floor(r() * pool.length), 1)[0], base = baseStats(k);

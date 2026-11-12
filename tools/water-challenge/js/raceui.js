@@ -171,9 +171,9 @@ function resultHtml(o) {
 }
 
 /* ---- the track ---------------------------------------------------------------- */
-/* Drawn like the old arcade derby game: a crowd and a picket fence at the back, green
-   lanes with a slot each, and the pets as big card cut-outs on stands, each lane's in
-   front of the one behind it. */
+/* Laid out like the old arcade derby game, set in a swimming pool (rev 1.48.0): a crowd
+   and the tiled deck at the back, six lanes of water with float ropes between them, and
+   the pets as big card cut-outs standing in the water, each lane's in front of the one behind it. */
 let DPR = 1, BAND = 0;
 function fit() {
   const w = Math.max(280, Math.min(920, Math.floor($("raceWrap").clientWidth)));
@@ -217,31 +217,47 @@ function backdrop(dark, x0, x1) {
     }
   }
   if (dark) { c.fillStyle = "rgba(6,18,30,.35)"; c.fillRect(0, 0, W, crowdH + 4); }
-  const fy = crowdH + 1, fh = top - fy;                                            /* the picket fence */
-  c.fillStyle = dark ? "#0d3b22" : "#1f8a45"; c.fillRect(0, fy, W, fh);
-  c.fillStyle = dark ? "#cfd8dc" : "#ffffff";
-  for (let x = 2; x < W; x += 7) { c.beginPath(); c.moveTo(x, fy + 3); c.lineTo(x + 1.75, fy); c.lineTo(x + 3.5, fy + 3); c.lineTo(x + 3.5, top - 2); c.lineTo(x, top - 2); c.closePath(); c.fill(); }
-  c.fillRect(0, fy + fh * 0.36, W, 1.6); c.fillRect(0, fy + fh * 0.7, W, 1.6);
-  for (let i = 0; i < n; i++) {                                                    /* the lanes, with a step and a slot each */
-    const y = top + i * LH;
-    c.fillStyle = dark ? (i % 2 ? "#12512f" : "#0f472a") : (i % 2 ? "#22a455" : "#1e9a4e");
-    c.fillRect(0, y, W, LH);
-    c.fillStyle = "rgba(255,255,255," + (dark ? 0.07 : 0.16) + ")"; c.fillRect(0, y, W, 2);
-    c.fillStyle = "rgba(0,0,0,.28)"; c.fillRect(0, y + LH - 3, W, 3);
-    c.fillStyle = "rgba(0,0,0,.42)"; c.fillRect(x0 - 6, y + LH - 7.5, x1 - x0 + 12, 2);   /* the slot the stand runs in */
+  const fy = crowdH + 1, fh = top - fy, tile = dark ? "#33475a" : "#e9e2d0", grout = dark ? "rgba(0,0,0,.3)" : "rgba(120,105,80,.28)";
+  const deck = (x, y, w, h) => {                                                   /* poolside tiles */
+    c.fillStyle = tile; c.fillRect(x, y, w, h);
+    c.fillStyle = grout;
+    for (let tx = x + 9; tx < x + w; tx += 10) c.fillRect(tx, y, 1, h);
+    for (let ty = y + 9; ty < y + h; ty += 10) c.fillRect(x, ty, w, 1);
+  };
+  deck(0, fy, W, fh);
+  for (let i = 0; i < n; i++) {                                                    /* the lanes: water, a line on the floor, light on the surface */
+    const y = top + i * LH, g = c.createLinearGradient(0, y, 0, y + LH);
+    g.addColorStop(0, dark ? "#125a8a" : "#3db4ea"); g.addColorStop(1, dark ? "#0c4169" : "#2496d6");
+    c.fillStyle = g; c.fillRect(0, y, W, LH);
+    c.fillStyle = dark ? "rgba(2,16,32,.5)" : "rgba(12,52,96,.42)";
+    c.fillRect(x0 + 14, y + LH * 0.62, x1 - x0 - 28, 3);                           /* the floor line and its two T ends */
+    c.fillRect(x0 + 14, y + LH * 0.62 - 4, 3, 11); c.fillRect(x1 - 17, y + LH * 0.62 - 4, 3, 11);
+    c.strokeStyle = "rgba(255,255,255," + (dark ? 0.09 : 0.2) + ")"; c.lineWidth = 1.2;
+    for (let k = 0; k < 2; k++) {
+      c.beginPath();
+      for (let x = x0; x <= x1; x += 6) c.lineTo(x, y + LH * (0.25 + k * 0.3) + Math.sin(x * 0.045 + i * 2.1 + k * 1.7) * 2.2 + Math.sin(x * 0.11 + k) * 1);
+      c.stroke();
+    }
   }
-  c.fillStyle = dark ? "#0a2f1c" : "#167a3c"; c.fillRect(0, top + n * LH, W, H - top - n * LH);
-  c.fillStyle = "rgba(255,255,255,.85)"; c.fillRect(x0 + 2, top, 2.5, n * LH);     /* start line */
-  const sq = LH / 3;                                                               /* finish: two columns of checks */
+  for (let i = 1; i < n; i++) {                                                    /* float ropes: red by the walls, then blue and white */
+    const y = top + i * LH;
+    c.fillStyle = "rgba(0,0,0,.18)"; c.fillRect(x0, y + 1.5, x1 - x0, 2);
+    for (let x = x0 + 5, k = 0; x < x1 - 2; x += 6.5, k++) {
+      const end = x < x0 + 46 || x > x1 - 46;
+      c.fillStyle = end ? "#e2483d" : k % 4 < 2 ? "#f6f8fa" : "#2b63c9";
+      c.beginPath(); c.arc(x, y, 2.9, 0, 6.2832); c.fill();
+    }
+  }
+  deck(0, top, x0 - 2, n * LH);                                                    /* the starting end, where the lane numbers sit */
+  deck(0, top + n * LH, W, H - top - n * LH);
+  c.fillStyle = dark ? "#cfd8dc" : "#ffffff";                                      /* the pool's white edge, all round */
+  c.fillRect(0, top - 3, W, 3); c.fillRect(0, top + n * LH, W, 2.5); c.fillRect(x0 - 2, top, 4, n * LH);
+  const sq = LH / 3;                                                               /* finish: two columns of checks on the far wall */
   for (let k = 0; k < 2; k++) for (let q = 0; q < n * 3; q++) {
     c.fillStyle = (k + q) % 2 ? "#f4f6f7" : "#16202a";
     c.fillRect(x1 + k * sq, top + q * sq, sq, sq);
   }
-  c.save();                                                                        /* START, painted on the turf */
-  c.translate(x0 + 16, top + n * LH / 2); c.rotate(-Math.PI / 2);
-  c.font = "900 " + Math.round(LH * 0.62) + "px system-ui, sans-serif"; c.textAlign = "center"; c.textBaseline = "middle";
-  c.fillStyle = "rgba(255,255,255,.3)"; c.fillText("S T A R T", 0, 0);
-  c.restore();
+  deck(x1 + 2 * sq, top, W - x1 - 2 * sq, n * LH);
   return board;
 }
 
@@ -305,7 +321,7 @@ function drawRun(now) {
 
 /* Speed lines behind a cut-out at (px, cy): tapered streaks that are long and thin at
    speed, a few of them drawn afresh many times a second so they flicker like a comic
-   panel, with dust kicked up at the stand. hot = in a burst. */
+   panel, with spray thrown back along the water. hot = in a burst. */
 function speedLines(px, cy, base, pr, v, hot, clock, lane) {
   const beat = Math.floor(clock * 14), back = px - pr * 0.95, count = hot ? 7 : 4;
   for (let j = 0; j < count; j++) {
@@ -320,7 +336,7 @@ function speedLines(px, cy, base, pr, v, hot, clock, lane) {
   }
   for (let d = 0; d < (hot ? 5 : 3); d++) {                                           /* dust: puffs that drift back, grow and fade */
     const life = frac(clock * (hot ? 2.6 : 1.9) + d / (hot ? 5 : 3) + lane * 0.37), k = 1 - life;
-    ctx.fillStyle = "rgba(235,240,225," + (0.5 * k * Math.min(1, v * 1.4)) + ")";
+    ctx.fillStyle = "rgba(255,255,255," + (0.7 * k * Math.min(1, v * 1.4)) + ")";
     ctx.beginPath(); ctx.arc(px - pr * 0.5 - life * pr * (hot ? 2.4 : 1.5), base - 3 - life * pr * 0.35, 1.5 + life * pr * 0.2, 0, 6.2832); ctx.fill();
   }
 }
@@ -336,7 +352,7 @@ function drawTrack(r, x, f, sp, rt, clock, word) {
   ctx.textAlign = "center"; ctx.textBaseline = "middle";
   for (let i = 0; i < n; i++) {                                                     /* lane plates: whose lane, and the one with the money on it */
     const y = top + i * LH, cy = y + LH / 2 - 1, bet = r.out.bet && r.out.bet.on === i;
-    if (field[i].me) { ctx.fillStyle = r.out.color || "#1688d4"; ctx.globalAlpha = 0.3; ctx.fillRect(0, y, W, LH - 3); ctx.globalAlpha = 1; }
+    if (field[i].me) { ctx.fillStyle = r.out.color || "#1688d4"; ctx.globalAlpha = 0.32; ctx.fillRect(x0 + 2, y + 3, x1 - x0 - 2, LH - 6); ctx.globalAlpha = 1; }
     ctx.fillStyle = LANE_COL[i];
     ctx.beginPath(); ctx.arc(15, cy, Math.min(9, LH * 0.34), 0, 6.2832); ctx.fill();
     if (bet) { ctx.strokeStyle = "#f4c542"; ctx.lineWidth = 2.5; ctx.beginPath(); ctx.arc(15, cy, Math.min(9, LH * 0.34) + 3, 0, 6.2832); ctx.stroke(); }
@@ -348,19 +364,20 @@ function drawTrack(r, x, f, sp, rt, clock, word) {
     const moving = rt >= 0 && x[i] < R.track && x[i] > 0, flag = f ? f[i] : 0, v = sp ? Math.min(1.4, Math.max(0, sp[i]) / 6.5) : 0;
     const px = x0 + (x1 - pr * 1.15 - x0) * x[i] / R.track, cut = cutout(field[i], pr);
     if (moving && flag !== 2 && v > 0.2) speedLines(px, cy, base, pr, v, flag === 1, clock, i);
-    ctx.fillStyle = "rgba(0,0,0,.3)";                                               /* shadow on the turf, then the stand */
-    ctx.beginPath(); ctx.ellipse(px, base + 1, pr * 0.95, 2.6, 0, 0, 6.2832); ctx.fill();
+    ctx.fillStyle = "rgba(4,30,60,.28)";                                            /* its shadow in the water and a ripple ring */
+    ctx.beginPath(); ctx.ellipse(px, base + 1, pr * 0.95, 2.8, 0, 0, 6.2832); ctx.fill();
+    ctx.strokeStyle = "rgba(255,255,255,.55)"; ctx.lineWidth = 1.2;
+    ctx.beginPath(); ctx.ellipse(px, base + 1, pr * (1.05 + (moving ? frac(clock * 1.8 + i * 0.3) * 0.35 : 0)), 3.4, 0, 0, 6.2832); ctx.stroke();
     ctx.save();
-    ctx.translate(px, base);                                                        /* a cut-out rocks about its stand */
+    ctx.translate(px, base);                                                        /* a cut-out rocks about its foot */
     ctx.rotate(flag === 2 ? Math.sin(clock * 22) * 0.2 : flag === 1 ? 0.09 : moving ? Math.sin(clock * 11 + i * 1.7) * 0.035 : 0);
-    ctx.fillStyle = "#16202a"; ctx.fillRect(-pr * 0.3, -pr * 0.34, pr * 0.6, pr * 0.34);
-    ctx.drawImage(cut.img, -cut.size / 2, -pr * 0.2 - cut.foot - cut.size / 2 + (moving ? Math.abs(Math.sin(clock * 11 + i * 1.7)) * -1.6 : 0), cut.size, cut.size);
+    ctx.drawImage(cut.img, -cut.size / 2, -cut.foot - cut.size / 2 + (moving ? Math.abs(Math.sin(clock * 11 + i * 1.7)) * -1.6 : 0), cut.size, cut.size);
     ctx.restore();
-    if (flag === 2) {                                                               /* a stumble: turf flies */
-      for (let d = 0; d < 5; d++) {
-        const life = frac(clock * 2.2 + d * 0.2), a = -0.4 - d * 0.5;
-        ctx.fillStyle = "rgba(" + (d % 2 ? "70,170,95," : "240,240,225,") + (1 - life) + ")";
-        ctx.fillRect(px + Math.cos(a) * life * pr * 1.6, base - 3 + Math.sin(a) * life * pr * 1.3 + life * life * pr, 2.4, 2.4);
+    if (flag === 2) {                                                               /* a stumble: a splash */
+      for (let d = 0; d < 7; d++) {
+        const life = frac(clock * 2.2 + d * 0.143), a = -0.3 - d * 0.42;
+        ctx.fillStyle = "rgba(" + (d % 2 ? "190,232,255," : "255,255,255,") + (1 - life) + ")";
+        ctx.beginPath(); ctx.arc(px + Math.cos(a) * life * pr * 1.7, base - 3 + Math.sin(a) * life * pr * 1.5 + life * life * pr * 1.2, 1.3 + (1 - life) * 1.5, 0, 6.2832); ctx.fill();
       }
     }
     const res = r.res;
@@ -373,7 +390,7 @@ function drawTrack(r, x, f, sp, rt, clock, word) {
   }
   if (word) {
     ctx.font = "900 " + Math.round(LH * 2.6) + "px system-ui, sans-serif";
-    ctx.lineWidth = 7; ctx.strokeStyle = "rgba(10,40,24,.75)"; ctx.fillStyle = "#fff";
+    ctx.lineWidth = 7; ctx.strokeStyle = "rgba(6,34,66,.8)"; ctx.fillStyle = "#fff";
     ctx.strokeText(word, W / 2, top + n * LH / 2); ctx.fillText(word, W / 2, top + n * LH / 2);
   }
 }

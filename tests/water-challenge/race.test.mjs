@@ -180,6 +180,10 @@ test("a house race: six strangers, a stake, no pet of yours, no experience, no d
   const setup = shop.raceSetup(p, C.RACE_HOUSE);
   assert.equal(setup.field.length, R.lanes);
   assert.ok(setup.field.every(f => !f.me), "none of them yours");
+  for (let i = 0; i < 40; i++) {
+    const f = race.makeField(i % 2 ? null : { kind: C.PEN3_FIRST + 3, hue: 0, st: [...race.baseStats(C.PEN3_FIRST + 3)] }, "pen3|" + i);
+    assert.ok(f.every(a => a.me || a.kind < C.PEN3_FIRST || a.kind >= C.PEN3_FIRST + C.PET_COUNT), "no stranger comes from the third pen");
+  }
   assert.equal(setup.mine, -1);
   assert.equal(new Set(setup.field.map(f => f.kind)).size, R.lanes);
   assert.equal(await shop.racePlay(p, C.RACE_HOUSE, null), null, "still needs a stake");
