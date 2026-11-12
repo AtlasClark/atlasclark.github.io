@@ -550,3 +550,12 @@ test("flying: hovers at the height it is drawn, skims down to just touch the wat
   assert.ok(Math.abs(P.bodyBox(P.defs[C.PEN3_FIRST + 5]).bottom - C.narrowCup().floor) < 0.05, "the Mimic stands on the floor line");
 });
 
+
+test("personal hats: the setting keeps only known hats and plain names", async () => {
+  const store = await import(new URL("../../tools/water-challenge/js/store.js", import.meta.url));
+  const C2 = await import(new URL("../../tools/water-challenge/js/config.js", import.meta.url));
+  const key = C2.PERSONAL_HATS[0].key;
+  assert.deepEqual(store.cleanHats({ Ada: key, Ben: "tiara", "<b>": key, "": key }), { Ada: key });
+  assert.deepEqual(store.cleanHats(null), {});
+  assert.deepEqual(store.cleanHats("fedora"), {});
+});

@@ -7,7 +7,9 @@
           pile squashes it into a heap; the page's small coin icons use it as is.
    Holiday hats (santa, elf, witch, pumpkin, partyGold, partyStripe): drawn like the crown
           and jester, which they replace around their holiday (config HOLIDAY_HATS).
-   medal: the day-win medal, units of r, origin at the disc's centre (the pet's medal spot). */
+   medal: the day-win medal, units of r, origin at the disc's centre (the pet's medal spot).
+   Personal hats (PERSONAL_ART, config PERSONAL_HATS): drawn like the crown; pets face
+          left, so the back of a hat is on the right. */
 
 const HUE = (dh, s, l, a = 1) => ({ hue: 1, dh, s, l, a });
 const FIX = c => ({ c });
@@ -151,4 +153,30 @@ export const HOLIDAY_ART = {
     P("M 0.135 -0.5324 Q 0.198 -0.4568 0.1896 -0.4148 Q 0.1812 -0.3686 0.135 -0.3686 Q 0.0888 -0.3686 0.0804 -0.4148 Q 0.072 -0.4568 0.135 -0.5324 Z", "drop", "rim", 0.02), P("M -0.334 -0.3424 Q -0.271 -0.2668 -0.2794 -0.2248 Q -0.2878 -0.1786 -0.334 -0.1786 Q -0.3802 -0.1786 -0.3886 -0.2248 Q -0.397 -0.2668 -0.334 -0.3424 Z", "drop", "rim", 0.02), P("M 0.334 -0.3424 Q 0.397 -0.2668 0.3886 -0.2248 Q 0.3802 -0.1786 0.334 -0.1786 Q 0.2878 -0.1786 0.2794 -0.2248 Q 0.271 -0.2668 0.334 -0.3424 Z", "drop", "rim", 0.02),
     P("M -0.29 -0.1 L 0.29 -0.1 Q 0.31 -0.05 0.29 0 L -0.29 0 Q -0.31 -0.05 -0.29 -0.1 Z", "band", "rim", 0.025),
     S("M -0.24 -0.05 Q -0.18 -0.08 -0.12 -0.05 Q -0.06 -0.02 0 -0.05 Q 0.06 -0.08 0.12 -0.05 Q 0.18 -0.02 0.24 -0.05", "deep", 0.016) ] }
+};
+
+export const PERSONAL_ART = {
+  /* A felt fedora (pinched crown, dark band, a feather) with a sun flap buttoned to the
+     back of the brim, the way a safari hat keeps the neck out of the sun. */
+  fedora: { pal: { felt: FIX("#b98f5a"), light: FIX("#d1ab74"), shade: FIX("#96703f"), edge: FIX("#5c4426"), band: FIX("#3e2c1b"),
+                   flap: FIX("#e0cb9c"), fold: FIX("#bfa574"), feather: FIX("#2f9e8f"), quill: FIX("#f3ead2"), stud: FIX("#f2c94c") }, shapes: [
+    /* the flap: hangs from the back half of the brim, a little wavy at the hem */
+    P("M 0.02 -0.03 L 0.37 -0.035 C 0.41 0.06 0.43 0.17 0.4 0.27 Q 0.33 0.32 0.27 0.27 Q 0.2 0.33 0.13 0.27 Q 0.08 0.31 0.04 0.25 C 0.05 0.15 0.04 0.06 0.02 -0.03 Z", "flap", "edge", 0.022),
+    S("M 0.15 0 Q 0.17 0.13 0.14 0.24", "fold", 0.02),
+    S("M 0.28 0 Q 0.31 0.12 0.3 0.24", "fold", 0.02),
+    /* the brim: wide, dipped a touch at the front */
+    E(0, -0.035, 0.41, 0.075, "felt", { stroke: "edge", w: 0.026, rot: -0.05 }),
+    E(-0.03, -0.05, 0.3, 0.035, "light", { rot: -0.05 }),
+    /* the crown: front pinch, a dent along the top */
+    P("M -0.205 -0.06 C -0.23 -0.2 -0.21 -0.35 -0.11 -0.385 Q -0.03 -0.4 0.01 -0.33 Q 0.06 -0.41 0.13 -0.385 C 0.22 -0.35 0.225 -0.2 0.205 -0.06 Q 0 -0.01 -0.205 -0.06 Z", "felt", "edge", 0.026),
+    P("M -0.14 -0.33 Q -0.17 -0.24 -0.165 -0.16 L -0.12 -0.155 Q -0.115 -0.26 -0.09 -0.345 Z", "light"),
+    S("M 0.01 -0.325 Q 0.035 -0.25 0.015 -0.17", "shade", 0.028),
+    P("M 0.12 -0.36 C 0.19 -0.33 0.2 -0.22 0.19 -0.15 L 0.145 -0.15 C 0.16 -0.23 0.15 -0.3 0.12 -0.36 Z", "shade"),
+    /* the band, and a feather tucked in at the back */
+    P("M -0.212 -0.145 Q 0 -0.095 0.212 -0.145 L 0.205 -0.06 Q 0 -0.01 -0.205 -0.06 Z", "band"),
+    P("M 0.13 -0.1 C 0.14 -0.24 0.2 -0.36 0.3 -0.42 C 0.3 -0.3 0.25 -0.17 0.17 -0.09 Z", "feather", "edge", 0.016),
+    S("M 0.15 -0.1 Q 0.2 -0.27 0.29 -0.4", "quill", 0.014),
+    /* two brass studs hold the flap on */
+    E(0.12, -0.012, 0.02, 0.02, "stud", { stroke: "edge", w: 0.012 }),
+    E(0.31, -0.022, 0.02, 0.02, "stud", { stroke: "edge", w: 0.012 }) ] }
 };

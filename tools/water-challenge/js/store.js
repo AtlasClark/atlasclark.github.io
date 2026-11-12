@@ -415,6 +415,7 @@ export async function loadSettings() {
     if (typeof o.title === "string") s.title = o.title.trim().slice(0, C.TITLE_MAX);
     if (typeof o.tagline === "string") s.tagline = o.tagline.trim().slice(0, C.TAGLINE_MAX);
     if (o.events && typeof o.events === "object") s.events = cleanEvents(o.events);
+    s.hats = cleanHats(o.hats);
     if ((!cloud || cloud.isAdmin()) &&                 /* in the cloud only an admin may write settings */
         (o.minGoalOz === undefined || o.goalFactor === undefined || o.minGoalDays === undefined ||
          o.dropTopDay === undefined || o.goalWindowDays === undefined || o.legacyFlatUntil === undefined)) {
@@ -429,6 +430,16 @@ export function cleanEvents(o) {
   for (const h of C.HOLIDAY_HATS) {
     const e = h.theme && o[h.theme];
     if (e && monthDayOk(e.from) && monthDayOk(e.to)) out[h.theme] = e.on === false ? { from: e.from, to: e.to, on: false } : { from: e.from, to: e.to };
+  }
+  return out;
+}
+
+/* Settings > Personal hats: { name: hat key }, known hats only. */
+export function cleanHats(o) {
+  const out = {};
+  if (!o || typeof o !== "object") return out;
+  for (const [name, key] of Object.entries(o)) {
+    if (name && name.length <= 60 && !/[<>]/.test(name) && C.PERSONAL_HATS.some(h => h.key === key)) out[name] = key;
   }
   return out;
 }
@@ -451,6 +462,7 @@ export async function saveSettings() {
     (S.settings.title ? ',\n  "title": ' + q(S.settings.title) : '') +
     (S.settings.tagline ? ',\n  "tagline": ' + q(S.settings.tagline) : '') +
     (Object.keys(S.settings.events || {}).length ? ',\n  "events": ' + JSON.stringify(cleanEvents(S.settings.events)) : '') +
+    (Object.keys(cleanHats(S.settings.hats)).length ? ',\n  "hats": ' + JSON.stringify(cleanHats(S.settings.hats)) : '') +
     ',\n  "updatedBy": ' + q(S.me) +
     ',\n  "updatedAt": ' + q(localStamp(new Date())) + '\n}\n';
   try {

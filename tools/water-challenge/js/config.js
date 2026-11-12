@@ -1,8 +1,8 @@
 /* Water Challenge (web) - constants: rules, tunables and the on-disk contract
    (FORMAT_REV, UTF-16 LE + BOM JSON, unknown fields kept). */
 
-export const REV         = "rev 1.49.1";
-export const APP_VERSION = "web 1.49.1";   /* stamped as writerVersion */
+export const REV         = "rev 1.49.2";
+export const APP_VERSION = "web 1.49.2";   /* stamped as writerVersion */
 /* Every file is written at FORMAT_REV. A file stamped higher came from a newer
    build, and the page asks for a reload. */
 export const FORMAT_REV    = 22;
@@ -57,6 +57,11 @@ export const PLINKO_ROW_SECS = 0.26;
    won, place, xp, d } (cost = the stake for tokens, 0 for shells, as shell Plinko).
    base: average stat by rarity (Common .. ???, pen reward, dragon). edge: the share of a
    fair payout paid. maxMult / tokenMax cap one win (120 shells, 8 tokens). */
+/* Personal hats (rev 1.49.2): a hat an admin gives to one person in Settings
+   (_settings.json "hats": { name: key }). That person's pet wears it whenever it has no
+   other hat on (the leader's crown or jester hat and holiday hats come first). Drawings
+   in propart.js (PERSONAL_ART), editable in the Pet Studio. */
+export const PERSONAL_HATS = [{ key: "fedora", name: "Safari fedora" }];
 export const RACE_KIND  = "race";
 export const RACE_HOUSE = -1;                /* "pet" of a house race: six strangers, none of them yours (rev 1.47.0) */
 export const RACE_STATS = ["Start", "Speed", "Stamina", "Burst", "Focus"];

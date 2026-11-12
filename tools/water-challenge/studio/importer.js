@@ -6,7 +6,7 @@ import { PET_MAX, PEN2_FIRST, PEN3_FIRST, PET_COUNT } from "../js/config.js";
 import { PEN1_ART, EXTRA_ART } from "../js/pen1art.js";
 import { PEN2_ART, REWARD2_ART } from "../js/pen2art.js";
 import { PEN3_ART } from "../js/pen3art.js";
-import { PROP_ART, HOLIDAY_ART } from "../js/propart.js";
+import { PROP_ART, HOLIDAY_ART, PERSONAL_ART } from "../js/propart.js";
 import { CUP_ART, FX_ART } from "../js/styleart.js";
 
 const copy = o => JSON.parse(JSON.stringify(o));
@@ -26,7 +26,7 @@ export function importBuiltin(k) {
 
 /* A built-in hat or prop ("crown", "jester", "grave", "coin", a holiday hat, a cup item or an effect particle). */
 export function importHat(key) {
-  const a = copy(PROP_ART[key] || HOLIDAY_ART[key] || CUP_ART[key] || FX_ART[key]);
+  const a = copy(PROP_ART[key] || HOLIDAY_ART[key] || PERSONAL_ART[key] || CUP_ART[key] || FX_ART[key]);
   return Object.assign({ pal: a.pal, shapes: a.shapes }, a.behind ? { behind: true } : {});
 }
 

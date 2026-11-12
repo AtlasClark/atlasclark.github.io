@@ -260,8 +260,9 @@ function updateGlasses() {
        holiday with its own hats, every other pet wears that holiday's jester hat too; the
        icon over the glass still marks only the leader. */
     const lead = best > 0 && dayScoreFor(total, p, key) >= best - C.RATIO_EPSILON, leadJester = lead && !over;
-    st.duckCrown = lead || holidayHats;
-    st.duckJester = lead ? leadJester : holidayHats;
+    const own = (S.settings.hats || {})[p.name];                 /* a personal hat, when no other hat is on */
+    st.duckCrown = lead || holidayHats || !!own;
+    st.duckJester = lead ? leadJester : holidayHats ? true : own || false;
     st.duckMedal = wearsMedal(p, key);
     const hat = leadJester ? "j" : "c";
     if (st.hatIs !== hat) { st.hatIs = hat; setEl("cr_" + i, glassHatSvg(leadJester), null); }
@@ -1489,6 +1490,7 @@ export function fillSettings() {
   $("startVal").value = challengeStart();
   $("idleVal").value = currentIdleMax();
   renderEvents();
+  renderHats();
   renderRoster();
 }
 
@@ -1504,6 +1506,16 @@ function renderEvents() {
       '<span class="unit">to</span>' +
       '<input class="txt md" type="text" maxlength="5" spellcheck="false" data-k="to" placeholder="' + d.to + '" value="' + (own ? esc(r.to) : '') + '" aria-label="' + esc(h.name) + ' to (MM-DD)"></div>';
   }).join("");
+}
+
+/* Settings > Personal hats: who has been given one. */
+function renderHats() {
+  const mine = S.settings.hats || {};
+  $("hatList").innerHTML = S.participants.length ? S.participants.map(p =>
+    '<div class="ev-row hat-row" data-name="' + ja(p.name) + '"><span><i class="dot" style="background:' + p.color + '"></i>' + esc(p.name) + '</span>' +
+    '<select class="txt" aria-label="Hat for ' + esc(p.name) + '"><option value="">No hat</option>' +
+    C.PERSONAL_HATS.map(h => '<option value="' + h.key + '"' + (mine[p.name] === h.key ? ' selected' : '') + '>' + esc(h.name) + '</option>').join("") +
+    '</select></div>').join("") : '<p class="dim">Nobody on the roster yet.</p>';
 }
 
 export function renderRoster() {

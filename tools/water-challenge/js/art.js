@@ -88,8 +88,10 @@ function critterEye(ctx, x, y, r, dead) {
 }
 
 /* jester: true / false for the day's hat, or a hat key to wear that one. */
+/* jester: false = the crown, true = the jester hat (or the day's holiday pair), or a
+   hat key (a personal hat, rev 1.49.2). */
 function critterCrown(ctx, cx, cy, r, jester) {
-  drawHat(ctx, hats[hatKeyFor(jester)], cx, cy, r);
+  drawHat(ctx, (typeof jester === "string" && hats[jester]) || hats[hatKeyFor(jester === true)], cx, cy, r);
 }
 
 /* finish: an optional cosmetic finish key (cosmetics.js) for the pet's own colours. */

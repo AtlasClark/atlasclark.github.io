@@ -687,14 +687,22 @@ async function applySettings() {
     if (from !== d.from || to !== d.to || !on) events[h.theme] = on ? { from, to } : { from, to, on: false };
   }
   const eventsChanged = JSON.stringify(events) !== JSON.stringify(store.cleanEvents(S.settings.events || {}));
-  if (!dailyChanged && !annualChanged && !startChanged && !idleChanged && !titleChanged && !tagChanged && !eventsChanged) { setMsg("Nothing changed.", true); closeSettings(); return; }
+  /* Personal hats: a name not on the roster now keeps what it had */
+  const hats = Object.assign({}, store.cleanHats(S.settings.hats));
+  for (const row of document.querySelectorAll("#hatList .hat-row")) {
+    const v = row.querySelector("select").value;
+    if (v) hats[row.dataset.name] = v; else delete hats[row.dataset.name];
+  }
+  const sorted = o => JSON.stringify(Object.keys(o).sort().map(k => [k, o[k]]));
+  const hatsChanged = sorted(hats) !== sorted(store.cleanHats(S.settings.hats));
+  if (!dailyChanged && !annualChanged && !startChanged && !idleChanged && !titleChanged && !tagChanged && !eventsChanged && !hatsChanged) { setMsg("Nothing changed.", true); closeSettings(); return; }
   await store.serial(async () => {
     const old = { ...S.settings };
     S.settings.annualGoalOz = a;
     if (startChanged) S.settings.startDate = sd;
     if (idleChanged) S.settings.idleSkipDays = Number(iv);
     if (dailyChanged) S.settings.dailyGoalOz = g;
-    S.settings.title = ti; S.settings.tagline = tg; S.settings.events = events;
+    S.settings.title = ti; S.settings.tagline = tg; S.settings.events = events; S.settings.hats = hats;
     if (!(await store.saveSettings())) {
       S.settings = old;
       setMsg("Couldn't save settings. Try again.", false);
@@ -709,6 +717,7 @@ async function applySettings() {
     if (titleChanged) bits.push("Title: " + (ti || C.DEFAULT_TITLE) + ".");
     if (tagChanged) bits.push("Tagline " + (tg ? "set." : "back to the default."));
     if (eventsChanged) bits.push("Event days saved.");
+    if (hatsChanged) bits.push("Hats saved.");
     if (idleChanged) bits.push("Streak grace: " + currentIdleMax() + " day" + (currentIdleMax() === 1 ? "" : "s") + ".");
     setMsg(bits.join("  "), true);
     await refresh();

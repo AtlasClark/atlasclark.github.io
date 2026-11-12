@@ -851,6 +851,8 @@ h1 { margin: 4px 0 0; font-size: clamp(30px, 5vw, 52px); letter-spacing: -.04em;
   background: var(--accent-soft); color: var(--accent-ink); }
 .ev-row .txt.md { width: 66px; text-align: center; font-variant-numeric: tabular-nums; }
 .ev-row .unit { margin: 0; }
+.hat-row { grid-template-columns: minmax(0, 1fr) auto; }
+.hat-row select { padding: 4px 8px; }
 .sp-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 18px; border-top: 1px solid var(--line); background: var(--solid); }
 .sp-foot .hint { margin: 0; }
 .btn-link { display: inline-block; text-decoration: none; }
