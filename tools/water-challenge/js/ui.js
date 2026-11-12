@@ -29,7 +29,7 @@ import { msgOf, isNew, openMsgs, whenText } from "./msg.js";
 import { $, esc, fmt, fmtOz, fmtGal, todayKey, dateKey, prettyTime, clockStamp, has, parseKey, shiftKey, aAn } from "./util.js";
 
 /* Set by app.js: the Shop tab renders from shopui.js, which imports this module. */
-export const uiHooks = { renderShop: null, renderCasino: null, bottle: null };
+export const uiHooks = { renderShop: null, renderCasino: null, duels: null, bottle: null };
 
 export const ui = { tab: "today", amount: C.DEFAULT_AMOUNT, connected: false, lastSync: "", petPen: {}, shopPen: 0,
                     armed: "",     /* eid of the pour whose undo is waiting for a second click */
@@ -340,6 +340,7 @@ function renderActivity() {
       if (s.kind === "plinko") drops.push(s);
       else if (s.kind === C.SPLINKO_KIND) sdrops.push(s);
       else if (s.kind === C.RACE_KIND) races.push(s);
+      else if (s.kind === C.DUEL.kind) { if (s.role === "take") pets.push({ kind: "spend", p, s, ts: s.at }); }   /* only a race that was run */
       else pets.push({ kind: "spend", p, s, ts: s.at });
     }
     if (races.length) {                                              /* races: one row per person as well */
@@ -881,6 +882,8 @@ function spendLine(p, s, when) {
                                   ' into ' + (k >= 0 ? (s.fresh ? "the " : "another ") + esc(petLabel(k)) : "nothing");
   if (s.kind === C.SPLINKO_KIND) return splinkoLine(p, [s], when);
   if (s.kind === C.RACE_KIND) return raceLine(p, [s], when);
+  if (s.kind === C.DUEL.kind) return '<span class="tag">1v1</span>' + when + '<strong>' + esc(p.name) + '</strong>&rsquo;s ' + esc(petLabel(k)) + (s.win ? ' beat ' : ' lost to ') +
+                                     '<strong>' + esc(String(s.from || "?")) + '</strong>&rsquo;s ' + esc(petLabel(Number(s.vs)));
   if (s.kind === "cosmetic") return '<span class="tag">style</span>' + when + name + 'bought ' + esc((COSMETICS[s.item] || { name: "a look" }).name) +
                                     ' <span class="rar">' + s.cost + ' shells</span>';
   if (s.kind === "paint") return '<span class="tag">style</span>' + when + name + 'recoloured the ' + esc(petLabel(k)) +
@@ -1160,6 +1163,7 @@ export function render() {
   renderStaleWarning();
   renderStatus();
   if (uiHooks.bottle) uiHooks.bottle();
+  if (uiHooks.duels) uiHooks.duels();
 }
 
 export function setTab(name) {

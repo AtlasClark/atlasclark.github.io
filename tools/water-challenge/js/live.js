@@ -4,7 +4,9 @@
    events come over the socket and the same tick reads them from memory). Others see
    an event about a second after it happens; an event older than LIVE_SHOW_MS is
    handed over as "late" so its handler can skip the animation.
-   Types: "drop" (Plinko), "pour" (someone logged water), "unlock" (an unlock card). */
+   Types: "drop" (Plinko), "pour" (someone logged water), "unlock" (an unlock card),
+   "duel" (a 1v1 challenge or race was saved: read the files now; shared folder only, the
+   cloud's socket already says so). */
 
 import * as C from "./config.js";
 import * as store from "./store.js";

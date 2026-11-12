@@ -200,3 +200,49 @@ test("a house race: six strangers, a stake, no pet of yours, no experience, no d
   }
   assert.equal(shop.shellBalance(p), start - 2 * (R.perPet + 2) + won);
 });
+
+test("a 1v1 race: a challenge waits in the challenger's file, the accept writes the race, nothing is paid", async () => {
+  const { S } = await loadWeb([]);
+  const mk = (name, pets) => ({ name, color: "#60a5fa", created: "2026-11-01", away: [], pets, graves: {}, spends: [], entries: [] });
+  const a = mk("Ada Test", { 3: 10, 7: 20 }), b = mk("Ben Test", { 12: 30 }), c = mk("Cleo Test", {});
+  S.participants = [a, b, c]; model.dataChanged();
+  assert.equal(shop.duelAskBlock(a, "Ada Test", 3), "Pick a player.");
+  assert.equal(shop.duelAskBlock(a, "Ben Test", 9), "Only a pet you have alive.");
+  const ask = await shop.duelAsk(a, "Ben Test", 3);
+  assert.ok(ask, "saved");
+  assert.deepEqual([ask.kind, ask.cost, ask.role, ask.to, ask.pet], [C.DUEL.kind, 0, "ask", "Ben Test", 3]);
+  assert.equal(shop.duelAskBlock(a, "Cleo Test", 7), "One challenge at a time.");
+  assert.equal(shop.asksFor("Ben Test").length, 1);
+  assert.equal(shop.asksFor("Cleo Test").length, 0);
+  assert.equal(shop.asksFor("Ben Test", "2099-01-01").length, 0, "a challenge ends with its day");
+
+  /* taken back, then asked again and declined */
+  await shop.duelDrop(a, ask.id);
+  assert.equal(shop.asksFor("Ben Test").length, 0);
+  const ask2 = await shop.duelAsk(a, "Ben Test", 3);
+  await shop.duelPass(b, ask2, a);
+  assert.equal(shop.asksBy(a).length, 0, "declined");
+  assert.equal(await shop.duelTake(b, a, ask2, 12), null, "a declined challenge can't be raced");
+
+  const ask3 = await shop.duelAsk(a, "Ben Test", 7);
+  assert.equal(await shop.duelTake(b, a, ask3, 99), null, "only with a pet you have");
+  const take = await shop.duelTake(b, a, ask3, 12, 4242);
+  assert.ok(take);
+  assert.deepEqual([take.role, take.ask, take.from, take.pet, take.vs, take.cost], ["take", ask3.id, "Ada Test", 12, 7, 0]);
+  assert.deepEqual(take.st, [...race.baseStats(12)]);
+  assert.deepEqual(take.vst, [...race.baseStats(7)]);
+  assert.equal(shop.asksBy(a).length, 0, "answered");
+  const field = shop.duelField(take, b), res = race.runRace(field, take.seed);
+  assert.deepEqual(field.map(f => [f.kind, f.who]), [[7, "Ada Test"], [12, "Ben Test"]], "the challenger in the first lane");
+  assert.equal(take.win, res.place[1] === 1, "every page replays the same winner from the record");
+  assert.equal(shop.duelsNow(take.t + 1000).length, 1, "on the track now");
+  assert.equal(shop.duelsNow(shop.duelEnds(take) + 1).length, 0, "over");
+  const ra = shop.duelRecord("Ada Test", 7), rb = shop.duelRecord("Ben Test", 12);
+  assert.deepEqual([ra.won + ra.lost, rb.won + rb.lost, ra.won, rb.lost], [1, 1, take.win ? 0 : 1, take.win ? 0 : 1]);
+  for (const p of [a, b]) {
+    assert.equal(shop.balance(p), 0); assert.equal(shop.shellBalance(p), 0); assert.equal(shop.spentTotal(p), 0);
+  }
+  assert.deepEqual(race.statsOf(a, 7).st, [...race.baseStats(7)], "no experience from a 1v1");
+  assert.equal(race.statsOf(b, 12).xp, 0);
+  assert.equal(shop.racesLeft(b, 12), R.perPet, "and it uses none of the day's races");
+});

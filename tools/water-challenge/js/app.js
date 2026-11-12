@@ -18,7 +18,7 @@ import { bottleOn, bottleCfg, signedIn, loadBottle, setRelay, newRelayKey, pingR
 import { openRadial, wireRadial } from "./radial.js";
 import { makeMsg, msgOf, toggleMsg, openMsgs, cleanText } from "./msg.js";
 import { initShop, renderShop, shopTabChanged } from "./shopui.js";
-import { initCasino, renderCasino, casinoTabChanged } from "./raceui.js";
+import { initCasino, renderCasino, casinoTabChanged, watchDuels } from "./raceui.js";
 import { shellsEarned, earnedTotal } from "./shop.js";
 import { isHydrationDay } from "./hydration.js";
 import { goalWave } from "./hydfx.js";
@@ -51,6 +51,7 @@ function playUnlock(info) {
 bus.unlock = info => { const { msg, ...shared } = info; emit("unlock", { info: shared }); playUnlock(info); };
 onLive("unlock", (ev, late) => { if (late < C.LIVE_SHOW_MS && ev.info) playUnlock(ev.info); pollSoon(); });
 /* Someone else poured: play the stream now and fetch the new level straight away. */
+onLive("duel", () => pollSoon());          /* a 1v1 challenge or race: the files just changed */
 onLive("pour", (ev, late) => { if (late < C.LIVE_SHOW_MS) G.pour(ev.name, ev.oz, ev.color); pollSoon(); });
 
 /* ---- theme -------------------------------------------------------------- */
@@ -747,6 +748,7 @@ function wire() {
   $("bankShop").onclick = () => { closeOverlays(); tab("shop"); };
   uiHooks.renderShop = renderShop;
   uiHooks.renderCasino = renderCasino;
+  uiHooks.duels = watchDuels;
   uiHooks.bottle = bottleView;
   initShop({ settle, guard: shopGuard, askConfirm, pollSoon, whoAmI: () => askIdentity(false) });
   initCasino({ settle, guard: shopGuard, whoAmI: () => askIdentity(false) });

@@ -8,7 +8,7 @@ import * as C from "./config.js";
 import { S, petEventTimes } from "./model.js";
 import { todayKey } from "./util.js";
 import { petKindFor } from "./store.js";
-import { pendingDrops, balance, chestRaw, shards, shellBalance } from "./shop.js";
+import { pendingDrops, balance, chestRaw, shards, shellBalance, duelEnds } from "./shop.js";
 
 export const HOLD_MS = C.LIVE_SHOW_MS + 3000;
 /* Races work the same way: saved when they start, shown when they finish. A race is held
@@ -85,4 +85,6 @@ export function shownChest() {
   return Math.max(0, t);
 }
 
-export const hiddenIds = p => new Set(pending(p).map(d => d.id).concat(racesHeld(p).map(s => s.id)));
+/* A 1v1 race is kept back until its finish on the clock. */
+const duelsHeld = p => (p.spends || []).filter(s => s.kind === C.DUEL.kind && s.role === "take" && Date.now() < duelEnds(s));
+export const hiddenIds = p => new Set(pending(p).map(d => d.id).concat(racesHeld(p).map(s => s.id), duelsHeld(p).map(s => s.id)));

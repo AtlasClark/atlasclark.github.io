@@ -1,8 +1,8 @@
 /* Water Challenge (web) - constants: rules, tunables and the on-disk contract
    (FORMAT_REV, UTF-16 LE + BOM JSON, unknown fields kept). */
 
-export const REV         = "rev 1.48.0";
-export const APP_VERSION = "web 1.48.0";   /* stamped as writerVersion */
+export const REV         = "rev 1.49.0";
+export const APP_VERSION = "web 1.49.0";   /* stamped as writerVersion */
 /* Every file is written at FORMAT_REV. A file stamped higher came from a newer
    build, and the page asks for a reload. */
 export const FORMAT_REV    = 22;
@@ -64,7 +64,15 @@ export const RACE = { lanes: 6, perPet: 3, shellBets: [2, 5, 10], tokenBet: 1, t
                       base: [40, 44, 48, 53, 58, 58, 62], spread: 26, house: [230, 290], grow: 35, drop: 5, statMax: 99,
                       xp: [30, 20, 14, 10, 8, 6], levelXp: 50, maxLevel: 50,
                       edge: 0.88, tokenEdge: 0.92, maxMult: 12, tokenMax: 8, oddsRuns: 400,
-                      countSecs: 3, endSecs: 2.5 };
+                      countSecs: 3, endSecs: 2.5, rate: 1.35 };     /* rate: the track plays this much faster than the race's clock */
+/* Live 1v1 races (rev 1.49.0): one player's pet against another's, nothing staked, no
+   experience, no daily limit. All of it is "duel" spends of cost 0, each in its writer's
+   own file: role "ask" { to, pet } (open until answered, taken back or the day ends),
+   "drop" { ask } (taken back), "pass" { ask, from } (declined), "take" { ask, from, pet,
+   vs, st, vst, hue, vhue, seed, win, secs, t } (accepted: the race, replayed from its seed
+   by every open page). lead: seconds from the accept to the start, so every page has the
+   record by then; endSecs: how long the result stays up. */
+export const DUEL = { kind: "duel", lead: 7, endSecs: 6 };
 export const LIVE_SUBDIR  = "_live";       /* drops shared with every open shop */
 export const LIVE_POLL_MS = 1000;
 export const LIVE_KEEP_MS = 120000;        /* drop files older than this are cleared */

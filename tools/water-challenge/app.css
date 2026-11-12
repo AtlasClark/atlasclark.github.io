@@ -1346,6 +1346,24 @@ li.pour.armed .undo-x { opacity: 1; background: #c4434f; color: #fff; }
 .flag.big { width: 64px; height: 64px; flex: none; background-size: 20px 20px; box-shadow: none; }
 .race-pet.house .hl { display: block; margin-top: 1px; font-size: 9px; font-weight: 800; line-height: 5px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
 .race-card.house { grid-template-columns: 1fr; }
+/* live 1v1 races (rev 1.49.0) */
+.duel-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 0 0 12px; padding: 8px 12px; border-radius: 12px; background: var(--pc-bg); font-size: 13px; color: var(--ink-2); }
+.duel-row .tag1 { font-size: 10.5px; font-weight: 800; letter-spacing: .06em; color: var(--accent-ink); }
+.duel-row select { padding: 4px 8px; border: 1px solid var(--input-line); border-radius: 9px; background: var(--input); color: var(--ink); font: inherit; }
+.duel-row .rec { margin-left: auto; color: var(--faint); font-size: 12px; }
+.duel-ask { position: fixed; right: 16px; bottom: 46px; z-index: 88; width: min(360px, calc(100vw - 32px)); padding: 14px 16px; border-radius: 16px;
+            background: var(--solid); border: 1px solid var(--accent); box-shadow: var(--shadow); color: var(--ink-2); font-size: 13.5px; }
+.duel-ask p { margin: 0 0 8px; }
+.duel-ask .race-pets { max-height: 104px; margin-bottom: 10px; }
+.duel-ask .acts { display: flex; gap: 8px; flex-wrap: wrap; }
+.duel-stage { position: fixed; inset: 0; z-index: 89; display: grid; place-items: start center; padding: 70px 16px 16px; background: var(--scrim); }
+.duel-card { position: relative; width: min(820px, 100%); padding: 18px 20px 14px; border-radius: 20px; background: var(--solid); box-shadow: var(--shadow); }
+.duel-card h2 { margin: 2px 30px 10px 0; font-size: 19px; color: var(--title); }
+.duel-card h2 .vs { margin: 0 8px; font-size: 13px; color: var(--faint); font-weight: 700; }
+.duel-card h2 .dot { margin-right: 6px; }
+.duel-x { position: absolute; top: 10px; right: 12px; width: 30px; height: 30px; border: 0; border-radius: 50%; background: none; color: var(--muted); font-size: 22px; line-height: 1; cursor: pointer; }
+.duel-x:hover { background: var(--pc-hover); }
+.duel-result { min-height: 22px; margin: 4px 0 0; font-size: 15px; font-weight: 700; color: var(--ink-2); text-align: center; }
 .race-card { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr); gap: 16px; align-items: center; margin: 14px 0 12px; }
 @media (max-width: 620px) { .race-card { grid-template-columns: 1fr; } }
 .rc-head { display: flex; align-items: center; gap: 12px; }

@@ -5,7 +5,7 @@
    Every action here saves; callers run them inside store.serial(). */
 
 import * as C from "./config.js";
-import { S, tokensEarned, capBonus, dayWinners } from "./model.js";
+import { S, tokensEarned, capBonus, dayWinners, findParticipant } from "./model.js";
 import { saveParticipant, petKindFor, setSpendCheck } from "./store.js";
 import { has, todayKey, localStamp, shiftKey, parseKey, aAn } from "./util.js";
 import { applyRoll, dayRng, grantReward, isGrave, petBinIndex, penOf, binsFor, rollPen, pen2Open, pen3Open, pen3Earned, PEN3_CLOSED, hueOf } from "./pets.js";
@@ -236,6 +236,73 @@ export async function racePlay(p, k, bet, seed = Math.floor(Math.random() * 4294
   if (!(await saveOrUndo(p, before, null))) return null;
   return { id: sp.id, at: Date.now(), name: p.name, color: p.color, kind: k, seed, field: s.field, mine: s.mine, bet: Object.assign({}, bet),
            pay, won, place, places: res.place, xp, d, level, levelUp, secs: res.secs };
+}
+
+/* ---- live 1v1 races (rev 1.49.0; the records are described at C.DUEL) ------------------ */
+const isDuel = s => !!s && s.kind === C.DUEL.kind;
+const answeredBy = (q, id) => (q.spends || []).some(s => isDuel(s) && (s.role === "take" || s.role === "pass") && s.ask === id);
+/* p's challenges still open today: not taken back, not answered, the pet still alive. */
+export function asksBy(p, day = todayKey()) {
+  const sp = p.spends || [], shut = new Set(sp.filter(s => isDuel(s) && s.role === "drop").map(s => s.ask));
+  return sp.filter(s => {
+    if (!isDuel(s) || s.role !== "ask" || String(s.at).slice(0, 10) !== day || shut.has(s.id) || !has(p.pets, s.pet)) return false;
+    const q = findParticipant(s.to);
+    return !!q && !answeredBy(q, s.id);
+  });
+}
+/* Open challenges made to `name`, oldest first: [{ ask, from }]. */
+export function asksFor(name, day = todayKey()) {
+  const out = [];
+  for (const p of S.participants) if (p.name !== name) for (const ask of asksBy(p, day)) if (ask.to === name) out.push({ ask, from: p });
+  return out.sort((a, b) => String(a.ask.at) < String(b.ask.at) ? -1 : 1);
+}
+export function duelAskBlock(p, to, k) {
+  if (!has(p.pets, k)) return "Only a pet you have alive.";
+  const q = findParticipant(to);
+  if (!q || q.name === p.name) return "Pick a player.";
+  if (asksBy(p).length) return "One challenge at a time.";
+  return "";
+}
+async function duelNote(p, extra) {
+  const before = copy(p), s = spend(p, C.DUEL.kind, 0, extra);
+  return (await saveOrUndo(p, before, null)) ? s : null;
+}
+export const duelAsk = async (p, to, k) => duelAskBlock(p, to, k) ? null : duelNote(p, { role: "ask", to, pet: k });
+export const duelDrop = (p, askId) => duelNote(p, { role: "drop", ask: askId });
+export const duelPass = (p, ask, from) => duelNote(p, { role: "pass", ask: ask.id, from: from.name });
+/* p accepts `ask` from `from` with pet k: the race is run and kept in p's file, with both
+   pets as they are now, so every page replays the same race. Returns the record or null. */
+export async function duelTake(p, from, ask, k, seed = Math.floor(Math.random() * 4294967296)) {
+  if (!has(p.pets, k) || !asksFor(p.name).some(x => x.ask.id === ask.id)) return null;
+  const st = statsOf(p, k).st, vst = statsOf(from, Number(ask.pet)).st, hue = hueOf(p, k), vhue = hueOf(from, Number(ask.pet));
+  const res = runRace([{ st: vst }, { st }], seed);
+  return duelNote(p, { role: "take", ask: ask.id, from: from.name, pet: k, vs: Number(ask.pet), st, vst, hue, vhue, seed,
+                       win: res.place[1] === 1, secs: Math.round(res.secs * 10) / 10, t: Date.now() });
+}
+/* The two lanes of a "take" record written by `taker`: the challenger first. */
+export function duelField(take, taker) {
+  const from = findParticipant(take.from);
+  return [{ kind: Number(take.vs), hue: Number(take.vhue) || 0, st: (take.vst || []).map(Number), who: take.from, tint: from ? from.color : "#888" },
+          { kind: Number(take.pet), hue: Number(take.hue) || 0, st: (take.st || []).map(Number), who: taker.name, tint: taker.color }];
+}
+const wholeTake = s => isDuel(s) && s.role === "take" && Array.isArray(s.st) && Array.isArray(s.vst) && s.st.length === 5 && s.vst.length === 5 && isFinite(Number(s.t));
+/* When a 1v1 race's result may show, in ms. */
+export const duelEnds = s => Number(s.t) + (C.DUEL.lead + (Number(s.secs) || 0) / C.RACE.rate) * 1000;
+/* 1v1 races not finished yet on the clock: [{ take, p }]. */
+export function duelsNow(now = Date.now()) {
+  const out = [];
+  for (const p of S.participants) for (const s of p.spends || []) if (wholeTake(s) && now < duelEnds(s) && now > Number(s.t) - 30000) out.push({ take: s, p });
+  return out.sort((a, b) => a.take.t - b.take.t);
+}
+/* name's pet k in 1v1 races: { won, lost }, from everyone's records. */
+export function duelRecord(name, k) {
+  let won = 0, lost = 0;
+  for (const p of S.participants) for (const s of p.spends || []) {
+    if (!isDuel(s) || s.role !== "take") continue;
+    if (p.name === name && Number(s.pet) === k) { if (s.win) won++; else lost++; }
+    else if (s.from === name && Number(s.vs) === k) { if (s.win) lost++; else won++; }
+  }
+  return { won, lost };
 }
 
 /* The centre cup: the token goes into the chest; if the chest held anything, a

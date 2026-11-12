@@ -7,7 +7,7 @@ import * as C from "./config.js";
 import { findParticipant, S } from "./model.js";
 import * as store from "./store.js";
 import { $, esc, has, prettyTime } from "./util.js";
-import { raceSetup, raceBlock, racePlay, racePayFor, racesLeft } from "./shop.js";
+import { raceSetup, raceBlock, racePlay, racePayFor, racesLeft, asksBy, asksFor, duelAskBlock, duelAsk, duelDrop, duelPass, duelTake, duelField, duelsNow, duelRecord } from "./shop.js";
 import { statsOf, runRace, rating, FRAME_SECS } from "./race.js";
 import { raceDone, racesHeld, shownBalance, shownShells } from "./reveal.js";
 import { petLabel, rarityLabel, petBinIndex, penOf } from "./pets.js";
@@ -15,8 +15,9 @@ import { drawPortrait } from "./art.js";
 import { lineArt } from "./petdefs.js";
 import { setMsg, ensureIcons, ui, render, setHtml } from "./ui.js";
 import { shopFor } from "./shopui.js";
+import { emit } from "./live.js";
 
-const R = C.RACE, RATE = 1.35;                 /* the track plays a little faster than the race's own clock */
+const R = C.RACE, RATE = R.rate;
 const LANE_COL = ["#e4572e", "#f2a541", "#76b041", "#17bebb", "#4f6fd8", "#a05cc5"];
 const ORD = ["1st", "2nd", "3rd", "4th", "5th", "6th"];
 const KEY = "awc-race", HOUSE = C.RACE_HOUSE;
@@ -25,8 +26,9 @@ let hooks = null;
 let run = null;        /* the race on the track: { id, out, setup, res, t0 } */
 let shown = null;      /* the last finished race, left on the track until "Next race" */
 let busy = false, cv = null, ctx = null, W = 0, H = 0, LH = 0;
+let MAIN = null, STAGE = null;   /* the two tracks: { cv, wrap, lanes } (Casino panel, live 1v1 overlay) */
 /* This browser's choices: the pet, what to stake, and (for the field named by key) who on. */
-const pick = { pet: -1, cur: "shell", stake: R.shellBets[1], on: -1, type: "win", key: "" };
+const pick = { pet: -1, cur: "shell", stake: R.shellBets[1], on: -1, type: "win", key: "", who: "" };
 try {
   const o = JSON.parse(localStorage.getItem(KEY)) || {};
   if (Number(o.pet) >= HOUSE) pick.pet = Number(o.pet);
@@ -42,7 +44,10 @@ const racer = (f, cap) => (f.me ? (cap ? "Your " : "your ") : (cap ? "The " : "t
 
 export function initCasino(h) {
   hooks = h;
-  cv = $("raceCanvas");
+  MAIN = { cv: $("raceCanvas"), wrap: $("raceWrap"), lanes: R.lanes };
+  STAGE = { cv: $("duelCanvas"), wrap: $("duelWrap"), lanes: 2 };
+  cv = MAIN.cv;
+  initDuels();
   $("casinoBalance").addEventListener("click", e => { if (e.target.closest("[data-act=whoami]")) hooks.whoAmI(); });
   $("racePets").addEventListener("click", e => {
     const b = e.target.closest("[data-pet]");
@@ -62,7 +67,7 @@ export function initCasino(h) {
   });
   $("raceStakes").innerHTML = R.shellBets.map(b => '<button type="button" class="seg" data-stake="' + b + '">' + b + '</button>').join("");
   $("raceGo").addEventListener("click", go);
-  window.addEventListener("resize", () => { if (ui.tab === "casino") paint(); });
+  window.addEventListener("resize", () => { if (ui.tab === "casino") paint(); if (duel) drawDuel(); });
 }
 
 /* ---- rendering -------------------------------------------------------------- */
@@ -106,18 +111,21 @@ function renderRace(p) {
   if (house) setHtml("raceCard", '<div class="rc-head"><span class="flag big" aria-hidden="true"></span><div class="rc-id"><b>House race</b>' +
     '<br><span class="dim">Six strangers. Your pets stay home.</span></div></div>');
   const me = house ? null : statsOf(p, k, held), tier = penOf(k) > 0 ? petBinIndex(k) : 4;
+  const rec = house ? { won: 0, lost: 0 } : duelRecord(p.name, k);
   const kindOf = penOf(k) > 0 ? rarityLabel(k) : k === C.MYSTERY_KIND ? "One of a kind" : "Pen reward";
   if (!house) setHtml("raceCard", '<div class="rc-head"><i class="pi pi-' + k + '"></i><div class="rc-id"><b>' + esc(petLabel(k)) + '</b> <span class="rar r' + tier + '">' +
     esc(kindOf) + '</span><span class="rc-lv">Level ' + me.level + '</span>' +
     '<div class="xp" title="' + (me.need ? me.into + ' / ' + me.need + ' xp to level ' + (me.level + 1) : 'top level') + '"><i style="width:' +
     (me.need ? Math.round(me.into / me.need * 100) : 100) + '%"></i></div>' +
-    '<span class="dim">' + me.races + ' race' + (me.races === 1 ? '' : 's') + ' &middot; ' + me.wins + ' won</span></div></div>' +
+    '<span class="dim">' + me.races + ' race' + (me.races === 1 ? '' : 's') + ' &middot; ' + me.wins + ' won' +
+    (rec.won + rec.lost ? ' &middot; 1v1: ' + rec.won + ' won, ' + rec.lost + ' lost' : '') + '</span></div></div>' +
     '<div class="rc-stats">' + C.RACE_STATS.map((n, i) => {
       const d = me.st[i] - me.base[i];
       return '<div class="rs"><span>' + n + '</span><div class="bar"><i style="width:' + me.st[i] + '%"></i><em style="left:' + me.base[i] + '%"></em></div><b>' + me.st[i] + '</b>' +
              '<small class="' + (d > 0 ? 'up' : d < 0 ? 'dn' : '') + '">' + (d > 0 ? '+' + d : d < 0 ? '&minus;' + -d : '') + '</small></div>';
     }).join("") + '</div>');
 
+  renderDuelRow(p, k, house || !!run);
   const setup = cur ? cur.setup : raceSetup(p, k);
   if (!cur && pick.key !== setup.key) { pick.key = setup.key; pick.on = setup.mine >= 0 ? setup.mine : setup.odds.win.indexOf(Math.max(...setup.odds.win)); pick.type = "win"; }
   const token = pick.cur === "token", bet = cur ? cur.out.bet : betOf(), done = shown ? shown.out.places : null;
@@ -175,12 +183,13 @@ function resultHtml(o) {
    and the tiled deck at the back, six lanes of water with float ropes between them, and
    the pets as big card cut-outs standing in the water, each lane's in front of the one behind it. */
 let DPR = 1, BAND = 0;
-function fit() {
-  const w = Math.max(280, Math.min(920, Math.floor($("raceWrap").clientWidth)));
-  const lh = Math.max(24, Math.min(40, Math.round(w / 19))), band = Math.round(lh * 1.7), h = band + R.lanes * lh + 10;
+function fit(t = MAIN) {
+  cv = t.cv;
+  const w = Math.max(280, Math.min(920, Math.floor(t.wrap.clientWidth)));
+  const lh = Math.max(24, Math.min(40, Math.round(w / 19))), band = Math.round(lh * 1.7), h = band + t.lanes * lh + 10;
   const dpr = Math.min(window.devicePixelRatio || 1, 3);
-  if (w !== W || h !== H || cv.width !== Math.round(w * dpr)) {
-    W = w; H = h; LH = lh;
+  W = w; H = h; LH = lh;
+  if (cv.width !== Math.round(w * dpr) || cv.height !== Math.round(h * dpr)) {
     cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr);
     cv.style.width = w + "px"; cv.style.height = h + "px";
   }
@@ -193,14 +202,16 @@ const frac = v => v - Math.floor(v);
 const noise = (a, b) => frac(Math.sin(a * 127.1 + b * 311.7) * 43758.5453);
 
 /* Everything that does not move, drawn once per size and theme. */
-let board = null, boardKey = "";
+const boards = new Map();
 const CROWD = ["#e4572e", "#f2a541", "#4f6fd8", "#a05cc5", "#17bebb", "#e9e4d4", "#d9534f", "#3f8a4c", "#f7d6a8"];
 const SKIN = ["#f1c9a5", "#d9a57c", "#a8744f", "#7a4f33", "#f6dcc2"];
-function backdrop(dark, x0, x1) {
-  const key = [W, H, DPR, dark].join("|");
-  if (board && boardKey === key) return board;
-  board = offscreen(W, H); boardKey = key;
-  const c = board.getContext("2d"), n = R.lanes, top = BAND, crowdH = BAND * 0.62;
+function backdrop(dark, x0, x1, n) {
+  const key = [W, H, DPR, dark, n].join("|");
+  if (boards.has(key)) return boards.get(key);
+  const board = offscreen(W, H);
+  if (boards.size > 5) boards.clear();
+  boards.set(key, board);
+  const c = board.getContext("2d"), top = BAND, crowdH = BAND * 0.62;
   c.setTransform(DPR, 0, 0, DPR, 0, 0);
   c.fillStyle = dark ? "#1b2a3a" : "#cfe3f2";                                       /* the stand */
   c.fillRect(0, 0, W, top);
@@ -312,11 +323,14 @@ function paint() {
   drawTrack({ setup, out: { color: p.color, bet: betOf() } }, setup.field.map(() => 0), null, null, -1, 0, "");
 }
 
+/* Where everyone is at race time rt: { x, f, sp }. */
+function frameAt(res, rt) {
+  const fr = res.frames, at = Math.min(fr.length - 1, rt / FRAME_SECS), i = Math.floor(at), a = at - i, j = Math.min(fr.length - 1, i + 1);
+  return { x: fr[i].x.map((v, n) => v + (fr[j].x[n] - v) * a), f: fr[i].f, sp: fr[i].x.map((v, n) => (fr[j].x[n] - v) / FRAME_SECS) };
+}
 function drawRun(now) {
-  const t = (now - run.t0) / 1000 - R.countSecs, rt = Math.max(0, t) * RATE, fr = run.res.frames;
-  const at = Math.min(fr.length - 1, rt / FRAME_SECS), i = Math.floor(at), a = at - i, j = Math.min(fr.length - 1, i + 1);
-  const x = fr[i].x.map((v, n) => v + (fr[j].x[n] - v) * a), sp = fr[i].x.map((v, n) => (fr[j].x[n] - v) / FRAME_SECS);
-  drawTrack(run, x, fr[i].f, sp, rt, now / 1000, t < 0 ? String(Math.ceil(-t)) : t < 0.7 ? "Go" : "");
+  const t = (now - run.t0) / 1000 - R.countSecs, rt = Math.max(0, t) * RATE, at = frameAt(run.res, rt);
+  drawTrack(run, at.x, at.f, at.sp, rt, now / 1000, t < 0 ? String(Math.ceil(-t)) : t < 0.7 ? "Go" : "");
 }
 
 /* Speed lines behind a cut-out at (px, cy): tapered streaks that are long and thin at
@@ -343,16 +357,17 @@ function speedLines(px, cy, base, pr, v, hot, clock, lane) {
 
 /* r: { setup, out: { color, bet } [, res] }; x: where each lane is (0..track); f: flags;
    sp: speeds; rt: the race clock (-1 = not started); clock: seconds, for the motion. */
-function drawTrack(r, x, f, sp, rt, clock, word) {
-  fit();
+function drawTrack(r, x, f, sp, rt, clock, word, target) {
+  fit(target);
   const field = r.setup.field, n = field.length, top = BAND, pr = LH * 0.82, x0 = 30 + pr * 1.3, x1 = W - 56, sq = LH / 3;
   const dark = getComputedStyle(document.documentElement).colorScheme === "dark";
   ctx.clearRect(0, 0, W, H);
-  ctx.drawImage(backdrop(dark, x0, x1), 0, 0, W, H);
+  ctx.drawImage(backdrop(dark, x0, x1, n), 0, 0, W, H);
   ctx.textAlign = "center"; ctx.textBaseline = "middle";
   for (let i = 0; i < n; i++) {                                                     /* lane plates: whose lane, and the one with the money on it */
     const y = top + i * LH, cy = y + LH / 2 - 1, bet = r.out.bet && r.out.bet.on === i;
-    if (field[i].me) { ctx.fillStyle = r.out.color || "#1688d4"; ctx.globalAlpha = 0.32; ctx.fillRect(x0 + 2, y + 3, x1 - x0 - 2, LH - 6); ctx.globalAlpha = 1; }
+    const tint = field[i].tint || (field[i].me ? r.out.color || "#1688d4" : "");
+    if (tint) { ctx.fillStyle = tint; ctx.globalAlpha = 0.32; ctx.fillRect(x0 + 2, y + 3, x1 - x0 - 2, LH - 6); ctx.globalAlpha = 1; }
     ctx.fillStyle = LANE_COL[i];
     ctx.beginPath(); ctx.arc(15, cy, Math.min(9, LH * 0.34), 0, 6.2832); ctx.fill();
     if (bet) { ctx.strokeStyle = "#f4c542"; ctx.lineWidth = 2.5; ctx.beginPath(); ctx.arc(15, cy, Math.min(9, LH * 0.34) + 3, 0, 6.2832); ctx.stroke(); }
@@ -393,6 +408,150 @@ function drawTrack(r, x, f, sp, rt, clock, word) {
     ctx.lineWidth = 7; ctx.strokeStyle = "rgba(6,34,66,.8)"; ctx.fillStyle = "#fff";
     ctx.strokeText(word, W / 2, top + n * LH / 2); ctx.fillText(word, W / 2, top + n * LH / 2);
   }
+}
+
+/* ---- live 1v1 races ------------------------------------------------------------- */
+/* A challenge is a record in the challenger's file; accepting it writes the race into
+   the accepter's file (shop.js). Every open page then finds that record (watchDuels runs
+   after each render) and plays the race in an overlay, timed from the record's own clock
+   time, so all screens show the same moment. */
+let duel = null;                    /* the race in the overlay: { take, field, res, start, done, setup, out } */
+const duelSeen = new Set();
+const askPick = { id: "", pet: -1 };
+const whoOf = f => esc(f.who) + "&rsquo;s " + esc(petLabel(f.kind));
+/* On a shared folder the other pages poll every few seconds; this tells them to look now. */
+const nudge = () => { if (!store.cloud) emit("duel", {}); };
+
+function initDuels() {
+  $("duelClose").addEventListener("click", closeDuel);
+  $("duelRow").addEventListener("change", e => { if (e.target.id === "duelWho") { pick.who = e.target.value; renderCasino(); } });
+  $("duelRow").addEventListener("click", e => {
+    const b = e.target.closest("[data-act]");
+    if (b) duelAct(b.dataset.act);
+  });
+  $("duelAsk").addEventListener("click", e => {
+    const pet = e.target.closest("[data-apet]"), b = e.target.closest("[data-act]");
+    if (pet) { askPick.pet = Number(pet.dataset.apet); renderAsk(); }
+    else if (b) duelAct(b.dataset.act);
+  });
+}
+
+/* The Casino panel's 1v1 row: challenge someone with the picked pet, or the one waiting. */
+function renderDuelRow(p, k, off) {
+  const others = S.participants.filter(x => x.name !== p.name), mine = asksBy(p)[0];
+  $("duelRow").hidden = off || !others.length;
+  if (off || !others.length) return;
+  if (mine) {
+    setHtml("duelRow", '<span class="tag1">1V1</span><span>Waiting for <b>' + esc(mine.to) + '</b> to race your ' + esc(petLabel(Number(mine.pet))) + '.</span>' +
+      '<button type="button" class="btn muted small" data-act="drop">Take it back</button>');
+    return;
+  }
+  if (!others.some(x => x.name === pick.who)) pick.who = others[0].name;
+  setHtml("duelRow", '<span class="tag1">1V1</span><label for="duelWho">Race</label><select id="duelWho">' +
+    others.map(x => '<option value="' + esc(x.name) + '"' + (x.name === pick.who ? ' selected' : '') + '>' + esc(x.name) + '</option>').join("") + '</select>' +
+    '<button type="button" class="btn primary small" data-act="ask">Challenge with the ' + esc(petLabel(k)) + '</button>');
+}
+
+/* The prompt a challenged player gets, on any tab: pick a pet, race or decline. */
+function renderAsk() {
+  const p = shopFor(), el = $("duelAsk"), first = p && !duel ? asksFor(p.name)[0] : null;
+  el.hidden = !first;
+  if (!first) return;
+  ensureIcons();
+  const kinds = Object.keys(p.pets || {}).map(Number).filter(k => k >= 0 && k < C.PET_MAX).sort((a, b) => a - b);
+  if (askPick.id !== first.ask.id || !kinds.includes(askPick.pet)) {
+    const worn = store.petKindFor(p);
+    askPick.id = first.ask.id; askPick.pet = kinds.includes(worn) ? worn : kinds.length ? kinds[0] : -1;
+  }
+  const theirs = Number(first.ask.pet), st = statsOf(first.from, theirs);
+  setHtml("duelAsk", '<p><i class="dot" style="background:' + first.from.color + '"></i><b>' + esc(first.from.name) + '</b> wants a race. Their ' +
+    '<b>' + esc(petLabel(theirs)) + '</b> <span class="dim">level ' + st.level + ' &middot; rating ' + rating(st.st) + '</span></p>' +
+    (kinds.length ? '<div class="race-pets">' + kinds.map(x => '<button type="button" class="race-pet' + (x === askPick.pet ? ' on' : '') + '" data-apet="' + x +
+        '" title="' + esc(petLabel(x)) + ' &middot; rating ' + rating(statsOf(p, x).st) + '"><i class="pi pi-' + x + '"></i><span class="rl">' + rating(statsOf(p, x).st) + '</span></button>').join("") + '</div>'
+      : '<p class="dim">You have no pet to race yet.</p>') +
+    '<div class="acts">' + (kinds.length ? '<button type="button" class="btn primary small" data-act="take">Race with the ' + esc(petLabel(askPick.pet)) + '</button>' : '') +
+    '<button type="button" class="btn muted small" data-act="pass">Decline</button></div>');
+}
+
+let duelBusy = false;
+async function duelAct(act) {
+  if (duelBusy || !hooks.guard()) return;
+  const p = shopFor();
+  if (!p) return;
+  duelBusy = true;
+  let ok = false, why = "";
+  try {
+    await store.serial(async () => {
+      const q = fresh(p);
+      if (act === "ask") {
+        why = duelAskBlock(q, pick.who, pick.pet);
+        ok = !why && !!(await duelAsk(q, pick.who, pick.pet));
+      } else if (act === "drop") {
+        const mine = asksBy(q)[0];
+        ok = !!mine && !!(await duelDrop(q, mine.id));
+      } else {
+        const first = asksFor(q.name)[0];
+        if (!first) return;
+        ok = !!(await (act === "take" ? duelTake(q, first.from, first.ask, askPick.pet) : duelPass(q, first.ask, first.from)));
+      }
+      if (ok) { nudge(); await hooks.settle(); }
+    });
+  } finally { duelBusy = false; }
+  if (!ok) setMsg(why || "That didn't save.", false);
+  render();
+}
+
+/* Called after every render: starts any 1v1 race this page has not shown, and keeps
+   the challenge prompt right. */
+export function watchDuels() {
+  if (!STAGE) return;
+  const now = Date.now();
+  if (!duel) for (const { take, p } of duelsNow(now)) {
+    if (duelSeen.has(take.id)) continue;
+    duelSeen.add(take.id);
+    startDuel(take, p, now);
+    break;
+  }
+  renderAsk();
+}
+
+function startDuel(take, p, now) {
+  const field = duelField(take, p), lead = C.DUEL.lead * 1000;
+  let start = Number(take.t) + lead;
+  if (start - now > lead + 2000) start = now + lead;                 /* the accepter's clock runs ahead of this one */
+  duel = { take, field, res: runRace(field, Number(take.seed), true), start, done: false, setup: { field }, out: {} };
+  ensureIcons();
+  $("duelTitle").innerHTML = '<i class="dot" style="background:' + field[0].tint + '"></i>' + whoOf(field[0]) + '<span class="vs">vs</span>' +
+                             '<i class="dot" style="background:' + field[1].tint + '"></i>' + whoOf(field[1]);
+  $("duelResult").textContent = "";
+  $("duelStage").hidden = false;
+  $("duelAsk").hidden = true;
+  requestAnimationFrame(duelTick);
+}
+
+function drawDuel() {
+  const t = (Date.now() - duel.start) / 1000, rt = Math.max(0, t) * RATE, at = frameAt(duel.res, rt);
+  drawTrack(duel, at.x, at.f, at.sp, t < 0 ? -1 : rt, performance.now() / 1000, t < 0 ? (t > -3 ? String(Math.ceil(-t)) : "") : t < 0.7 ? "Go" : "", STAGE);
+  return rt;
+}
+
+function duelTick() {
+  if (!duel) return;
+  const rt = drawDuel();
+  if (rt < duel.res.secs) { requestAnimationFrame(duelTick); return; }
+  if (duel.done) return;
+  duel.done = true;
+  const w = duel.field[duel.res.place[0] === 1 ? 0 : 1], id = duel.take.id;
+  $("duelResult").innerHTML = whoOf(w) + " wins.";
+  setMsg(w.who + "'s " + petLabel(w.kind) + " won the race.", true);
+  render();                                                           /* the activity line and the records show now */
+  setTimeout(() => { if (duel && duel.take.id === id) closeDuel(); }, C.DUEL.endSecs * 1000);
+}
+
+function closeDuel() {
+  duel = null;
+  $("duelStage").hidden = true;
+  watchDuels();                                                       /* another race may be waiting, or a challenge */
 }
 
 function tick(now) {

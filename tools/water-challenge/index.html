@@ -267,6 +267,7 @@
           <div id="racePets" class="race-pets"></div>
           <div id="raceBody">
             <div id="raceCard" class="race-card"></div>
+            <div id="duelRow" class="duel-row" hidden></div>
             <div id="raceWrap" class="race-wrap"><canvas id="raceCanvas" aria-label="The race track"></canvas></div>
             <div id="raceResult" class="race-result" role="status" hidden></div>
             <div id="raceField" class="race-field"></div>
@@ -299,6 +300,18 @@
     </section>
   </main>
 </div></div>
+
+<!-- live 1v1 races: the prompt for a challenged player, and the race for everyone -->
+<div id="duelAsk" class="duel-ask" role="dialog" aria-label="A race challenge" hidden></div>
+<div id="duelStage" class="duel-stage" role="dialog" aria-label="A live race" hidden>
+  <div class="duel-card">
+    <button type="button" id="duelClose" class="duel-x" aria-label="Close">&times;</button>
+    <p class="eyebrow">Live race</p>
+    <h2 id="duelTitle"></h2>
+    <div id="duelWrap" class="race-wrap"><canvas id="duelCanvas" aria-label="The race"></canvas></div>
+    <p id="duelResult" class="duel-result" role="status"></p>
+  </div>
+</div>
 
 <footer class="statusbar">
   <span class="rev" id="revLabel"></span>
