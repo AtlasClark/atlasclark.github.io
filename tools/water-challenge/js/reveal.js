@@ -11,6 +11,18 @@ import { petKindFor } from "./store.js";
 import { pendingDrops, balance, chestRaw, shards, shellBalance } from "./shop.js";
 
 export const HOLD_MS = C.LIVE_SHOW_MS + 3000;
+/* Races work the same way: saved when they start, shown when they finish. A race is held
+   until its finish on this page (raceDone), or for RACE_HOLD_MS on a page not showing it. */
+export const RACE_HOLD_MS = 26000;
+export const raceDone = new Set();
+export function racesHeld(p, now = Date.now()) {
+  return (p.spends || []).filter(s => {
+    if (s.kind !== C.RACE_KIND || raceDone.has(s.id)) return false;
+    const age = now - new Date(s.at).getTime();
+    return age > -5000 && age < RACE_HOLD_MS;
+  });
+}
+const heldWon = (p, cur) => racesHeld(p).reduce((a, s) => a + (s.cur === cur ? Number(s.won) || 0 : 0), 0);
 export const landed = new Set();                  /* drop ids whose ball landed on this page */
 let flying = () => [];                            /* set by shopui: events still falling on the board */
 export function setFlying(fn) { flying = fn; }
@@ -54,12 +66,12 @@ export function shownKind(p) {
 }
 
 export function shownBalance(p) {
-  return balance(p) - pending(p).reduce((a, d) => a + (d.chest ? Number(d.chest.won) || 0 : 0), 0);
+  return balance(p) - pending(p).reduce((a, d) => a + (d.chest ? Number(d.chest.won) || 0 : 0), 0) - heldWon(p, "token");
 }
 
 /* Shells as this page may show them: a shell drop's stake is gone at once, its win waits for the ball. */
 export function shownShells(p) {
-  return shellBalance(p) - pending(p).reduce((a, d) => a + (d.shell ? Number(d.shell.won) || 0 : 0), 0);
+  return shellBalance(p) - pending(p).reduce((a, d) => a + (d.shell ? Number(d.shell.won) || 0 : 0), 0) - heldWon(p, "shell");
 }
 
 /* Shards as this page may show them: no repeat still falling or still on its card. */
@@ -73,4 +85,4 @@ export function shownChest() {
   return Math.max(0, t);
 }
 
-export const hiddenIds = p => new Set(pending(p).map(d => d.id));
+export const hiddenIds = p => new Set(pending(p).map(d => d.id).concat(racesHeld(p).map(s => s.id)));

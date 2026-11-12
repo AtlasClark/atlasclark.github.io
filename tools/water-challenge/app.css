@@ -1327,7 +1327,64 @@ li.pour.armed .undo-x { opacity: 1; background: #c4434f; color: #fff; }
 .shop-balance b { font-size: 24px; color: var(--title); }
 .shop-grid { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 22px; margin-top: 22px; }
 @media (max-width: 900px) { .shop-grid { grid-template-columns: 1fr; } }
-.shop-side { display: grid; gap: 22px; align-content: start; }
+.shop-grid > .panel { align-self: start; }
+/* the Casino tab (rev 1.46.0): the races, with Plinko beside them on a wide screen */
+.casino-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(320px, 520px); gap: 22px; margin-top: 22px; align-items: start; }
+@media (max-width: 1180px) { .casino-grid { grid-template-columns: minmax(0, 1fr); } }
+.shop-balance .shellico { display: inline-block; width: 17px; height: 17px; vertical-align: -3px; margin-right: 5px; }
+.race-pets { display: flex; flex-wrap: wrap; gap: 6px; max-height: 148px; overflow: auto; padding: 2px; }
+.race-pet { position: relative; padding: 4px 4px 3px; border: 1px solid var(--chip-line); border-radius: 12px; background: var(--pc-bg); cursor: pointer; }
+.race-pet .pi { width: 40px; height: 40px; margin: 0; }
+.race-pet .rl { position: absolute; top: 2px; right: 4px; font-size: 9px; font-weight: 800; color: var(--muted); }
+.race-pet .pips { display: flex; justify-content: center; gap: 3px; margin-top: 1px; }
+.race-pet .pips i { width: 5px; height: 5px; border-radius: 50%; background: var(--line-2); }
+.race-pet .pips i.on { background: var(--accent); }
+.race-pet:hover { background: var(--pc-hover); }
+.race-pet.on { border-color: var(--accent); box-shadow: inset 0 0 0 2px var(--accent); }
+.race-pet.tired .pi { opacity: .4; filter: grayscale(1); }
+.race-card { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr); gap: 16px; align-items: center; margin: 14px 0 12px; }
+@media (max-width: 620px) { .race-card { grid-template-columns: 1fr; } }
+.rc-head { display: flex; align-items: center; gap: 12px; }
+.rc-head .pi { width: 64px; height: 64px; margin: 0; flex: none; }
+.rc-id { min-width: 0; flex: 1; font-size: 12px; }
+.rc-id > b { font-size: 17px; color: var(--title); }
+.rc-id .rar { font-weight: 800; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
+.rc-lv { float: right; font-weight: 800; color: var(--accent-ink); }
+.xp { height: 6px; margin: 5px 0 4px; border-radius: 3px; background: var(--track); overflow: hidden; }
+.xp i { display: block; height: 100%; background: var(--accent); }
+.rc-stats { display: grid; gap: 4px; }
+.rs { display: grid; grid-template-columns: 58px minmax(0, 1fr) 24px 24px; gap: 8px; align-items: center; font-size: 12px; color: var(--muted); }
+.rs .bar { position: relative; height: 8px; border-radius: 4px; background: var(--track); }
+.rs .bar i { display: block; height: 100%; border-radius: 4px; background: var(--accent); }
+.rs .bar em { position: absolute; top: -2px; width: 2px; height: 12px; margin-left: -1px; background: var(--ink-2); opacity: .55; }
+.rs b { text-align: right; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.rs small, .race-result span.up, .race-result span.dn { font-size: 11px; font-weight: 800; }
+.up { color: var(--good); } .dn { color: var(--bad); }
+.race-wrap { margin: 4px 0 10px; }
+.race-wrap canvas { display: block; margin: 0 auto; border-radius: 14px; background: var(--solid-2); }
+.race-result { margin: 0 0 10px; padding: 8px 12px; border-radius: 12px; background: var(--accent-soft); color: var(--ink-2); font-size: 13px; }
+.race-result p { margin: 2px 0; }
+.race-field { display: grid; gap: 4px; }
+.rf-head, .rf-row { display: grid; grid-template-columns: 34px 34px minmax(0, 1fr) 52px 168px; gap: 8px; align-items: center; }
+.rf-head { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--faint); }
+.rf-head span:nth-child(4), .rf-ovr { text-align: center; }
+.rf-head span:last-child { text-align: right; }
+.rf-row { padding: 3px 6px 3px 4px; border-radius: 12px; background: var(--pc-bg); }
+.rf-row.me { box-shadow: inset 0 0 0 1px var(--accent); }
+.rf-no { display: inline-flex; align-items: center; justify-content: center; min-width: 26px; height: 22px; padding: 0 4px; border-radius: 11px; color: #fff; font-size: 11px; font-weight: 800; }
+.rf-row .pi { width: 32px; height: 32px; margin: 0; }
+.rf-name { font-size: 13px; font-weight: 700; color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rf-ovr { font-size: 13px; font-weight: 800; color: var(--muted); font-variant-numeric: tabular-nums; }
+.rf-bets { display: flex; justify-content: flex-end; gap: 6px; }
+.rf-bet { display: inline-flex; flex-direction: column; align-items: center; min-width: 76px; padding: 2px 8px 3px; border: 1px solid var(--chip-line); border-radius: 10px;
+          background: var(--solid); color: var(--muted); font: inherit; cursor: pointer; line-height: 1.15; }
+.rf-bet span { font-size: 9.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; }
+.rf-bet b { font-size: 14px; color: var(--gold-ink); font-variant-numeric: tabular-nums; }
+.rf-bet:hover:not(:disabled) { border-color: var(--accent); }
+.rf-bet.on { background: var(--accent-soft); border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); color: var(--accent-ink); }
+.rf-bet:disabled { cursor: default; opacity: .55; }
+.rf-bet.on:disabled { opacity: 1; }
+@media (max-width: 560px) { .rf-head, .rf-row { grid-template-columns: 30px 30px minmax(0, 1fr) 132px; } .rf-head span:nth-child(4), .rf-ovr { display: none; } .rf-bet { min-width: 58px; } }
 .plinko-wrap { display: flex; justify-content: center; margin: 8px 0 10px; }
 .plinko-wrap canvas { display: block; border-radius: 14px; background: var(--solid-2); }
 .plinko-odds { margin: 4px 0 0; font-size: 12px; color: var(--faint); }

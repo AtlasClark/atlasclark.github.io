@@ -1,5 +1,6 @@
-/* The Shop tab: who is shopping, their balance, Plinko (with drops from every open
-   shop replayed live), today's reroll, and shards (combine, bring in a pet). */
+/* The Shop tab: who is shopping, their balance, today's reroll, and shards (combine,
+   bring in a pet); and Plinko, whose panel sits on the Casino tab (rev 1.46.0), with
+   drops from every open page replayed live. */
 
 import * as C from "./config.js";
 import { S, findParticipant, tokensEarned, capBonus } from "./model.js";
@@ -59,11 +60,11 @@ export function initShop(h) {
     const b = e.target.closest("[data-fuse]");
     if (b) doFuse(Number(b.dataset.fuse));
   });
-  window.addEventListener("resize", () => { if (board && ui.tab === "shop") board.resize($("plinkoWrap").clientWidth); });
+  window.addEventListener("resize", () => { if (board && ui.tab === "casino") board.resize($("plinkoWrap").clientWidth); });
   /* A drop from another page: joined part-way through if the shop is showing and it
      is still in the air; otherwise straight to the feed. */
   onLive("drop", (ev, late) => {
-    if (board && ui.tab === "shop" && late < C.LIVE_SHOW_MS) board.drop(ev, late);
+    if (board && ui.tab === "casino" && late < C.LIVE_SHOW_MS) board.drop(ev, late);
     else addFeed(ev);
     hooks.pollSoon();
   });
@@ -87,7 +88,7 @@ export function shopFor() {
 export function renderShop() {
   ensureIcons();
   if (!board) board = new PlinkoBoard($("plinkoCanvas"), landed);
-  else if (Math.abs(board.w - Math.min(460, $("plinkoWrap").clientWidth)) > 4) board.resize($("plinkoWrap").clientWidth);
+  else if ($("plinkoWrap").clientWidth && Math.abs(board.w - Math.min(460, $("plinkoWrap").clientWidth)) > 4) board.resize($("plinkoWrap").clientWidth);
   const p = shopFor();
   setHtml("shopWho", S.participants.map(x =>
     '<button type="button" class="who-chip' + (x === p ? " on" : "") + '" style="--pc:' + x.color + '"' +
@@ -290,7 +291,7 @@ async function doFuse(t) {
   renderShop();
 }
 
-/* Keeps the board sized to its column when the tab opens. */
+/* Keeps the board sized to its column when the Casino tab opens. */
 export function shopTabChanged(active) {
   if (active && board) board.resize($("plinkoWrap").clientWidth);
 }

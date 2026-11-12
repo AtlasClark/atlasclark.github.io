@@ -18,6 +18,7 @@ import { bottleOn, bottleCfg, signedIn, loadBottle, setRelay, newRelayKey, pingR
 import { openRadial, wireRadial } from "./radial.js";
 import { makeMsg, msgOf, toggleMsg, openMsgs, cleanText } from "./msg.js";
 import { initShop, renderShop, shopTabChanged } from "./shopui.js";
+import { initCasino, renderCasino, casinoTabChanged } from "./raceui.js";
 import { shellsEarned, earnedTotal } from "./shop.js";
 import { isHydrationDay } from "./hydration.js";
 import { goalWave } from "./hydfx.js";
@@ -737,15 +738,18 @@ function wire() {
   $("gateSignOut").onclick = signOutHere;
   window.addEventListener("hashchange", () => { if (/[#&]code=/.test(location.hash)) location.reload(); });   /* an invite link opened on this page */
   initCloudUi({ askConfirm, refreshNow: () => store.serial(refresh) });
-  const tab = name => { setTab(name); shopTabChanged(name === "shop"); };
+  const tab = name => { setTab(name); shopTabChanged(name === "casino"); casinoTabChanged(name === "casino"); };
   $("tab-today").onclick = () => tab("today");
   $("tab-history").onclick = () => tab("history");
   $("tab-pets").onclick = () => tab("pets");
   $("tab-shop").onclick = () => tab("shop");
+  $("tab-casino").onclick = () => tab("casino");
   $("bankShop").onclick = () => { closeOverlays(); tab("shop"); };
   uiHooks.renderShop = renderShop;
+  uiHooks.renderCasino = renderCasino;
   uiHooks.bottle = bottleView;
   initShop({ settle, guard: shopGuard, askConfirm, pollSoon, whoAmI: () => askIdentity(false) });
+  initCasino({ settle, guard: shopGuard, whoAmI: () => askIdentity(false) });
   $("cog").onclick = () => $("settingsPanel").hidden ? openSettings() : closeSettings();
   $("staleBanner").addEventListener("click", e => { if (e.target.closest("[data-act=hta-ok]")) htaDismiss(); });
   $("spClose").onclick = closeSettings;

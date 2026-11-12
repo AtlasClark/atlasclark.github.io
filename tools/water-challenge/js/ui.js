@@ -29,7 +29,7 @@ import { msgOf, isNew, openMsgs, whenText } from "./msg.js";
 import { $, esc, fmt, fmtOz, fmtGal, todayKey, dateKey, prettyTime, clockStamp, has, parseKey, shiftKey, aAn } from "./util.js";
 
 /* Set by app.js: the Shop tab renders from shopui.js, which imports this module. */
-export const uiHooks = { renderShop: null, bottle: null };
+export const uiHooks = { renderShop: null, renderCasino: null, bottle: null };
 
 export const ui = { tab: "today", amount: C.DEFAULT_AMOUNT, connected: false, lastSync: "", petPen: {}, shopPen: 0,
                     armed: "",     /* eid of the pour whose undo is waiting for a second click */
@@ -333,13 +333,18 @@ function renderActivity() {
     if (p.graveDay === key && Number(p.deadKind) >= 0) pets.push({ kind: "grave", p, pet: Number(p.deadKind), ts: t.grave });
     /* buys and rerolls one row each; Plinko folded to one row per person (a ball
        still falling stays out until it lands) */
-    const hid = hiddenIds(p), drops = [], sdrops = [];
+    const hid = hiddenIds(p), drops = [], sdrops = [], races = [];
     for (const s of spendsOn(p, key)) {
       if (hid.has(s.id)) continue;
       if (held && s.kind === "reroll" && Number(s.pet) === Number(p.rollKind)) continue;   /* its card is still turning */
       if (s.kind === "plinko") drops.push(s);
       else if (s.kind === C.SPLINKO_KIND) sdrops.push(s);
+      else if (s.kind === C.RACE_KIND) races.push(s);
       else pets.push({ kind: "spend", p, s, ts: s.at });
+    }
+    if (races.length) {                                              /* races: one row per person as well */
+      races.sort((a, b) => atOf(a.at) - atOf(b.at));
+      pets.push({ kind: "races", p, races, ts: races[races.length - 1].at, from: races[0].at });
     }
     if (sdrops.length) {                                             /* shell drops: one row per person too */
       sdrops.sort((a, b) => atOf(a.at) - atOf(b.at));
@@ -366,6 +371,7 @@ function renderActivity() {
                                     esc(prettyTime(a.ts)) + '">' + plinkoLine(a.p, a.drops, key, when) + '</li>';
     if (a.kind === "splinko") return '<li class="ev-shop" title="' + a.drops.length + ' drop' + (a.drops.length === 1 ? '' : 's') + ', ' +
                                      esc(prettyTime(a.from)) + ' to ' + esc(prettyTime(a.ts)) + '">' + splinkoLine(a.p, a.drops, when) + '</li>';
+    if (a.kind === "races") return '<li class="ev-shop">' + raceLine(a.p, a.races, when) + '</li>';
     if (a.kind === "roll") {
       return '<li class="ev-pet">' + '<span class="tag">' + (a.fresh ? "new pet" : "pet") + '</span>' + when +
              '<strong>' + esc(a.p.name) + '</strong> ' + rollVerb(a.fresh) + esc(petLabel(a.pet)) +
@@ -837,6 +843,23 @@ function splinkoLine(p, drops, when) {
          (drops.length > 1 ? ' in ' + drops.length + ' drops' : '') + ' and got ' + won + ' back' +
          (best > 1 ? ' <span class="rar mult">best &times;' + best + '</span>' : '');
 }
+/* A person's races as one line: one race says how it went, more are summed. */
+const PLACES = ["1st", "2nd", "3rd", "4th", "5th", "6th"];
+const coins = (n, cur) => n + ' ' + (cur === "token" ? 'token' : 'shell') + (n === 1 ? '' : 's');
+function raceLine(p, races, when) {
+  const head = '<span class="tag">races</span>' + when + '<strong>' + esc(p.name) + '</strong>';
+  if (races.length === 1) {
+    const s = races[0], won = Number(s.won) || 0;
+    return head + '&rsquo;s ' + esc(petLabel(Number(s.pet))) + ' finished ' + (PLACES[Number(s.place) - 1] || '?') +
+           (won ? ' <span class="pill good">+' + coins(won, s.cur) + '</span>' : ' <span class="dim">&middot; lost ' + coins(Number(s.bet) || 0, s.cur) + '</span>');
+  }
+  const wins = races.filter(s => Number(s.place) === 1).length, bits = [];
+  for (const cur of ["shell", "token"]) {
+    const mine = races.filter(s => s.cur === cur);
+    if (mine.length) bits.push(coins(mine.reduce((a, s) => a + (Number(s.bet) || 0), 0), cur) + ' in, ' + mine.reduce((a, s) => a + (Number(s.won) || 0), 0) + ' back');
+  }
+  return head + ' ran ' + races.length + ' races' + (wins ? ', won ' + wins : '') + ' <span class="dim">&middot; ' + bits.join(' &middot; ') + '</span>';
+}
 const tierLabel = t => (C.PET_BINS[Number(t)] || { name: "?" }).name;
 /* What a "shard" spend paid: "a Rare shard", "2 Rare shards". */
 const shardWords = s => { const n = Number(s.cost) || 1; return n === 1 ? aAn(tierLabel(s.tier)) + " shard" : n + " " + tierLabel(s.tier) + " shards"; };
@@ -856,6 +879,7 @@ function spendLine(p, s, when) {
   if (s.kind === "reroll") return '<span class="tag">reroll</span>' + when + name + 'rerolled the ' + esc(petLabel(Number(s.from))) +
                                   ' into ' + (k >= 0 ? (s.fresh ? "the " : "another ") + esc(petLabel(k)) : "nothing");
   if (s.kind === C.SPLINKO_KIND) return splinkoLine(p, [s], when);
+  if (s.kind === C.RACE_KIND) return raceLine(p, [s], when);
   if (s.kind === "cosmetic") return '<span class="tag">style</span>' + when + name + 'bought ' + esc((COSMETICS[s.item] || { name: "a look" }).name) +
                                     ' <span class="rar">' + s.cost + ' shells</span>';
   if (s.kind === "paint") return '<span class="tag">style</span>' + when + name + 'recoloured the ' + esc(petLabel(k)) +
@@ -941,7 +965,7 @@ function recapHtml() {
                                           (s.revived ? ' (back from the grave)' : '')));
     if (d.fresh.length) ev.push(line(icon(d.fresh[0]), 'won ' + names(d.fresh) + ' on Plinko'));
     if (d.revived.length) ev.push(line(icon(d.revived[0]), 'won ' + names(d.revived) + ' back from the grave on Plinko'));
-    if (d.drops || d.sDrops || d.buys.length || d.picks.length || d.fuses.length || d.rerolls.length) shop.push({ p, d });
+    if (d.drops || d.sDrops || d.races.length || d.buys.length || d.picks.length || d.fuses.length || d.rerolls.length) shop.push({ p, d });
   }
   h.push('<div><h4>Pets</h4>' + (ev.length ? '<ul class="rc-pets">' + ev.join("") + '</ul>' : '<p class="dim">No pet news.</p>') + '</div>');
 
@@ -983,10 +1007,10 @@ export function weekStats(today = todayKey()) {
       for (const s of [...sd.buys, ...sd.picks]) (s.revived ? r.revived : r.found).push(Number(s.pet));
       r.revived.push(...sd.revived);
       if (grave !== null) r.drowned.push(grave);
-      if (sd.drops || sd.sDrops || sd.buys.length || sd.picks.length || sd.fuses.length || sd.rerolls.length) {
-        if (!r.shop) r.shop = { drops: 0, spent: 0, fresh: [], revived: [], repeats: 0, empty: 0, chestIn: 0, chestWon: 0, buys: [], picks: [], fuses: [], rerolls: [], sDrops: 0, sBet: 0, sWon: 0 };
+      if (sd.drops || sd.sDrops || sd.races.length || sd.buys.length || sd.picks.length || sd.fuses.length || sd.rerolls.length) {
+        if (!r.shop) r.shop = { drops: 0, spent: 0, fresh: [], revived: [], repeats: 0, empty: 0, chestIn: 0, chestWon: 0, buys: [], picks: [], fuses: [], rerolls: [], sDrops: 0, sBet: 0, sWon: 0, races: [] };
         for (const f of ["drops", "spent", "repeats", "empty", "chestIn", "chestWon", "sDrops", "sBet", "sWon"]) r.shop[f] += sd[f];
-        for (const f of ["fresh", "revived", "buys", "picks", "fuses", "rerolls"]) r.shop[f].push(...sd[f]);
+        for (const f of ["fresh", "revived", "buys", "picks", "fuses", "rerolls", "races"]) r.shop[f].push(...sd[f]);
       }
     }
     for (const d of prevDays) {
@@ -1095,6 +1119,7 @@ function recapShop(shop) {
     if (d.chestIn) bits.push(d.chestIn + ' into the chest');
     if (d.empty) bits.push(d.empty + ' returned');
     if (d.sDrops) bits.push(d.sDrops + ' shell drop' + (d.sDrops === 1 ? '' : 's') + ' (' + d.sBet + ' in, ' + d.sWon + ' back)');
+    if (d.races && d.races.length) { const w = d.races.filter(x => Number(x.place) === 1).length; bits.push(d.races.length + ' race' + (d.races.length === 1 ? '' : 's') + (w ? ' (' + w + ' won)' : '')); }
     if (d.buys.length) bits.push(d.buys.length + ' bought');
     if (d.picks && d.picks.length) bits.push(d.picks.length + ' from shards');
     if (d.fuses && d.fuses.length) bits.push(d.fuses.length + ' combine' + (d.fuses.length === 1 ? '' : 's'));
@@ -1128,6 +1153,7 @@ export function render() {
     renderGlasses(); renderLeaderboard(); renderActivity();
   } else if (ui.tab === "pets") renderPets();
   else if (ui.tab === "shop") { if (uiHooks.renderShop) uiHooks.renderShop(); }
+  else if (ui.tab === "casino") { if (uiHooks.renderShop) uiHooks.renderShop(); if (uiHooks.renderCasino) uiHooks.renderCasino(); }
   else renderHistory();
   renderTeamBar();
   renderStaleWarning();
@@ -1137,7 +1163,7 @@ export function render() {
 
 export function setTab(name) {
   ui.tab = name;
-  for (const t of ["today", "history", "pets", "shop"]) {
+  for (const t of ["today", "history", "pets", "shop", "casino"]) {
     $("view-" + t).hidden = t !== name;
     $("tab-" + t).setAttribute("aria-selected", String(t === name));
   }

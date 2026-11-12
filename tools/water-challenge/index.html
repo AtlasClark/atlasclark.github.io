@@ -169,6 +169,7 @@
     <button type="button" id="tab-history" class="tab" role="tab" aria-selected="false">History</button>
     <button type="button" id="tab-pets" class="tab" role="tab" aria-selected="false">Pets</button>
     <button type="button" id="tab-shop" class="tab" role="tab" aria-selected="false">Shop</button>
+    <button type="button" id="tab-casino" class="tab" role="tab" aria-selected="false">Casino</button>
   </nav>
 
   <main>
@@ -227,23 +228,6 @@
           <p id="shopBalance" class="shop-balance"></p>
         </div>
         <div id="shopGrid" class="shop-grid">
-          <div class="panel shop-plinko">
-            <div class="panel-heading"><p class="eyebrow" id="plinkoEyebrow">1 token per drop</p><h2>Plinko</h2></div>
-            <p class="hint">Each peg is a 50/50 bounce. The slot sets the rarity, and you win any pet of that rarity; one you have alive gives a shard.
-              The centre cup is the Community Chest: your token goes in, with a 5% chance to win everything in it.
-              Drop shells instead and the cup multiplies them.</p>
-            <p id="plinkoOdds" class="plinko-odds"></p>
-            <p id="chestPot" class="chest-pot"></p>
-            <div id="plinkoWrap" class="plinko-wrap"><canvas id="plinkoCanvas"></canvas></div>
-            <div class="plinko-mode" id="plinkoMode">
-              <span class="seg-group" role="group" aria-label="What to drop"><button type="button" class="seg" data-mode="token"><span class="coin sm"></span>Tokens</button><button type="button" class="seg" data-mode="shell"><span class="shellico sm"></span>Shells</button></span>
-              <span class="seg-group" id="plinkoBets" role="group" aria-label="Shells per drop" hidden></span>
-            </div>
-            <div class="plinko-go"><button type="button" id="plinkoDrop" class="btn primary">Drop a token</button>
-              <span id="plinkoNote" class="hint"></span></div>
-            <ul id="plinkoFeed" class="plinko-feed"></ul>
-          </div>
-          <div class="shop-side">
             <div class="panel shop-reroll">
               <div class="panel-heading"><p class="eyebrow">1 token &middot; once a day</p><h2>Reroll today's pet</h2></div>
               <div id="rerollBox"></div>
@@ -254,7 +238,6 @@
               <div id="buyPens" class="pen-tabs" hidden></div>
               <div id="buyGrid" class="buy-grid"></div>
             </div>
-          </div>
         </div>
         <div id="styleShop" class="panel shop-style" hidden>
           <div class="panel-heading"><h2>Style shop</h2></div>
@@ -269,6 +252,48 @@
               <div id="styleAct" class="style-act"></div>
             </div>
           </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="view-casino" hidden>
+      <div class="panel shop-top">
+        <div class="panel-heading"><p class="eyebrow">Tokens and shells. Mind your pets.</p><h2>Casino</h2></div>
+        <p id="casinoBalance" class="shop-balance"></p>
+      </div>
+      <div id="casinoGrid" class="casino-grid">
+        <div class="panel casino-race">
+          <div class="panel-heading"><p class="eyebrow">Six pets. One finish line.</p><h2>Pet races</h2></div>
+          <div id="racePets" class="race-pets"></div>
+          <div id="raceBody">
+            <div id="raceCard" class="race-card"></div>
+            <div id="raceWrap" class="race-wrap"><canvas id="raceCanvas" aria-label="The race track"></canvas></div>
+            <div id="raceResult" class="race-result" role="status" hidden></div>
+            <div id="raceField" class="race-field"></div>
+            <div class="plinko-mode" id="raceBet">
+              <span class="seg-group" role="group" aria-label="What to stake"><button type="button" class="seg" data-cur="shell"><span class="shellico sm"></span>Shells</button><button type="button" class="seg" data-cur="token"><span class="coin sm"></span>Tokens</button></span>
+              <span class="seg-group" id="raceStakes" role="group" aria-label="Shells staked"></span>
+            </div>
+            <div class="plinko-go"><button type="button" id="raceGo" class="btn primary">Race</button>
+              <span id="raceNote" class="hint"></span></div>
+            <ul id="raceFeed" class="plinko-feed"></ul>
+          </div>
+        </div>
+        <div class="panel shop-plinko">
+          <div class="panel-heading"><p class="eyebrow" id="plinkoEyebrow">1 token per drop</p><h2>Plinko</h2></div>
+          <p class="hint">Each peg is a 50/50 bounce. The slot sets the rarity, and you win any pet of that rarity; one you have alive gives a shard.
+            The centre cup is the Community Chest: your token goes in, with a 5% chance to win everything in it.
+            Drop shells instead and the cup multiplies them.</p>
+          <p id="plinkoOdds" class="plinko-odds"></p>
+          <p id="chestPot" class="chest-pot"></p>
+          <div id="plinkoWrap" class="plinko-wrap"><canvas id="plinkoCanvas"></canvas></div>
+          <div class="plinko-mode" id="plinkoMode">
+            <span class="seg-group" role="group" aria-label="What to drop"><button type="button" class="seg" data-mode="token"><span class="coin sm"></span>Tokens</button><button type="button" class="seg" data-mode="shell"><span class="shellico sm"></span>Shells</button></span>
+            <span class="seg-group" id="plinkoBets" role="group" aria-label="Shells per drop" hidden></span>
+          </div>
+          <div class="plinko-go"><button type="button" id="plinkoDrop" class="btn primary">Drop a token</button>
+            <span id="plinkoNote" class="hint"></span></div>
+          <ul id="plinkoFeed" class="plinko-feed"></ul>
         </div>
       </div>
     </section>

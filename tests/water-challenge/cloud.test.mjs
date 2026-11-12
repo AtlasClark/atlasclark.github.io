@@ -30,7 +30,7 @@ const ctx = {
   setWebSocketAutoResponse() { }
 };
 const OWNER = "OWNR-TEST-CODE-0001", URL0 = "https://water-cloud.test.workers.dev", ORIGIN = "http://localhost:5517";
-const env = { OWNER_CODE: OWNER, TIME_ZONE: "America/New_York", BACKUP_HOUR: "18", BACKUP_KEEP_DAYS: "14" };
+const env = { OWNER_CODE: OWNER, TIME_ZONE: "America/New_York", BACKUP_HOUR: "18", BACKUP_KEEP_DAYS: "36500" };   /* the Worker prunes by the real clock; the backup days below are fixed dates */
 const obj = new W.Challenge(ctx, env);
 env.CHALLENGE = { idFromName: () => "main", get: () => obj };
 

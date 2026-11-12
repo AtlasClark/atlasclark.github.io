@@ -8,7 +8,8 @@ import * as C from "./config.js";
 import { S, tokensEarned, capBonus, dayWinners } from "./model.js";
 import { saveParticipant, petKindFor, setSpendCheck } from "./store.js";
 import { has, todayKey, localStamp, shiftKey, parseKey, aAn } from "./util.js";
-import { applyRoll, dayRng, grantReward, isGrave, petBinIndex, penOf, binsFor, rollPen, pen2Open, pen3Open, pen3Earned, PEN3_CLOSED } from "./pets.js";
+import { applyRoll, dayRng, grantReward, isGrave, petBinIndex, penOf, binsFor, rollPen, pen2Open, pen3Open, pen3Earned, PEN3_CLOSED, hueOf } from "./pets.js";
+import { statsOf, racesOn, makeField, raceOdds, runRace, racePay, betHit, raceGrowth, raceXp, levelOf, rng } from "./race.js";
 import { COSMETICS, SLOTS, PAINT_COST } from "./cosmetics.js";
 import { hydrationEarned } from "./hydration.js";
 import { monsterEarned } from "./monster.js";
@@ -17,9 +18,13 @@ const isShell = s => C.SHELL_KINDS.includes(s.kind);
 const isShard = s => C.SHARD_KINDS.includes(s.kind);
 const isSplinko = s => s.kind === C.SPLINKO_KIND;
 const notTokens = s => isShell(s) || isShard(s) || isSplinko(s);
+const isRace = s => s.kind === C.RACE_KIND;
+const raceWon = (p, cur) => (p.spends || []).reduce((a, s) => a + (isRace(s) && s.cur === cur ? Number(s.won) || 0 : 0), 0);
 export const spentTotal = p => (p.spends || []).reduce((a, s) => a + (notTokens(s) ? 0 : Number(s.cost) || 0), 0);
 export const chestWinnings = p => (p.spends || []).reduce((a, s) => a + (s.chest ? Number(s.chest.won) || 0 : 0), 0);
-export const earnedTotal = p => tokensEarned(p) + capBonus(p) + chestWinnings(p) + hydrationEarned(p).tokens + monsterEarned(p).tokens;
+/* Tokens won on race bets (a token stake is the spend's cost, so spentTotal has it). */
+export const raceTokensWon = p => raceWon(p, "token");
+export const earnedTotal = p => tokensEarned(p) + capBonus(p) + chestWinnings(p) + hydrationEarned(p).tokens + monsterEarned(p).tokens + raceTokensWon(p);
 
 /* The Community Chest holds every token put in by a centre landing, less every win.
    It lives in the spend records, so it merges like everything else. Two wins at the
@@ -63,7 +68,7 @@ setSpendCheck((m, disk) => {
     if ((s.kind === "fuse" || s.kind === "shard") && n[Number(s.tier)] < 0) return "not enough " + (C.PET_BINS[Number(s.tier)] || {}).name + " shards";
   }
   if (added.some(s => !notTokens(s) && Number(s.cost) > 0) && balance(m) < 0) return "not enough tokens";
-  if (added.some(s => (isShell(s) && Number(s.cost) > 0) || (isSplinko(s) && Number(s.bet) > 0)) && shellBalance(m) < 0) return "not enough shells";
+  if (added.some(s => (isShell(s) && Number(s.cost) > 0) || ((isSplinko(s) || (isRace(s) && s.cur === "shell")) && Number(s.bet) > 0)) && shellBalance(m) < 0) return "not enough shells";
   return "";
 });
 
@@ -181,6 +186,54 @@ export async function splinkoPlay(p, bet, rnd = Math.random) {
   return { id: s.id, at: Date.now(), name: p.name, color: p.color, kind: C.PET_NO_PET, bin, slot, path, shell: { bet, won } };
 }
 
+/* ---- pet races (rules in race.js) -------------------------------------------------- */
+/* The race p's pet k would run now: the field (five others, drawn for this pet, day and
+   race number, so a reload shows the same one), every lane's odds, and the pet's stats. */
+const setups = new Map();
+export function raceSetup(p, k, day = todayKey()) {
+  const me = statsOf(p, k), n = racesOn(p, k, day), hue = hueOf(p, k);
+  const key = [p.name, k, day, n, hue, me.st.join(".")].join("|");
+  let s = setups.get(key);
+  if (!s) {
+    const field = makeField({ kind: k, hue, st: me.st }, "race|" + p.name + "|" + k + "|" + day + "|" + n);
+    s = { key, field, odds: raceOdds(field, "odds|" + key), me, n, mine: field.findIndex(f => f.me) };
+    if (setups.size > 60) setups.clear();
+    setups.set(key, s);
+  }
+  return s;
+}
+/* What bet = { cur: "shell" | "token", stake, on: lane, type: "win" | "top3" } pays if it comes in. */
+export const racePayFor = (s, bet) => racePay(bet.cur, bet.type, ((bet.type === "top3" ? s.odds.top3 : s.odds.win) || [])[bet.on], bet.stake);
+export const racesLeft = (p, k, day = todayKey()) => Math.max(0, C.RACE.perPet - racesOn(p, k, day));
+/* "" when p's pet k may run with this bet, otherwise why not. Every race needs a stake. */
+export function raceBlock(p, k, bet) {
+  if (!has(p.pets, k)) return "Only a pet you have alive.";
+  if (!racesLeft(p, k)) return "Tired. Back tomorrow.";
+  if (!bet) return "";
+  const token = bet.cur === "token";
+  if (token ? bet.stake !== C.RACE.tokenBet : !C.RACE.shellBets.includes(bet.stake)) return "Pick a stake.";
+  const s = raceSetup(p, k);
+  if (!(bet.on >= 0 && bet.on < s.field.length) || !["win", "top3"].includes(bet.type)) return "Pick a racer.";
+  if (!racePayFor(s, bet)) return "No payout on that one.";
+  if (token) { if (balance(p) < bet.stake) return "Needs " + bet.stake + " token."; }
+  else if (shellBalance(p) < bet.stake) return "Needs " + bet.stake + " shells.";
+  return "";
+}
+/* Takes the stake, runs the race and saves what it gave (winnings, experience, stat
+   changes) at once; the track only shows it. Returns what the track needs, or null. */
+export async function racePlay(p, k, bet, seed = Math.floor(Math.random() * 4294967296)) {
+  if (!bet || raceBlock(p, k, bet)) return null;
+  const before = copy(p), s = raceSetup(p, k), res = runRace(s.field, seed);
+  const place = res.place[s.mine], pay = racePayFor(s, bet), won = betHit(bet.type, res.place[bet.on]) ? pay : 0;
+  const xp = raceXp(place), level = levelOf(s.me.xp + xp), levelUp = level > s.me.level;
+  const d = raceGrowth(s.me.st, s.me.base, res.info[s.mine], place, levelUp, rng((seed ^ 0x5bd1e995) >>> 0));
+  const sp = spend(p, C.RACE_KIND, bet.cur === "token" ? bet.stake : 0,
+                   { pet: k, cur: bet.cur, bet: bet.stake, on: s.field[bet.on].kind, type: bet.type, won, place, xp, d });
+  if (!(await saveOrUndo(p, before, null))) return null;
+  return { id: sp.id, at: Date.now(), name: p.name, color: p.color, kind: k, seed, field: s.field, mine: s.mine, bet: Object.assign({}, bet),
+           pay, won, place, places: res.place, xp, d, level, levelUp, secs: res.secs };
+}
+
 /* The centre cup: the token goes into the chest; if the chest held anything, a
    CHEST_CHANCE roll wins all of it, this token included. */
 async function chestPlay(p, d, rnd = Math.random, prior = copy(p)) {
@@ -285,7 +338,7 @@ export function pendingDrops(p, inFlight, landed, now, holdMs) {
    pets back from the grave, repeats, chest), pets bought (old) or brought in with
    shards, shards combined, the rerolls. */
 export function shopDay(p, key) {
-  const d = { drops: 0, spent: 0, fresh: [], revived: [], repeats: 0, empty: 0, chestIn: 0, chestWon: 0, buys: [], picks: [], fuses: [], rerolls: [], style: [], sDrops: 0, sBet: 0, sWon: 0 };
+  const d = { drops: 0, spent: 0, fresh: [], revived: [], repeats: 0, empty: 0, chestIn: 0, chestWon: 0, buys: [], picks: [], fuses: [], rerolls: [], style: [], sDrops: 0, sBet: 0, sWon: 0, races: [] };
   for (const s of spendsOn(p, key)) {
     if (!notTokens(s)) d.spent += Number(s.cost) || 0;
     if (s.kind === "plinko") {
@@ -296,6 +349,7 @@ export function shopDay(p, key) {
       else if (s.fresh) d.fresh.push(Number(s.pet));
       else d.repeats++;
     } else if (isSplinko(s)) { d.sDrops++; d.sBet += Number(s.bet) || 0; d.sWon += Number(s.won) || 0; }
+    else if (isRace(s)) d.races.push(s);
     else if (s.kind === "buy") d.buys.push(s);
     else if (s.kind === "shard") d.picks.push(s);
     else if (s.kind === "fuse") d.fuses.push(s);
@@ -381,7 +435,7 @@ function runs(p) {
   return out;
 }
 export const shellAward = run => Math.min(C.SHELL_MAX, Math.max(1, run));
-export function shellsEarned(p) { return Object.values(runs(p)).reduce((a, r) => a + shellAward(r), 0) + hydrationEarned(p).shells + monsterEarned(p).shells + winShells(p) + splinkoWon(p); }
+export function shellsEarned(p) { return Object.values(runs(p)).reduce((a, r) => a + shellAward(r), 0) + hydrationEarned(p).shells + monsterEarned(p).shells + winShells(p) + splinkoWon(p) + raceWon(p, "shell"); }
 /* Shells won back on shell Plinko (the stakes are in shellsSpent). */
 export const splinkoWon = p => (p.spends || []).reduce((a, s) => a + (isSplinko(s) ? Number(s.won) || 0 : 0), 0);
 /* Day wins pay WIN_SHELLS, split between that day's winners (model.dayWinners). */
@@ -392,7 +446,7 @@ export function winShells(p) {
   for (const d of days) { const w = dayWinners(d); if (w.includes(p.name)) n += winShare(w.length); }
   return n;
 }
-export const shellsSpent = p => (p.spends || []).reduce((a, s) => a + (isShell(s) ? Number(s.cost) || 0 : isSplinko(s) ? Number(s.bet) || 0 : 0), 0);
+export const shellsSpent = p => (p.spends || []).reduce((a, s) => a + (isShell(s) ? Number(s.cost) || 0 : isSplinko(s) || (isRace(s) && s.cur === "shell") ? Number(s.bet) || 0 : 0), 0);
 export const shellBalance = p => shellsEarned(p) - shellsSpent(p);
 /* The run of pour days in a row up to today (or the last pour day before it, across
    any weekend days without a pour, before today's first pour). */
