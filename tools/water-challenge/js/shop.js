@@ -191,11 +191,11 @@ export async function splinkoPlay(p, bet, rnd = Math.random) {
    race number, so a reload shows the same one), every lane's odds, and the pet's stats. */
 const setups = new Map();
 export function raceSetup(p, k, day = todayKey()) {
-  const me = statsOf(p, k), n = racesOn(p, k, day), hue = hueOf(p, k);
-  const key = [p.name, k, day, n, hue, me.st.join(".")].join("|");
+  const house = k === C.RACE_HOUSE, me = house ? null : statsOf(p, k), n = racesOn(p, k, day), hue = house ? 0 : hueOf(p, k);
+  const key = [p.name, k, day, n, hue, house ? "" : me.st.join(".")].join("|");
   let s = setups.get(key);
   if (!s) {
-    const field = makeField({ kind: k, hue, st: me.st }, "race|" + p.name + "|" + k + "|" + day + "|" + n);
+    const field = makeField(house ? null : { kind: k, hue, st: me.st }, "race|" + p.name + "|" + k + "|" + day + "|" + n);
     s = { key, field, odds: raceOdds(field, "odds|" + key), me, n, mine: field.findIndex(f => f.me) };
     if (setups.size > 60) setups.clear();
     setups.set(key, s);
@@ -204,11 +204,14 @@ export function raceSetup(p, k, day = todayKey()) {
 }
 /* What bet = { cur: "shell" | "token", stake, on: lane, type: "win" | "top3" } pays if it comes in. */
 export const racePayFor = (s, bet) => racePay(bet.cur, bet.type, ((bet.type === "top3" ? s.odds.top3 : s.odds.win) || [])[bet.on], bet.stake);
-export const racesLeft = (p, k, day = todayKey()) => Math.max(0, C.RACE.perPet - racesOn(p, k, day));
-/* "" when p's pet k may run with this bet, otherwise why not. Every race needs a stake. */
+export const racesLeft = (p, k, day = todayKey()) => k === C.RACE_HOUSE ? Infinity : Math.max(0, C.RACE.perPet - racesOn(p, k, day));
+/* "" when p's pet k may run with this bet, otherwise why not. Every race needs a stake.
+   k = RACE_HOUSE is a house race: six strangers, no pet of p's, no daily limit, no experience. */
 export function raceBlock(p, k, bet) {
-  if (!has(p.pets, k)) return "Only a pet you have alive.";
-  if (!racesLeft(p, k)) return "Tired. Back tomorrow.";
+  if (k !== C.RACE_HOUSE) {
+    if (!has(p.pets, k)) return "Only a pet you have alive.";
+    if (!racesLeft(p, k)) return "Tired. Back tomorrow.";
+  }
   if (!bet) return "";
   const token = bet.cur === "token";
   if (token ? bet.stake !== C.RACE.tokenBet : !C.RACE.shellBets.includes(bet.stake)) return "Pick a stake.";
@@ -224,11 +227,12 @@ export function raceBlock(p, k, bet) {
 export async function racePlay(p, k, bet, seed = Math.floor(Math.random() * 4294967296)) {
   if (!bet || raceBlock(p, k, bet)) return null;
   const before = copy(p), s = raceSetup(p, k), res = runRace(s.field, seed);
-  const place = res.place[s.mine], pay = racePayFor(s, bet), won = betHit(bet.type, res.place[bet.on]) ? pay : 0;
-  const xp = raceXp(place), level = levelOf(s.me.xp + xp), levelUp = level > s.me.level;
-  const d = raceGrowth(s.me.st, s.me.base, res.info[s.mine], place, levelUp, rng((seed ^ 0x5bd1e995) >>> 0));
-  const sp = spend(p, C.RACE_KIND, bet.cur === "token" ? bet.stake : 0,
-                   { pet: k, cur: bet.cur, bet: bet.stake, on: s.field[bet.on].kind, type: bet.type, won, place, xp, d });
+  const house = !s.me, place = house ? 0 : res.place[s.mine], pay = racePayFor(s, bet), won = betHit(bet.type, res.place[bet.on]) ? pay : 0;
+  const xp = house ? 0 : raceXp(place), level = house ? 0 : levelOf(s.me.xp + xp), levelUp = !house && level > s.me.level;
+  const d = house ? null : raceGrowth(s.me.st, s.me.base, res.info[s.mine], place, levelUp, rng((seed ^ 0x5bd1e995) >>> 0));
+  const sp = spend(p, C.RACE_KIND, bet.cur === "token" ? bet.stake : 0, house
+    ? { pet: k, cur: bet.cur, bet: bet.stake, on: s.field[bet.on].kind, type: bet.type, won, place: res.place[bet.on], house: true }
+    : { pet: k, cur: bet.cur, bet: bet.stake, on: s.field[bet.on].kind, type: bet.type, won, place, xp, d });
   if (!(await saveOrUndo(p, before, null))) return null;
   return { id: sp.id, at: Date.now(), name: p.name, color: p.color, kind: k, seed, field: s.field, mine: s.mine, bet: Object.assign({}, bet),
            pay, won, place, places: res.place, xp, d, level, levelUp, secs: res.secs };

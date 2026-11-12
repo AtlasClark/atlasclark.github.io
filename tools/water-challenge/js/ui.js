@@ -850,10 +850,11 @@ function raceLine(p, races, when) {
   const head = '<span class="tag">races</span>' + when + '<strong>' + esc(p.name) + '</strong>';
   if (races.length === 1) {
     const s = races[0], won = Number(s.won) || 0;
-    return head + '&rsquo;s ' + esc(petLabel(Number(s.pet))) + ' finished ' + (PLACES[Number(s.place) - 1] || '?') +
+    return head + (s.house ? ' backed the ' + esc(petLabel(Number(s.on))) + ', which' : '&rsquo;s ' + esc(petLabel(Number(s.pet)))) +
+           ' finished ' + (PLACES[Number(s.place) - 1] || '?') +
            (won ? ' <span class="pill good">+' + coins(won, s.cur) + '</span>' : ' <span class="dim">&middot; lost ' + coins(Number(s.bet) || 0, s.cur) + '</span>');
   }
-  const wins = races.filter(s => Number(s.place) === 1).length, bits = [];
+  const wins = races.filter(s => !s.house && Number(s.place) === 1).length, bits = [];
   for (const cur of ["shell", "token"]) {
     const mine = races.filter(s => s.cur === cur);
     if (mine.length) bits.push(coins(mine.reduce((a, s) => a + (Number(s.bet) || 0), 0), cur) + ' in, ' + mine.reduce((a, s) => a + (Number(s.won) || 0), 0) + ' back');
@@ -1119,7 +1120,7 @@ function recapShop(shop) {
     if (d.chestIn) bits.push(d.chestIn + ' into the chest');
     if (d.empty) bits.push(d.empty + ' returned');
     if (d.sDrops) bits.push(d.sDrops + ' shell drop' + (d.sDrops === 1 ? '' : 's') + ' (' + d.sBet + ' in, ' + d.sWon + ' back)');
-    if (d.races && d.races.length) { const w = d.races.filter(x => Number(x.place) === 1).length; bits.push(d.races.length + ' race' + (d.races.length === 1 ? '' : 's') + (w ? ' (' + w + ' won)' : '')); }
+    if (d.races && d.races.length) { const w = d.races.filter(x => !x.house && Number(x.place) === 1).length; bits.push(d.races.length + ' race' + (d.races.length === 1 ? '' : 's') + (w ? ' (' + w + ' won)' : '')); }
     if (d.buys.length) bits.push(d.buys.length + ' bought');
     if (d.picks && d.picks.length) bits.push(d.picks.length + ' from shards');
     if (d.fuses && d.fuses.length) bits.push(d.fuses.length + ' combine' + (d.fuses.length === 1 ? '' : 's'));

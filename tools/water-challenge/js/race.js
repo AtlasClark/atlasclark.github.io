@@ -86,18 +86,19 @@ export const racesOn = (p, k, day) => ((p && p.spends) || []).filter(s => isRace
 
 /* ---- the field ------------------------------------------------------------------ */
 /* Five other pets for me = { kind, hue, st } to race, drawn from seed (so a reload shows
-   the same field). Each keeps its species' shape of stats, scaled to a total near mine. */
+   the same field). Each keeps its species' shape of stats, scaled to a total near mine.
+   With no me (a house race) it is six strangers round a total drawn from R.house. */
 export function makeField(me, seed) {
-  const r = rng(seed), mine = sum(me.st), pool = [];
-  for (let k = 0; k < C.PET_MAX; k++) if (k !== me.kind) pool.push(k);
+  const r = rng(seed), mine = me ? sum(me.st) : R.house[0] + r() * (R.house[1] - R.house[0]), pool = [];
+  for (let k = 0; k < C.PET_MAX; k++) if (!me || k !== me.kind) pool.push(k);
   const out = [];
-  for (let i = 0; i < R.lanes - 1; i++) {
+  for (let i = 0; i < R.lanes - (me ? 1 : 0); i++) {
     const k = pool.splice(Math.floor(r() * pool.length), 1)[0], base = baseStats(k);
     const f = (mine + (r() * 2 - 1) * R.spread) / sum(base);
     out.push({ kind: k, hue: k === C.JOKE_KIND ? 28 : Math.floor(r() * 360),
                st: base.map(b => clamp(Math.round(b * f + (r() - 0.5) * 8), 10, R.statMax)) });
   }
-  out.splice(Math.floor(r() * R.lanes), 0, { kind: me.kind, hue: me.hue, st: me.st.slice(), me: true });
+  if (me) out.splice(Math.floor(r() * R.lanes), 0, { kind: me.kind, hue: me.hue, st: me.st.slice(), me: true });
   return out;
 }
 

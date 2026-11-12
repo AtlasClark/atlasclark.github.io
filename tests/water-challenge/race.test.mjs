@@ -170,3 +170,29 @@ test("a token bet costs a token and pays whole tokens", async () => {
   assert.equal(shop.spentTotal(p), 1);
   void win; void pay;
 });
+
+test("a house race: six strangers, a stake, no pet of yours, no experience, no daily limit", async () => {
+  const { S } = await loadWeb([]);
+  const days = ["2026-11-02", "2026-11-03", "2026-11-04", "2026-11-05", "2026-11-06"];
+  const p = { name: "House Test", color: "#60a5fa", created: "2026-11-01", away: [], pets: {}, graves: {}, spends: [],
+              entries: days.map((d, i) => ({ eid: "e" + i, ts: d + "T10:00:00", date: d, oz: 20, by: "test" })) };
+  S.participants = [p]; model.dataChanged();
+  const setup = shop.raceSetup(p, C.RACE_HOUSE);
+  assert.equal(setup.field.length, R.lanes);
+  assert.ok(setup.field.every(f => !f.me), "none of them yours");
+  assert.equal(setup.mine, -1);
+  assert.equal(new Set(setup.field.map(f => f.kind)).size, R.lanes);
+  assert.equal(await shop.racePlay(p, C.RACE_HOUSE, null), null, "still needs a stake");
+  const start = shop.shellBalance(p);
+  let won = 0;
+  for (let i = 0; i < R.perPet + 2; i++) {
+    const s = shop.raceSetup(p, C.RACE_HOUSE), lane = s.odds.win.indexOf(Math.min(...s.odds.win));       /* the long shot always has a payout */
+    const r = await shop.racePlay(p, C.RACE_HOUSE, { cur: "shell", stake: 2, on: lane, type: "win" }, 100 + i);
+    assert.ok(r, "race " + (i + 1) + " ran: no daily limit");
+    assert.equal(r.xp, 0);
+    won += r.won;
+    const sp = p.spends.at(-1);
+    assert.deepEqual([sp.pet, sp.house, sp.xp, sp.d, sp.place], [C.RACE_HOUSE, true, undefined, undefined, r.places[lane]], "the place kept is the backed racer's");
+  }
+  assert.equal(shop.shellBalance(p), start - 2 * (R.perPet + 2) + won);
+});

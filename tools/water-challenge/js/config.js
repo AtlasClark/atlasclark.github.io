@@ -1,8 +1,8 @@
 /* Water Challenge (web) - constants: rules, tunables and the on-disk contract
    (FORMAT_REV, UTF-16 LE + BOM JSON, unknown fields kept). */
 
-export const REV         = "rev 1.46.0";
-export const APP_VERSION = "web 1.46.0";   /* stamped as writerVersion */
+export const REV         = "rev 1.47.0";
+export const APP_VERSION = "web 1.47.0";   /* stamped as writerVersion */
 /* Every file is written at FORMAT_REV. A file stamped higher came from a newer
    build, and the page asks for a reload. */
 export const FORMAT_REV    = 22;
@@ -58,9 +58,10 @@ export const PLINKO_ROW_SECS = 0.26;
    base: average stat by rarity (Common .. ???, pen reward, dragon). edge: the share of a
    fair payout paid. maxMult / tokenMax cap one win (120 shells, 8 tokens). */
 export const RACE_KIND  = "race";
+export const RACE_HOUSE = -1;                /* "pet" of a house race: six strangers, none of them yours (rev 1.47.0) */
 export const RACE_STATS = ["Start", "Speed", "Stamina", "Burst", "Focus"];
 export const RACE = { lanes: 6, perPet: 3, shellBets: [2, 5, 10], tokenBet: 1, track: 100,
-                      base: [40, 44, 48, 53, 58, 58, 62], spread: 26, grow: 35, drop: 5, statMax: 99,
+                      base: [40, 44, 48, 53, 58, 58, 62], spread: 26, house: [230, 290], grow: 35, drop: 5, statMax: 99,
                       xp: [30, 20, 14, 10, 8, 6], levelXp: 50, maxLevel: 50,
                       edge: 0.88, tokenEdge: 0.92, maxMult: 12, tokenMax: 8, oddsRuns: 400,
                       countSecs: 3, endSecs: 2.5 };
