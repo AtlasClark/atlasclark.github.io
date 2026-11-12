@@ -6,7 +6,7 @@
 
 import * as C from "./config.js";
 import { S, petEventTimes } from "./model.js";
-import { todayKey } from "./util.js";
+import { todayKey, localStamp, spendsBy } from "./util.js";
 import { petKindFor } from "./store.js";
 import { pendingDrops, balance, chestRaw, shards, shellBalance, duelEnds } from "./shop.js";
 
@@ -16,11 +16,18 @@ export const HOLD_MS = C.LIVE_SHOW_MS + 3000;
 export const RACE_HOLD_MS = 26000;
 export const raceDone = new Set();
 export function racesHeld(p, now = Date.now()) {
-  return (p.spends || []).filter(s => {
-    if (s.kind !== C.RACE_KIND || raceDone.has(s.id)) return false;
-    const age = now - new Date(s.at).getTime();
-    return age > -5000 && age < RACE_HOLD_MS;
-  });
+  const cut = localStamp(new Date(now - RACE_HOLD_MS - 60000)), out = [];     /* stamps before this are past any hold: no date to parse */
+  for (const [kind, hold] of [[C.RACE_KIND, RACE_HOLD_MS]]) {
+    const list = spendsBy(p, kind);
+    for (let i = list.length - 1; i >= 0; i--) {                               /* newest first; stop at the first old one */
+      const s = list[i];
+      if (String(s.at) < cut) break;
+      if (raceDone.has(s.id)) continue;
+      const age = now - new Date(s.at).getTime();
+      if (age > -5000 && age < hold) out.push(s);
+    }
+  }
+  return out;
 }
 const heldWon = (p, cur) => racesHeld(p).reduce((a, s) => a + (s.cur === cur ? Number(s.won) || 0 : 0), 0);
 export const landed = new Set();                  /* drop ids whose ball landed on this page */
@@ -86,5 +93,8 @@ export function shownChest() {
 }
 
 /* A 1v1 race is kept back until its finish on the clock. */
-const duelsHeld = p => (p.spends || []).filter(s => s.kind === C.DUEL.kind && s.role === "take" && Date.now() < duelEnds(s));
+const duelsHeld = p => spendsBy(p, C.DUEL.kind).filter(s => s.role === "take" && Date.now() < duelEnds(s));
+/* Something on this page is waiting for its moment (a ball, a card, a race, a spin): the
+   page must be drawn again when it comes. */
+export const anyHeld = () => S.participants.some(p => pending(p).length || racesHeld(p).length || duelsHeld(p).length || rollHoldLeft(p) > 0);
 export const hiddenIds = p => new Set(pending(p).map(d => d.id).concat(racesHeld(p).map(s => s.id), duelsHeld(p).map(s => s.id)));

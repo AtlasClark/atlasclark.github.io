@@ -6,9 +6,9 @@
 import * as C from "./config.js";
 import { findParticipant, S } from "./model.js";
 import * as store from "./store.js";
-import { $, esc, has, prettyTime } from "./util.js";
+import { $, esc, has, prettyTime, spendsBy } from "./util.js";
 import { raceSetup, raceBlock, racePlay, racePayFor, racesLeft, asksBy, asksFor, duelAskBlock, duelAsk, duelDrop, duelPass, duelTake, duelField, duelsNow, duelRecord } from "./shop.js";
-import { statsOf, runRace, rating, FRAME_SECS } from "./race.js";
+import { statsOf, runRace, rating, FRAME_SECS, canRace } from "./race.js";
 import { raceDone, racesHeld, shownBalance, shownShells } from "./reveal.js";
 import { petLabel, rarityLabel, petBinIndex, penOf } from "./pets.js";
 import { drawPortrait } from "./art.js";
@@ -68,6 +68,11 @@ export function initCasino(h) {
   $("raceStakes").innerHTML = R.shellBets.map(b => '<button type="button" class="seg" data-stake="' + b + '">' + b + '</button>').join("");
   $("raceGo").addEventListener("click", go);
   window.addEventListener("resize", () => { if (ui.tab === "casino") paint(); if (duel) drawDuel(); });
+  /* light / dark and the bought themes change the track's colours: draw it again when the
+     page's theme changes, not at the next render (rev 1.49.1) */
+  const again = () => requestAnimationFrame(() => { if (ui.tab === "casino") paint(); if (duel && duel.done) drawDuel(); });
+  new MutationObserver(again).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme", "data-holiday"] });
+  if (window.matchMedia) window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", again);
 }
 
 /* ---- rendering -------------------------------------------------------------- */
@@ -91,7 +96,7 @@ export function renderCasino() {
 const live = () => run || shown;
 
 function renderRace(p) {
-  const kinds = Object.keys(p.pets || {}).map(Number).filter(k => k >= 0 && k < C.PET_MAX).sort((a, b) => a - b);
+  const kinds = Object.keys(p.pets || {}).map(Number).filter(k => k >= 0 && k < C.PET_MAX && canRace(k)).sort((a, b) => a - b);
   const cur = live();
   if (cur) pick.pet = cur.out.kind;
   else if (pick.pet !== HOUSE && !kinds.includes(pick.pet)) { const worn = store.petKindFor(p); pick.pet = kinds.includes(worn) ? worn : kinds.length ? kinds[0] : HOUSE; }
@@ -156,7 +161,7 @@ function renderRace(p) {
   setHtml("raceResult", shown ? resultHtml(shown.out) : "");
   $("raceResult").hidden = !shown;
 
-  const past = (p.spends || []).filter(s => s.kind === C.RACE_KIND && !held.has(s.id)).slice(-8).reverse();
+  const past = spendsBy(p, C.RACE_KIND).slice(-10).filter(s => !held.has(s.id)).slice(-8).reverse();
   setHtml("raceFeed", past.length ? past.map(s => '<li><span class="t">' + esc(prettyTime(s.at)) + '</span><strong>' +
       (s.house ? 'House race' : esc(petLabel(Number(s.pet)))) + '</strong> ' +
       (s.house ? '' : ORD[Number(s.place) - 1]) + ' <span class="dim">&middot; ' + money(Number(s.bet), s.cur) + ' on ' +
@@ -458,7 +463,7 @@ function renderAsk() {
   el.hidden = !first;
   if (!first) return;
   ensureIcons();
-  const kinds = Object.keys(p.pets || {}).map(Number).filter(k => k >= 0 && k < C.PET_MAX).sort((a, b) => a - b);
+  const kinds = Object.keys(p.pets || {}).map(Number).filter(k => k >= 0 && k < C.PET_MAX && canRace(k)).sort((a, b) => a - b);
   if (askPick.id !== first.ask.id || !kinds.includes(askPick.pet)) {
     const worn = store.petKindFor(p);
     askPick.id = first.ask.id; askPick.pet = kinds.includes(worn) ? worn : kinds.length ? kinds[0] : -1;
@@ -594,6 +599,8 @@ async function go() {
   if (!out) { busy = false; renderCasino(); $("raceNote").textContent = why; return; }
   renderCasino();
   requestAnimationFrame(tick);
+  /* the next field's odds take a moment to work out: do it under the countdown, not at "Next race" */
+  setTimeout(() => { const q = shopFor(); if (q && (k === HOUSE || has(q.pets, k))) raceSetup(q, k); }, 600);
 }
 
 /* The track is sized to its column when the tab opens. */

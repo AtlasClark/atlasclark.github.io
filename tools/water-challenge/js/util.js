@@ -82,6 +82,22 @@ export function fmtOz(v) { return Math.round(Number(v)).toLocaleString("en-US");
 export function fmtGal(v) { return String(Math.round(Number(v) / 128 * 10) / 10); }
 export function rnd(lo, hi) { return lo + Math.random() * (hi - lo); }
 export function hsl(h, s, l) { return "hsl(" + h + "," + s + "%," + l + "%)"; }
+/* p's spends of one kind, oldest first. The lists are built once per spends array and
+   kept until it grows or is replaced (rev 1.49.1), so the many "all the races of this
+   pet" lookups in a render do not each walk every record. Records never change in place. */
+const kinds = new WeakMap();
+export function spendsBy(p, kind) {
+  const sp = p && p.spends;
+  if (!Array.isArray(sp)) return [];
+  let c = kinds.get(sp);
+  if (!c || c.n !== sp.length) {
+    const m = new Map();
+    for (const s of sp) { if (!s) continue; let a = m.get(s.kind); if (!a) m.set(s.kind, a = []); a.push(s); }
+    c = { n: sp.length, m };
+    kinds.set(sp, c);
+  }
+  return c.m.get(kind) || [];
+}
 export const has = (o, k) => !!o && Object.prototype.hasOwnProperty.call(o, String(k));
 
 /* Status line + other UI hooks. app.js wires the real handlers; model and pet code

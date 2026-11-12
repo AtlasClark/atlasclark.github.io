@@ -7,6 +7,7 @@
    race, on any screen. Odds are that simulation run many times (raceOdds). */
 
 import * as C from "./config.js";
+import { spendsBy } from "./util.js";
 
 const R = C.RACE, N_STATS = C.RACE_STATS.length;
 export const START = 0, SPEED = 1, STAMINA = 2, BURST = 3, FOCUS = 4;
@@ -64,14 +65,15 @@ export const xpForLevel = lv => R.levelXp * lv * (lv - 1) / 2;
 /* How far a stat may move from the species' own value. */
 const lowOf = b => b - R.drop, highOf = b => Math.min(R.statMax, b + R.grow);
 
-const isRace = s => s && s.kind === C.RACE_KIND;
+/* Full-pen rewards (the Homunculus, the Automaton) stay out of the races. */
+export const canRace = k => !C.PEN_REWARDS.some(r => r && r.kind === k);
 /* p's pet of kind k as a racer: stats now, experience, level, races and wins. skip: spend
    ids left out (a race still running on this page). */
 export function statsOf(p, k, skip) {
   const base = baseStats(k), d = base.map(() => 0);
   let xp = 0, races = 0, wins = 0;
-  for (const s of (p && p.spends) || []) {
-    if (!isRace(s) || Number(s.pet) !== k || (skip && skip.has(s.id))) continue;
+  for (const s of spendsBy(p, C.RACE_KIND)) {
+    if (Number(s.pet) !== k || (skip && skip.has(s.id))) continue;
     races++;
     xp += Number(s.xp) || 0;
     if (Number(s.place) === 1) wins++;
@@ -82,7 +84,11 @@ export function statsOf(p, k, skip) {
            into: xp - xpForLevel(level), need: level >= R.maxLevel ? 0 : xpForLevel(level + 1) - xpForLevel(level) };
 }
 export const rating = st => Math.round(sum(st) / N_STATS);
-export const racesOn = (p, k, day) => ((p && p.spends) || []).filter(s => isRace(s) && Number(s.pet) === k && String(s.at).slice(0, 10) === day).length;
+export function racesOn(p, k, day) {
+  let n = 0;
+  for (const s of spendsBy(p, C.RACE_KIND)) if (Number(s.pet) === k && String(s.at).slice(0, 10) === day) n++;
+  return n;
+}
 
 /* ---- the field ------------------------------------------------------------------ */
 /* Five other pets for me = { kind, hue, st } to race, drawn from seed (so a reload shows
@@ -90,8 +96,8 @@ export const racesOn = (p, k, day) => ((p && p.spends) || []).filter(s => isRace
    With no me (a house race) it is six strangers round a total drawn from R.house. */
 export function makeField(me, seed) {
   const r = rng(seed), mine = me ? sum(me.st) : R.house[0] + r() * (R.house[1] - R.house[0]), pool = [];
-  /* the others never come from the third pen (rev 1.48.0); a person's own third-pen pet may still race */
-  for (let k = 0; k < C.PET_MAX; k++) if ((!me || k !== me.kind) && !(k >= C.PEN3_FIRST && k < C.PEN3_FIRST + C.PET_COUNT)) pool.push(k);
+  /* the others never come from the third pen (rev 1.48.0; a person's own third-pen pet may still race) and are never pen rewards */
+  for (let k = 0; k < C.PET_MAX; k++) if ((!me || k !== me.kind) && canRace(k) && !(k >= C.PEN3_FIRST && k < C.PEN3_FIRST + C.PET_COUNT)) pool.push(k);
   const out = [];
   for (let i = 0; i < R.lanes - (me ? 1 : 0); i++) {
     const k = pool.splice(Math.floor(r() * pool.length), 1)[0], base = baseStats(k);

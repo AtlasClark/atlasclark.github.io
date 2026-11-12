@@ -575,7 +575,11 @@ export function ensureIcons() {
     ...[1, 2, 3].flatMap(penKinds).map(k => ["pi-" + k, ctx => drawPortrait(ctx, 30, 42, 20, k, hashHue(C.PET_BASE_NAMES[k] + k))]),
     ["pi-grave", ctx => drawHeadstone(ctx, 30, 50, 26, 210)],
     ["pi-rw1", ctx => drawCritter(ctx, 30, 50, 17, 0, false, false, C.HOMUNCULUS_KIND, 210)],
-    ["pi-rw2", ctx => drawPortrait(ctx, 30, 42, 20, C.AUTOMATON_KIND, C.PEN_REWARDS[2].hue)]];
+    ["pi-rw2", ctx => drawPortrait(ctx, 30, 42, 20, C.AUTOMATON_KIND, C.PEN_REWARDS[2].hue)],
+    /* the kinds outside the pens, by number: racers are listed by kind (rev 1.49.1) */
+    ["pi-" + C.HOMUNCULUS_KIND, ctx => drawCritter(ctx, 30, 50, 17, 0, false, false, C.HOMUNCULUS_KIND, 210)],
+    ["pi-" + C.MYSTERY_KIND, ctx => drawPortrait(ctx, 30, 42, 20, C.MYSTERY_KIND, hashHue(C.PET_BASE_NAMES[C.MYSTERY_KIND] + C.MYSTERY_KIND))],
+    ["pi-" + C.AUTOMATON_KIND, ctx => drawPortrait(ctx, 30, 42, 20, C.AUTOMATON_KIND, C.PEN_REWARDS[2].hue)]];
   try {
     const cols = Math.ceil(Math.sqrt(cells.length)), rows = Math.ceil(cells.length / cols);
     const sheet = document.createElement("canvas"), pct = (i, n) => (n > 1 ? i / (n - 1) * 100 : 0).toFixed(3) + "%";
@@ -796,6 +800,11 @@ function renderHistory() {
 }
 
 /* ---- status bar --------------------------------------------------------- */
+/* The sync pill alone, for a poll that found nothing new. */
+export function renderSync() {
+  const pill = $("syncPill");
+  if (pill && ui.connected) pill.textContent = "synced " + (ui.lastSync || clockStamp());
+}
 function renderStatus() {
   const pill = $("syncPill");
   if (ui.connected) { pill.className = "sync-pill"; pill.textContent = "synced " + (ui.lastSync || clockStamp()); }
@@ -1157,7 +1166,7 @@ export function render() {
     renderGlasses(); renderLeaderboard(); renderActivity();
   } else if (ui.tab === "pets") renderPets();
   else if (ui.tab === "shop") { if (uiHooks.renderShop) uiHooks.renderShop(); }
-  else if (ui.tab === "casino") { if (uiHooks.renderShop) uiHooks.renderShop(); if (uiHooks.renderCasino) uiHooks.renderCasino(); }
+  else if (ui.tab === "casino") { if (uiHooks.renderCasino) uiHooks.renderCasino(); }
   else renderHistory();
   renderTeamBar();
   renderStaleWarning();

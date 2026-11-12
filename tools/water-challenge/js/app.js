@@ -10,14 +10,14 @@ import * as store from "./store.js";
 import * as cloud from "./cloud.js";
 import { initCloudUi, applyRole, fillCloudCards } from "./cloudui.js";
 import { reconcilePets, equipPet } from "./pets.js";
-import { rollCardQueued } from "./reveal.js";
+import { rollCardQueued, anyHeld } from "./reveal.js";
 import * as G from "./glass.js";
 import { startLive, onLive, emit } from "./live.js";
 import { loadPetDefs, useFolderDefs, useSiteDefs, lineArt, syncLineArt } from "./petdefs.js";
 import { bottleOn, bottleCfg, signedIn, loadBottle, setRelay, newRelayKey, pingRelay, signIn, signOut, fetchSips, applySips } from "./bottle.js";
 import { openRadial, wireRadial } from "./radial.js";
 import { makeMsg, msgOf, toggleMsg, openMsgs, cleanText } from "./msg.js";
-import { initShop, renderShop, shopTabChanged } from "./shopui.js";
+import { initShop, renderShop, renderPlinko, shopTabChanged } from "./shopui.js";
 import { initCasino, renderCasino, casinoTabChanged, watchDuels } from "./raceui.js";
 import { shellsEarned, earnedTotal } from "./shop.js";
 import { isHydrationDay } from "./hydration.js";
@@ -25,7 +25,7 @@ import { goalWave } from "./hydfx.js";
 import { holidayGoal, seasonsOn, setSeasonsOn, seasonOf } from "./themefx.js";
 import { ui, render, setTab, setMsg, showBanner, tickMasks, relayout, forceRebuild, resetIcons,
          toggleSwatches, openBank, auditStreak, showDiag, closeOverlays, fillSettings, renderRoster,
-         renderActivityNow, showUnlock, uiHooks, htaDismiss, togglePetFold } from "./ui.js";
+         renderActivityNow, showUnlock, uiHooks, htaDismiss, togglePetFold, renderSync } from "./ui.js";
 import { $, esc, bus, todayKey, localStamp, fmt, fmtOz, trim, parseKey, shiftKey, clockStamp, monthDayOk } from "./util.js";
 import { EVENTS, eventDefault } from "./art.js";
 
@@ -157,6 +157,16 @@ function safeRender() {
   try { render(); } catch (e) { store.diagNote("render failed: " + (e && e.message || e)); }
 }
 
+/* A poll that found the files unchanged: the whole page is drawn again only when
+   something it shows can have changed (data, the day, the hour, the tab, or a result that
+   was waiting for its moment); otherwise just the sync clock (rev 1.49.1). */
+let drawnFor = "", wasHeld = false;
+function renderIfChanged() {
+  const held = anyHeld(), key = [S.dataVer, todayKey(), new Date().getHours(), ui.tab, S.mine, S.me].join("|");
+  if (key !== drawnFor || held || wasHeld) { drawnFor = key; wasHeld = held; safeRender(); }
+  else renderSync();
+}
+
 /* After a local change: settle pet events, then repaint. */
 async function settle() {
   await reconcile();
@@ -187,7 +197,7 @@ async function poll() {
     await store.serial(async () => {
       const sig = await store.folderSignature();
       if (sig !== lastSig) await refresh();
-      else { await maybeBackup(); await reconcile(); ui.lastSync = clockStamp(); safeRender(); }
+      else { await maybeBackup(); await reconcile(); ui.lastSync = clockStamp(); renderIfChanged(); }
     });
     showBanner("");
     pollFails = 0;
@@ -747,7 +757,7 @@ function wire() {
   $("tab-casino").onclick = () => tab("casino");
   $("bankShop").onclick = () => { closeOverlays(); tab("shop"); };
   uiHooks.renderShop = renderShop;
-  uiHooks.renderCasino = renderCasino;
+  uiHooks.renderCasino = () => { renderPlinko(); renderCasino(); };
   uiHooks.duels = watchDuels;
   uiHooks.bottle = bottleView;
   initShop({ settle, guard: shopGuard, askConfirm, pollSoon, whoAmI: () => askIdentity(false) });

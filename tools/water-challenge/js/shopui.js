@@ -45,7 +45,7 @@ export function initShop(h) {
     if (m) drop.mode = m.dataset.mode === "shell" ? "shell" : "token";
     else if (b) drop.bet = Number(b.dataset.bet);
     else return;
-    keepDrop(); renderShop();
+    keepDrop(); renderPlinko();
   });
   $("rerollBox").addEventListener("click", e => { if (e.target.closest("#rerollBtn")) doReroll(); });
   $("buyPens").addEventListener("click", e => {
@@ -85,10 +85,9 @@ export function shopFor() {
 }
 
 /* ---- rendering ------------------------------------------------------------ */
+/* The Shop tab: balances, reroll, shards and the Style shop. */
 export function renderShop() {
   ensureIcons();
-  if (!board) board = new PlinkoBoard($("plinkoCanvas"), landed);
-  else if ($("plinkoWrap").clientWidth && Math.abs(board.w - Math.min(460, $("plinkoWrap").clientWidth)) > 4) board.resize($("plinkoWrap").clientWidth);
   const p = shopFor();
   setHtml("shopWho", S.participants.map(x =>
     '<button type="button" class="who-chip' + (x === p ? " on" : "") + '" style="--pc:' + x.color + '"' +
@@ -106,21 +105,6 @@ export function renderShop() {
   setHtml("shopBalance", '<span class="coin"></span><b>' + bal + '</b> token' + (bal === 1 ? '' : 's') +
     ' <span class="dim">&middot; ' + tokensEarned(p) + ' for goal days' + (bonus ? ' + ' + bonus + ' cap bonus' : '') +
     (fromChest ? ' + ' + fromChest + ' from the chest' : '') + ' &middot; ' + spentTotal(p) + ' spent</span>');
-  const pot = shownChest();
-  setHtml("chestPot", '<span class="chest-star">&#9733;</span> Community Chest: <b>' + pot + '</b> token' + (pot === 1 ? '' : 's') +
-    ' <span class="dim">&middot; ' + (pot ? Math.round(C.CHEST_CHANCE * 100) + '% chance to win it all from the centre cup' : 'empty: the next centre landing starts it') + '</span>');
-
-  const shell = drop.mode === "shell", pb = shell ? splinkoBlock(p, drop.bet) : plinkoBlock(p);
-  board.setMode(drop.mode);
-  for (const b of $("plinkoMode").querySelectorAll("[data-mode]")) { const on = b.dataset.mode === drop.mode; b.classList.toggle("on", on); b.setAttribute("aria-pressed", String(on)); }
-  for (const b of $("plinkoBets").children) { const on = Number(b.dataset.bet) === drop.bet; b.classList.toggle("on", on); b.setAttribute("aria-pressed", String(on)); }
-  $("plinkoBets").hidden = !shell;
-  $("plinkoEyebrow").textContent = shell ? drop.bet + " shells per drop" : "1 token per drop";
-  $("plinkoDrop").disabled = !!pb;
-  setHtml("plinkoDrop", shell ? 'Drop ' + drop.bet + ' shells for ' + esc(p.name) : 'Drop a token for ' + esc(p.name));
-  $("plinkoNote").textContent = pb || (shell ? "You have " + shownShells(p) + " shells." : "");
-  $("plinkoDrop").style.setProperty("--pc", p.color);
-
   const rb = rerollBlock(p), k = Number(p.rollKind), rolledToday = p.petRollDay === todayKey() && k >= 0, held = rollHoldLeft(p);
   setHtml("rerollBox", (rolledToday
       ? '<div class="reroll-now">' + (penOf(k) > 0 && !held ? '<i class="pi pi-' + k + '"></i>' : '') +
@@ -162,6 +146,31 @@ export function renderShop() {
            '<span class="bp">' + (owned ? "owned" : shardIcon(t) + cost + (buried ? ' <small>revive</small>' : '')) + '</span></button>');
   }
   setHtml("buyGrid", h.join(""));
+}
+
+/* The Plinko panel, on the Casino tab (rev 1.49.1: drawn on its own, not with the shop). */
+export function renderPlinko() {
+  if (!board) board = new PlinkoBoard($("plinkoCanvas"), landed);
+  else if ($("plinkoWrap").clientWidth && Math.abs(board.w - Math.min(460, $("plinkoWrap").clientWidth)) > 4) board.resize($("plinkoWrap").clientWidth);
+  const p = shopFor();
+  if (!p) return;
+  const pot = shownChest();
+  setHtml("chestPot", '<span class="chest-star">&#9733;</span> Community Chest: <b>' + pot + '</b> token' + (pot === 1 ? '' : 's') +
+    ' <span class="dim">&middot; ' + (pot ? Math.round(C.CHEST_CHANCE * 100) + '% chance to win it all from the centre cup' : 'empty: the next centre landing starts it') + '</span>');
+
+  const shell = drop.mode === "shell", pb = shell ? splinkoBlock(p, drop.bet) : plinkoBlock(p);
+  board.setMode(drop.mode);
+  for (const b of $("plinkoMode").querySelectorAll("[data-mode]")) { const on = b.dataset.mode === drop.mode; b.classList.toggle("on", on); b.setAttribute("aria-pressed", String(on)); }
+  for (const b of $("plinkoBets").children) { const on = Number(b.dataset.bet) === drop.bet; b.classList.toggle("on", on); b.setAttribute("aria-pressed", String(on)); }
+  $("plinkoBets").hidden = !shell;
+  $("plinkoEyebrow").textContent = shell ? drop.bet + " shells per drop" : "1 token per drop";
+  $("plinkoDrop").disabled = !!pb;
+  setHtml("plinkoDrop", shell ? 'Drop ' + drop.bet + ' shells for ' + esc(p.name) : 'Drop a token for ' + esc(p.name));
+  $("plinkoNote").textContent = pb || (shell ? "You have " + shownShells(p) + " shells." : "");
+  $("plinkoDrop").style.setProperty("--pc", p.color);
+
+  clearTimeout(holdTimer);
+  if (anyPending()) holdTimer = setTimeout(render, HOLD_MS);
   renderFeed();
 }
 
@@ -226,8 +235,8 @@ async function dropToken() {
     board.drop(Object.assign({ mine: true }, ev));
     await hooks.settle();
   });
-  if (!res) { setMsg("Drop failed: " + ((drop.mode === "shell" ? splinkoBlock(p, drop.bet) : plinkoBlock(p)) || "couldn't save") + ".", false); renderShop(); return; }
-  renderShop();                    /* the balance drops at once; the result shows on landing */
+  if (!res) { setMsg("Drop failed: " + ((drop.mode === "shell" ? splinkoBlock(p, drop.bet) : plinkoBlock(p)) || "couldn't save") + ".", false); renderPlinko(); return; }
+  renderPlinko();                    /* the balance drops at once; the result shows on landing */
 }
 
 async function doReroll() {

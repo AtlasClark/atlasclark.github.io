@@ -246,3 +246,23 @@ test("a 1v1 race: a challenge waits in the challenger's file, the accept writes 
   assert.equal(race.statsOf(b, 12).xp, 0);
   assert.equal(shop.racesLeft(b, 12), R.perPet, "and it uses none of the day's races");
 });
+
+test("pen rewards stay out of the races; lookups by kind follow the spends as they grow", async () => {
+  const { S } = await loadWeb([]);
+  const util = await import(pathToFileURL(path.join(JS, "util.js")));
+  const p = { name: "Reward Test", color: "#60a5fa", created: "2026-11-01", away: [], pets: { [C.HOMUNCULUS_KIND]: 210, [C.AUTOMATON_KIND]: 195, 3: 10 }, graves: {}, spends: [], entries: [] };
+  const q = { name: "Other Test", color: "#60a5fa", created: "2026-11-01", away: [], pets: { 4: 10 }, graves: {}, spends: [], entries: [] };
+  S.participants = [p, q]; model.dataChanged();
+  assert.equal(race.canRace(C.HOMUNCULUS_KIND), false);
+  assert.equal(race.canRace(C.AUTOMATON_KIND), false);
+  assert.equal(race.canRace(C.MYSTERY_KIND), true, "the dragon may race");
+  assert.equal(shop.raceBlock(p, C.AUTOMATON_KIND, null), "Pen rewards sit the races out.");
+  assert.equal(shop.duelAskBlock(p, "Other Test", C.HOMUNCULUS_KIND), "Pen rewards sit the races out.");
+  for (let i = 0; i < 60; i++) assert.ok(race.makeField(i % 2 ? null : { kind: 3, hue: 0, st: [...race.baseStats(3)] }, "rw|" + i).every(f => race.canRace(f.kind)), "never a stranger");
+  assert.deepEqual(util.spendsBy(p, C.RACE_KIND), []);
+  p.spends.push({ id: "a", at: "2026-11-02T10:00:00", kind: C.RACE_KIND, pet: 3, xp: 30, place: 1, d: [1, 0, 0, 0, 0] });
+  assert.equal(util.spendsBy(p, C.RACE_KIND).length, 1, "a new record is seen");
+  assert.equal(race.statsOf(p, 3).xp, 30);
+  p.spends = [];
+  assert.equal(race.statsOf(p, 3).xp, 0, "and a replaced list too");
+});

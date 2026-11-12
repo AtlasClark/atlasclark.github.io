@@ -7,9 +7,9 @@
 import * as C from "./config.js";
 import { S, tokensEarned, capBonus, dayWinners, findParticipant } from "./model.js";
 import { saveParticipant, petKindFor, setSpendCheck } from "./store.js";
-import { has, todayKey, localStamp, shiftKey, parseKey, aAn } from "./util.js";
+import { has, todayKey, localStamp, shiftKey, parseKey, aAn, spendsBy } from "./util.js";
 import { applyRoll, dayRng, grantReward, isGrave, petBinIndex, penOf, binsFor, rollPen, pen2Open, pen3Open, pen3Earned, PEN3_CLOSED, hueOf } from "./pets.js";
-import { statsOf, racesOn, makeField, raceOdds, runRace, racePay, betHit, raceGrowth, raceXp, levelOf, rng } from "./race.js";
+import { statsOf, racesOn, makeField, raceOdds, runRace, racePay, betHit, raceGrowth, raceXp, levelOf, rng, canRace } from "./race.js";
 import { COSMETICS, SLOTS, PAINT_COST } from "./cosmetics.js";
 import { hydrationEarned } from "./hydration.js";
 import { monsterEarned } from "./monster.js";
@@ -19,7 +19,9 @@ const isShard = s => C.SHARD_KINDS.includes(s.kind);
 const isSplinko = s => s.kind === C.SPLINKO_KIND;
 const notTokens = s => isShell(s) || isShard(s) || isSplinko(s);
 const isRace = s => s.kind === C.RACE_KIND;
-const raceWon = (p, cur) => (p.spends || []).reduce((a, s) => a + (isRace(s) && s.cur === cur ? Number(s.won) || 0 : 0), 0);
+/* Games staked in shells, whose spend keeps { bet, won } and costs 0. */
+const shellGame = s => isSplinko(s) || (isRace(s) && s.cur === "shell");
+const raceWon = (p, cur) => spendsBy(p, C.RACE_KIND).reduce((a, s) => a + (s.cur === cur ? Number(s.won) || 0 : 0), 0);
 export const spentTotal = p => (p.spends || []).reduce((a, s) => a + (notTokens(s) ? 0 : Number(s.cost) || 0), 0);
 export const chestWinnings = p => (p.spends || []).reduce((a, s) => a + (s.chest ? Number(s.chest.won) || 0 : 0), 0);
 /* Tokens won on race bets (a token stake is the spend's cost, so spentTotal has it). */
@@ -31,7 +33,7 @@ export const earnedTotal = p => tokensEarned(p) + capBonus(p) + chestWinnings(p)
    same moment on two PCs could both pay out; the chest then refills from below zero. */
 export function chestRaw() {
   let t = 0;
-  for (const p of S.participants) for (const s of p.spends || []) if (s.chest) t += (Number(s.chest.add) || 0) - (Number(s.chest.won) || 0);
+  for (const p of S.participants) for (const s of spendsBy(p, "plinko")) if (s.chest) t += (Number(s.chest.add) || 0) - (Number(s.chest.won) || 0);
   return t;
 }
 export const chestTotal = () => Math.max(0, chestRaw());
@@ -68,7 +70,7 @@ setSpendCheck((m, disk) => {
     if ((s.kind === "fuse" || s.kind === "shard") && n[Number(s.tier)] < 0) return "not enough " + (C.PET_BINS[Number(s.tier)] || {}).name + " shards";
   }
   if (added.some(s => !notTokens(s) && Number(s.cost) > 0) && balance(m) < 0) return "not enough tokens";
-  if (added.some(s => (isShell(s) && Number(s.cost) > 0) || ((isSplinko(s) || (isRace(s) && s.cur === "shell")) && Number(s.bet) > 0)) && shellBalance(m) < 0) return "not enough shells";
+  if (added.some(s => (isShell(s) && Number(s.cost) > 0) || (shellGame(s) && Number(s.bet) > 0)) && shellBalance(m) < 0) return "not enough shells";
   return "";
 });
 
@@ -192,8 +194,9 @@ export async function splinkoPlay(p, bet, rnd = Math.random) {
 const setups = new Map();
 export function raceSetup(p, k, day = todayKey()) {
   const house = k === C.RACE_HOUSE, me = house ? null : statsOf(p, k), n = racesOn(p, k, day), hue = house ? 0 : hueOf(p, k);
-  const key = [p.name, k, day, n, hue, house ? "" : me.st.join(".")].join("|");
+  const key = [p.name, k, day, n, house ? "" : me.st.join(".")].join("|");
   let s = setups.get(key);
+  if (s && s.mine >= 0) s.field[s.mine].hue = hue;                  /* a recolour changes the picture, not the race */
   if (!s) {
     const field = makeField(house ? null : { kind: k, hue, st: me.st }, "race|" + p.name + "|" + k + "|" + day + "|" + n);
     s = { key, field, odds: raceOdds(field, "odds|" + key), me, n, mine: field.findIndex(f => f.me) };
@@ -210,6 +213,7 @@ export const racesLeft = (p, k, day = todayKey()) => k === C.RACE_HOUSE ? Infini
 export function raceBlock(p, k, bet) {
   if (k !== C.RACE_HOUSE) {
     if (!has(p.pets, k)) return "Only a pet you have alive.";
+    if (!canRace(k)) return "Pen rewards sit the races out.";
     if (!racesLeft(p, k)) return "Tired. Back tomorrow.";
   }
   if (!bet) return "";
@@ -240,12 +244,15 @@ export async function racePlay(p, k, bet, seed = Math.floor(Math.random() * 4294
 
 /* ---- live 1v1 races (rev 1.49.0; the records are described at C.DUEL) ------------------ */
 const isDuel = s => !!s && s.kind === C.DUEL.kind;
-const answeredBy = (q, id) => (q.spends || []).some(s => isDuel(s) && (s.role === "take" || s.role === "pass") && s.ask === id);
+const duelsOf = p => spendsBy(p, C.DUEL.kind);
+const answeredBy = (q, id) => duelsOf(q).some(s => (s.role === "take" || s.role === "pass") && s.ask === id);
 /* p's challenges still open today: not taken back, not answered, the pet still alive. */
 export function asksBy(p, day = todayKey()) {
-  const sp = p.spends || [], shut = new Set(sp.filter(s => isDuel(s) && s.role === "drop").map(s => s.ask));
+  const sp = duelsOf(p).filter(s => String(s.at).slice(0, 10) === day);
+  if (!sp.length) return sp;
+  const shut = new Set(sp.filter(s => s.role === "drop").map(s => s.ask));
   return sp.filter(s => {
-    if (!isDuel(s) || s.role !== "ask" || String(s.at).slice(0, 10) !== day || shut.has(s.id) || !has(p.pets, s.pet)) return false;
+    if (s.role !== "ask" || String(s.at).slice(0, 10) !== day || shut.has(s.id) || !has(p.pets, s.pet)) return false;
     const q = findParticipant(s.to);
     return !!q && !answeredBy(q, s.id);
   });
@@ -258,6 +265,7 @@ export function asksFor(name, day = todayKey()) {
 }
 export function duelAskBlock(p, to, k) {
   if (!has(p.pets, k)) return "Only a pet you have alive.";
+  if (!canRace(k)) return "Pen rewards sit the races out.";
   const q = findParticipant(to);
   if (!q || q.name === p.name) return "Pick a player.";
   if (asksBy(p).length) return "One challenge at a time.";
@@ -273,7 +281,7 @@ export const duelPass = (p, ask, from) => duelNote(p, { role: "pass", ask: ask.i
 /* p accepts `ask` from `from` with pet k: the race is run and kept in p's file, with both
    pets as they are now, so every page replays the same race. Returns the record or null. */
 export async function duelTake(p, from, ask, k, seed = Math.floor(Math.random() * 4294967296)) {
-  if (!has(p.pets, k) || !asksFor(p.name).some(x => x.ask.id === ask.id)) return null;
+  if (!has(p.pets, k) || !canRace(k) || !asksFor(p.name).some(x => x.ask.id === ask.id)) return null;
   const st = statsOf(p, k).st, vst = statsOf(from, Number(ask.pet)).st, hue = hueOf(p, k), vhue = hueOf(from, Number(ask.pet));
   const res = runRace([{ st: vst }, { st }], seed);
   return duelNote(p, { role: "take", ask: ask.id, from: from.name, pet: k, vs: Number(ask.pet), st, vst, hue, vhue, seed,
@@ -291,14 +299,14 @@ export const duelEnds = s => Number(s.t) + (C.DUEL.lead + (Number(s.secs) || 0) 
 /* 1v1 races not finished yet on the clock: [{ take, p }]. */
 export function duelsNow(now = Date.now()) {
   const out = [];
-  for (const p of S.participants) for (const s of p.spends || []) if (wholeTake(s) && now < duelEnds(s) && now > Number(s.t) - 30000) out.push({ take: s, p });
+  for (const p of S.participants) for (const s of duelsOf(p)) if (wholeTake(s) && now < duelEnds(s) && now > Number(s.t) - 30000) out.push({ take: s, p });
   return out.sort((a, b) => a.take.t - b.take.t);
 }
 /* name's pet k in 1v1 races: { won, lost }, from everyone's records. */
 export function duelRecord(name, k) {
   let won = 0, lost = 0;
-  for (const p of S.participants) for (const s of p.spends || []) {
-    if (!isDuel(s) || s.role !== "take") continue;
+  for (const p of S.participants) for (const s of duelsOf(p)) {
+    if (s.role !== "take") continue;
     if (p.name === name && Number(s.pet) === k) { if (s.win) won++; else lost++; }
     else if (s.from === name && Number(s.vs) === k) { if (s.win) lost++; else won++; }
   }
@@ -390,10 +398,10 @@ export async function pickPet(p, k) {
    The result is saved before the ball falls, so a drop stays hidden until its ball
    lands here (landed ids), or for holdMs after it when this page never shows the ball. */
 export function pendingDrops(p, inFlight, landed, now, holdMs) {
-  const out = new Map();
-  for (const s of p.spends || []) {
+  const out = new Map(), cut = localStamp(new Date(now - holdMs - 60000));      /* older than this by its own stamp: not held, no date to parse */
+  for (const s of spendsBy(p, "plinko").concat(spendsBy(p, C.SPLINKO_KIND))) {
     const shell = isSplinko(s);
-    if (landed.has(s.id) || !(shell || (s.kind === "plinko" && (s.fresh || s.chest || Number(s.pet) >= 0)))) continue;
+    if (String(s.at) < cut || landed.has(s.id) || !(shell || s.fresh || s.chest || Number(s.pet) >= 0)) continue;
     const age = now - new Date(s.at).getTime();
     if (age > -5000 && age < holdMs) out.set(s.id, shell ? { id: s.id, pet: C.PET_NO_PET, shell: { bet: s.bet, won: s.won } } : s);   /* a few seconds of clock skew between PCs */
   }
@@ -436,7 +444,7 @@ export function spendsOn(p, key) { return (p.spends || []).filter(s => String(s.
 /* Owned items are "cosmetic" spends, so they merge like every other spend and can
    never be bought twice by two windows at once without both being counted. What is
    worn is p.look ({ slot: key }), kept only while the item is owned. */
-export const ownsCosmetic = (p, id) => (p.spends || []).some(s => s.kind === "cosmetic" && s.item === id);
+export const ownsCosmetic = (p, id) => spendsBy(p, "cosmetic").some(s => s.item === id);
 
 export function cosmeticBlock(p, id) {
   const it = COSMETICS[id];
@@ -508,7 +516,7 @@ function runs(p) {
 export const shellAward = run => Math.min(C.SHELL_MAX, Math.max(1, run));
 export function shellsEarned(p) { return Object.values(runs(p)).reduce((a, r) => a + shellAward(r), 0) + hydrationEarned(p).shells + monsterEarned(p).shells + winShells(p) + splinkoWon(p) + raceWon(p, "shell"); }
 /* Shells won back on shell Plinko (the stakes are in shellsSpent). */
-export const splinkoWon = p => (p.spends || []).reduce((a, s) => a + (isSplinko(s) ? Number(s.won) || 0 : 0), 0);
+export const splinkoWon = p => spendsBy(p, C.SPLINKO_KIND).reduce((a, s) => a + (Number(s.won) || 0), 0);
 /* Day wins pay WIN_SHELLS, split between that day's winners (model.dayWinners). */
 export const winShare = n => n ? Math.ceil(C.WIN_SHELLS / n) : 0;
 export function winShells(p) {
@@ -517,7 +525,7 @@ export function winShells(p) {
   for (const d of days) { const w = dayWinners(d); if (w.includes(p.name)) n += winShare(w.length); }
   return n;
 }
-export const shellsSpent = p => (p.spends || []).reduce((a, s) => a + (isShell(s) ? Number(s.cost) || 0 : isSplinko(s) || (isRace(s) && s.cur === "shell") ? Number(s.bet) || 0 : 0), 0);
+export const shellsSpent = p => (p.spends || []).reduce((a, s) => a + (isShell(s) ? Number(s.cost) || 0 : shellGame(s) ? Number(s.bet) || 0 : 0), 0);
 export const shellBalance = p => shellsEarned(p) - shellsSpent(p);
 /* The run of pour days in a row up to today (or the last pour day before it, across
    any weekend days without a pour, before today's first pour). */

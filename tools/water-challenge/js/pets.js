@@ -6,7 +6,7 @@
 import * as C from "./config.js";
 import { S, metGoal, personalGoal, findParticipant, totalOn, pastCap, isActive } from "./model.js";
 import { saveParticipant, petKindFor } from "./store.js";
-import { todayKey, has, bus } from "./util.js";
+import { todayKey, has, bus, spendsBy } from "./util.js";
 
 export { petKindFor };
 
@@ -29,7 +29,7 @@ export function hashHue(name) {
    over the hue it was caught with, alive or buried. */
 export function hueOf(p, k) {
   let h = null, at = "";
-  for (const s of p.spends || []) if (s.kind === "paint" && Number(s.pet) === k && String(s.at) >= at) { h = Number(s.hue); at = String(s.at); }
+  for (const s of spendsBy(p, "paint")) if (Number(s.pet) === k && String(s.at) >= at) { h = Number(s.hue); at = String(s.at); }
   if (h !== null && isFinite(h)) return h;
   if (has(p.pets, k)) return Number(p.pets[String(k)]);
   if (has(p.graves, k)) return Number(p.graves[String(k)]);
