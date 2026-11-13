@@ -643,11 +643,11 @@
   .qbd-chip.late { border-color: color-mix(in srgb, var(--red) 55%, transparent); color: var(--red); }
   .qbd-chip.done, .qbd-chip.done b { color: var(--text-faint); }
   .batches {
-    max-width: 940px; min-width: 640px; margin-bottom: 10px; overflow: hidden;
+    max-width: 1080px; min-width: 780px; margin-bottom: 10px; overflow: hidden;
     border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface);
   }
   .b-row {
-    display: grid; grid-template-columns: minmax(110px, 1.2fr) 84px 168px 200px minmax(60px, 2fr) 60px;
+    display: grid; grid-template-columns: minmax(110px, 1.2fr) 84px 168px 200px minmax(110px, 1.3fr) minmax(60px, 1.6fr) 60px;
     gap: 14px; align-items: center; padding: 6px 12px; border-bottom: 1px solid var(--border);
   }
   .b-row:last-child { border-bottom: none; }
@@ -669,6 +669,21 @@
   .batch-add input, .batch-add .btn { height: 34px; }
   .batch-add input { padding: 0 11px; width: 170px; }
   .batch-add input[type="number"] { width: 96px; }
+
+  .b-from { font: 400 11.5px var(--mono); color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .oh-in { width: 88px; height: 30px; padding: 0 8px; font: 400 12.5px var(--mono); }
+  .to-build { font-family: var(--mono); font-weight: 600; color: var(--accent-text); }
+  .to-build.zero { font-weight: 400; color: var(--text-faint); }
+  .modal.wide { width: 700px; }
+  .tl-row { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border: 1px solid var(--border); border-radius: var(--radius-sm); }
+  .tl-row .tl-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+  .tl-row .tl-subs { font: 400 11px var(--mono); color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ti-head, .ti-row { display: grid; grid-template-columns: minmax(0, 1.2fr) 84px minmax(0, 1.6fr) 32px; gap: 8px; align-items: center; }
+  .ti-head { font: 500 10.5px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--text-faint); }
+  .ti-list { display: flex; flex-direction: column; gap: 6px; }
+  .run-preview { border: 1px dashed var(--border); border-radius: var(--radius-sm); padding: 9px 12px; font: 400 12px var(--mono); color: var(--text-dim); display: flex; flex-direction: column; gap: 4px; }
+  .run-preview b { color: var(--text); font-weight: 500; }
+  .run-preview .new { color: var(--accent-text); }
 
   /* ---- brand links home ---- */
   a.brand { color: inherit; text-decoration: none; }
@@ -727,7 +742,9 @@
     <!-- ============ PRODUCTION ============ -->
     <section class="tab-panel active" id="panel-production">
       <div class="toolbar">
-        <button class="btn btn-primary" onclick="openPartModal()">＋ New Part</button>
+        <button class="btn btn-primary" onclick="openRunModal()">＋ New Batch</button>
+        <button class="btn" onclick="openTopsModal()">Top-level lists</button>
+        <button class="btn" onclick="openPartModal()">＋ Part</button>
         <div class="search-wrap"><input type="text" id="prodSearch" placeholder="Search parts, batches…"></div>
         <div class="chipbar" id="prodStatusChips"></div>
         <button class="btn" id="prodExpandBtn" onclick="toggleAllParts()">Expand all</button>
@@ -952,14 +969,23 @@ function cleanState(data) {
   const strs = v => Array.isArray(v) ? v.filter(x => typeof x === "string") : [];
   const known = (v, all, def) => all.includes(v) ? v : def;
   const swap = new Map();   // bad id -> new id, so note links still find their item
-  ["production", "projects", "orders", "pos", "sows", "notes", "todos"].forEach(k => {
+  ["tops", "production", "projects", "orders", "pos", "sows", "notes", "todos"].forEach(k => {
     d[k] = list(d[k]);
     d[k].forEach(x => { if (!okId(x.id)) { const n = uid(); swap.set(x.id, n); x.id = n; } });
   });
+  const num = v => Number.isFinite(Number(v)) && Number(v) >= 0 ? Number(v) : 0;
+  d.tops.forEach(t => {
+    t.pn = typeof t.pn === "string" ? t.pn : "";
+    t.items = list(t.items).filter(i => typeof i.pn === "string" && i.pn.trim());
+    t.items.forEach(i => { i.per = num(i.per) || 1; if (typeof i.desc !== "string") i.desc = ""; });
+  });
   d.production.forEach(p => {
+    p.onHand = num(p.onHand);
     p.batches = list(p.batches);
     p.batches.forEach(b => {
       if (!okId(b.id)) b.id = uid();
+      if (b.run !== undefined && !okId(b.run)) { delete b.run; delete b.top; }   // batch made from a top-level list
+      if (b.run) { b.top = String(b.top || ""); b.topQty = num(b.topQty); b.per = num(b.per) || 1; }
       b.status = known(b.status, BATCH_STATUSES, "Queued");
       b.qty = Number.isFinite(Number(b.qty)) && Number(b.qty) >= 0 ? Number(b.qty) : 0;
       if (typeof b.date !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(b.date)) b.date = "";
@@ -1006,16 +1032,16 @@ function save() {
 }
 function countOf(d) {
   const c = {
-    parts: (d.production || []).length,
+    parts: (d.production || []).length, tops: (d.tops || []).length,
     projects: (d.projects || []).length, orders: (d.orders || []).length,
     pos: (d.pos || []).length, sows: (d.sows || []).length,
     notes: (d.notes || []).length, todos: (d.todos || []).length,
   };
-  c.total = c.parts + c.projects + c.orders + c.pos + c.sows + c.notes + c.todos;
+  c.total = c.tops + c.parts + c.projects + c.orders + c.pos + c.sows + c.notes + c.todos;
   return c;
 }
 function countSummary(c) {
-  return [["parts", c.parts], ["projects", c.projects], ["orders", c.orders], ["POs", c.pos], ["scopes", c.sows], ["notes", c.notes], ["to-dos", c.todos]]
+  return [["top-level lists", c.tops], ["parts", c.parts], ["projects", c.projects], ["orders", c.orders], ["POs", c.pos], ["scopes", c.sows], ["notes", c.notes], ["to-dos", c.todos]]
     .filter(([, n]) => n).map(([k, n]) => n + " " + k).join(", ") || "nothing";
 }
 
@@ -1075,13 +1101,20 @@ function seed() {
   const t = todayStr();
   return {
     theme: "dark",
-    production: [
-      { id: uid(), pn: "EX-1001", desc: "Sample: control board assembly", created: Date.now(), batches: [
-        { id: uid(), batch: "B-001", qty: 50, status: "Completed", date: t, notes: "" },
-        { id: uid(), batch: "B-002", qty: 100, status: "In-Production", date: new Date(Date.now() + 14 * 864e5).toISOString().slice(0, 10), notes: "" },
-        { id: uid(), batch: "B-003", qty: 100, status: "Queued", date: "", notes: "" },
+    tops: [
+      { id: uid(), pn: "EX-1000", desc: "Sample: top-level assembly", items: [
+        { pn: "EX-1101", per: 1, desc: "Sample: control board" },
+        { pn: "EX-1102", per: 2, desc: "Sample: sensor board" },
       ] },
     ],
+    production: (() => {
+      const run = uid(), d14 = new Date(Date.now() + 14 * 864e5).toISOString().slice(0, 10);
+      const b = per => ({ id: uid(), batch: "B-001", qty: 25 * per, status: "In-Production", date: d14, notes: "", run, top: "EX-1000", topQty: 25, per });
+      return [
+        { id: uid(), pn: "EX-1101", desc: "Sample: control board", onHand: 0, created: Date.now(), batches: [b(1)] },
+        { id: uid(), pn: "EX-1102", desc: "Sample: sensor board", onHand: 10, created: Date.now(), batches: [b(2)] },
+      ];
+    })(),
     projects: [
       { id: uid(), title: "Sample: Enclosure redesign Rev C", desc: "Update mounting bosses and add strain relief per field feedback.", status: "In-Progress", priority: "High", due: t, tags: ["mechanical", "rev-c"], created: Date.now() },
       { id: uid(), title: "Sample: Firmware v2.4 release", desc: "Final validation pass and release notes.", status: "Queued", priority: "Medium", due: "", tags: ["firmware"], created: Date.now() - 1 },
@@ -1096,7 +1129,7 @@ function seed() {
     sows: [],
     todos: [],
     notes: [
-      { id: uid(), title: "Welcome to Atlas Ops 👋", body: "This dashboard saves everything locally in your browser.\n\n• Open a part on the Production tab to see its batches\n• Drag project cards between columns\n• Click table headers to sort\n• Use ⭳ to export a JSON backup\n\nDelete these sample entries whenever you're ready.", date: t, labels: ["general"], pinned: true, created: Date.now() },
+      { id: uid(), title: "Welcome to Atlas Ops 👋", body: "This dashboard saves everything locally in your browser.\n\n• Production: set up a top-level list, then add batches with ＋ New Batch\n• Drag project cards between columns\n• Click table headers to sort\n• Use ⭳ to export a JSON backup\n\nDelete these sample entries whenever you're ready.", date: t, labels: ["general"], pinned: true, created: Date.now() },
     ],
   };
 }
@@ -1138,6 +1171,7 @@ function dueBadge(d, done) {
 function openModal(title, bodyHtml, onSave) {
   document.getElementById("modalTitle").textContent = title;
   document.getElementById("modalBody").innerHTML = bodyHtml;
+  document.querySelector("#overlay .modal").classList.remove("wide");
   const ms = document.getElementById("modalSave");
   ms.textContent = "Save"; ms.style.display = "";
   modalSaveFn = onSave;
@@ -1161,13 +1195,18 @@ function selOpts(list, sel) { return list.map(o => `<option ${o === sel ? "selec
    batch number, quantity, status and fulfillment date.
    ===================================================================== */
 function parts() { return state.production || (state.production = []); }
+function tops() { return state.tops || (state.tops = []); }
 function fmtQty(n) { return Number(n || 0).toLocaleString(); }
+const pnKey = s => String(s || "").trim().toLowerCase();
+function findPart(pn) { return parts().find(p => pnKey(p.pn) === pnKey(pn)); }
 function partInfo(p) {
   const bs = p.batches || [];
   const sum = l => l.reduce((n, b) => n + (b.qty || 0), 0);
   const open = bs.filter(b => b.status !== "Completed");
+  const openQty = sum(open), onHand = p.onHand || 0;
   return {
-    total: sum(bs), done: sum(bs) - sum(open), open,
+    total: sum(bs), done: sum(bs) - openQty, open, openQty, onHand,
+    toBuild: Math.max(0, openQty - onHand),
     next: open.map(b => b.date).filter(Boolean).sort()[0] || "",   // earliest open fulfillment date
     late: open.filter(b => b.date && daysUntil(b.date) < 0).length,
     closed: bs.length > 0 && !open.length,                          // a part with no batches stays open
@@ -1225,9 +1264,9 @@ function toggleAllParts() {
 }
 
 /* Used by the batch dialog and the add row. Returns null when a value is not valid (a toast says why). */
-function batchInput(p, bid, batch, qty, date) {
+function batchInput(p, bid, batch, qty, date, run) {
   if (!batch) { toast("Batch number is required", "warn"); return null; }
-  if (p.batches.some(x => x.id !== bid && String(x.batch).toLowerCase() === batch.toLowerCase())) {
+  if (p.batches.some(x => x.id !== bid && (x.run || "") === (run || "") && pnKey(x.batch) === pnKey(batch))) {
     toast("That batch number is already on this part", "warn"); return null;
   }
   const n = Number(qty);
@@ -1240,6 +1279,8 @@ function openBatchModal(pid, bid) {
   const b = bid ? p.batches.find(x => x.id === bid) : { batch: "", qty: "", status: "Queued", date: "", notes: "" };
   if (!b) return;
   openModal((bid ? "Edit Batch" : "New Batch") + " · " + p.pn, `
+    ${b.run ? `<div class="run-preview"><span>From <b>${esc(b.top)}</b> batch <b>${esc(b.batch)}</b> × ${fmtQty(b.topQty)} (${fmtQty(b.per)} each)</span>
+      <button class="btn" style="align-self:flex-start" onclick="closeModal();openRunModal('${b.run}')">Edit for every sub-assembly</button></div>` : ""}
     <div class="field-row">
       ${fld("Batch number", `<input id="f_batch" value="${esc(b.batch)}" placeholder="Batch number">`)}
       ${fld("Quantity", `<input type="number" min="0" step="1" id="f_qty" value="${esc(b.qty)}">`)}
@@ -1250,7 +1291,7 @@ function openBatchModal(pid, bid) {
     </div>
     ${fld("Notes", `<textarea id="f_notes" placeholder="Anything to remember">${esc(b.notes)}</textarea>`)}
   `, () => {
-    const data = batchInput(p, bid || null, val("f_batch"), val("f_qty"), val("f_bdate"));
+    const data = batchInput(p, bid || null, val("f_batch"), val("f_qty"), val("f_bdate"), b.run);
     if (!data) return false;
     data.status = val("f_bstatus"); data.notes = val("f_notes");
     if (bid) Object.assign(b, data);
@@ -1282,6 +1323,162 @@ function deleteBatch(pid, bid) {
   save(); renderProduction(); toast("Batch deleted", "warn");
 }
 
+/* ---- top-level lists: what one top-level assembly needs of each sub-assembly ---- */
+function topItemRow(it) {
+  return `<div class="ti-row">
+    <input class="ti-pn" list="pnList" value="${esc(it.pn)}" placeholder="Part number">
+    <input class="ti-per" type="number" min="0" step="any" value="${esc(it.per)}" title="Quantity per top-level">
+    <input class="ti-desc" value="${esc(it.desc)}" placeholder="Description">
+    <button type="button" class="icon-btn" title="Remove" onclick="this.parentElement.remove()">✕</button>
+  </div>`;
+}
+function knownPns() {
+  const all = new Map();
+  parts().forEach(p => all.set(pnKey(p.pn), p.pn));
+  tops().forEach(t => t.items.forEach(i => all.has(pnKey(i.pn)) || all.set(pnKey(i.pn), i.pn)));
+  return [...all.values()].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+}
+function openTopsModal() {
+  const list = [...tops()].sort((a, b) => a.pn.localeCompare(b.pn, undefined, { numeric: true }));
+  openModal("Top-level lists", `
+    ${list.length ? list.map(t => `<div class="tl-row">
+      <div class="tl-main"><b class="mono">${esc(t.pn)}</b>${t.desc ? `<span style="font-size:12.5px;color:var(--text-dim)">${esc(t.desc)}</span>` : ""}
+        <span class="tl-subs">${t.items.map(i => esc(i.pn) + " ×" + fmtQty(i.per)).join(" · ")}</span></div>
+      <button class="icon-btn" title="Edit" onclick="openTopModal('${t.id}')">✎</button>
+      <button class="icon-btn" title="Delete" onclick="deleteTop('${t.id}')">🗑</button>
+    </div>`).join("") : `<div class="log-empty">No top-level lists yet.</div>`}
+    <button class="btn btn-primary" style="align-self:flex-start" onclick="openTopModal()">＋ Top-level list</button>
+  `, null);
+  document.getElementById("modalSave").style.display = "none";
+}
+function openTopModal(id) {
+  const t = id ? tops().find(x => x.id === id) : { pn: "", desc: "", items: [{ pn: "", per: 1, desc: "" }] };
+  if (!t) return;
+  openModal(id ? "Edit Top-level List" : "New Top-level List", `
+    <div class="field-row">
+      ${fld("Top-level part number", `<input id="f_tpn" value="${esc(t.pn)}" placeholder="Part number">`)}
+      ${fld("Description", `<input id="f_tdesc" value="${esc(t.desc)}" placeholder="What it is">`)}
+    </div>
+    <div class="field"><label>Sub-assemblies</label>
+      <div class="ti-list">
+        <div class="ti-head"><span>Part #</span><span>Qty each</span><span>Description</span><span></span></div>
+        <div class="ti-list" id="f_items">${t.items.map(topItemRow).join("")}</div>
+      </div>
+    </div>
+    <button type="button" class="btn" style="align-self:flex-start" onclick="document.getElementById('f_items').insertAdjacentHTML('beforeend', topItemRow({ pn: '', per: 1, desc: '' }))">＋ Sub-assembly</button>
+    <datalist id="pnList">${knownPns().map(n => `<option value="${esc(n)}">`).join("")}</datalist>
+  `, () => {
+    const pn = val("f_tpn");
+    if (!pn) { toast("Top-level part number is required", "warn"); return false; }
+    if (tops().some(x => x.id !== id && pnKey(x.pn) === pnKey(pn))) { toast("That top-level already has a list", "warn"); return false; }
+    const items = [], seen = new Set();
+    for (const row of document.querySelectorAll("#f_items .ti-row")) {
+      const ipn = row.querySelector(".ti-pn").value.trim(), per = Number(row.querySelector(".ti-per").value);
+      if (!ipn) continue;
+      if (pnKey(ipn) === pnKey(pn)) { toast("A list can't include its own top-level", "warn"); return false; }
+      if (seen.has(pnKey(ipn))) { toast(ipn + " is in the list twice", "warn"); return false; }
+      if (!Number.isFinite(per) || per <= 0) { toast("Quantity for " + ipn + " must be more than 0", "warn"); return false; }
+      seen.add(pnKey(ipn));
+      items.push({ pn: ipn, per, desc: row.querySelector(".ti-desc").value.trim() });
+    }
+    if (!items.length) { toast("Add at least one sub-assembly", "warn"); return false; }
+    const data = { pn, desc: val("f_tdesc"), items };
+    if (id) Object.assign(t, data); else tops().push({ id: uid(), created: Date.now(), ...data });
+    save(); toast(id ? "List updated" : "List added");
+    setTimeout(openTopsModal);   // back to the lists once this dialog closes
+  });
+  document.querySelector("#overlay .modal").classList.add("wide");
+}
+function deleteTop(id) {
+  const t = tops().find(x => x.id === id);
+  if (!t || !confirm(`Delete the list for ${t.pn}?\n\nBatches already entered stay as they are.`)) return;
+  state.tops = tops().filter(x => x.id !== id);
+  save(); openTopsModal(); toast("List deleted", "warn");
+}
+
+/* ---- a top-level batch: one entry adds a batch to every sub-assembly on its list ---- */
+function runBatches(run) {
+  const out = [];
+  parts().forEach(p => (p.batches || []).forEach(b => { if (b.run === run) out.push([p, b]); }));
+  return out;
+}
+function runPreview() {
+  const el = document.getElementById("runPreview");
+  const t = tops().find(x => x.id === val("f_top")), q = Number(val("f_rqty"));
+  if (!el || !t) return;
+  el.innerHTML = `<span>Adds to ${t.items.length} sub-assembl${t.items.length > 1 ? "ies" : "y"}:</span>` + t.items.map(i => {
+    const have = findPart(i.pn);
+    return `<span><b>${esc(i.pn)}</b> × ${q > 0 ? fmtQty(q * i.per) : "—"}${have ? "" : ` <span class="new">new part</span>`}</span>`;
+  }).join("");
+}
+function openRunModal(run) {
+  const linked = run ? runBatches(run) : [];
+  if (run && !linked.length) return;
+  const first = linked[0] && linked[0][1];
+  if (!run && !tops().length) {
+    openModal("New Batch", `<div class="log-empty">Set up a top-level list first. It says which sub-assemblies one top-level needs.</div>
+      <button class="btn btn-primary" style="align-self:flex-start" onclick="openTopModal()">＋ Top-level list</button>`, null);
+    document.getElementById("modalSave").style.display = "none";
+    return;
+  }
+  const list = [...tops()].sort((a, b) => a.pn.localeCompare(b.pn, undefined, { numeric: true }));
+  const r = first ? { batch: first.batch, qty: first.topQty, date: first.date } : { batch: "", qty: "", date: "" };
+  openModal(run ? "Edit Batch · " + first.top : "New Batch", `
+    ${run ? `<div class="run-preview"><span><b>${esc(first.top)}</b> · ${linked.length} sub-assembl${linked.length > 1 ? "ies" : "y"}: ${linked.map(([p]) => esc(p.pn)).join(", ")}</span></div>`
+      : fld("Top-level", `<select id="f_top" onchange="runPreview()">${list.map(t => `<option value="${t.id}">${esc(t.pn)}${t.desc ? " · " + esc(t.desc) : ""}</option>`).join("")}</select>`)}
+    <div class="field-row">
+      ${fld("Batch number", `<input id="f_rbatch" value="${esc(r.batch)}" placeholder="Batch number">`)}
+      ${fld("Top-level quantity", `<input type="number" min="0" step="1" id="f_rqty" value="${esc(r.qty)}" oninput="runPreview()">`)}
+    </div>
+    <div class="field-row">
+      ${fld("Status", `<select id="f_rstatus">${run ? `<option value="">Keep each</option>` : ""}${selOpts(BATCH_STATUSES, run ? "" : "Queued")}</select>`)}
+      ${fld("Fulfillment date", `<input type="date" id="f_rdate" value="${esc(r.date)}">`)}
+    </div>
+    ${run ? `<button class="btn btn-danger" style="align-self:flex-start" onclick="deleteRun('${run}')">Delete this batch from every sub-assembly</button>`
+      : `${fld("Notes", `<textarea id="f_notes" placeholder="Anything to remember"></textarea>`)}<div class="run-preview" id="runPreview"></div>`}
+  `, () => {
+    const batch = val("f_rbatch"), qs = val("f_rqty"), q = Number(qs), date = val("f_rdate"), status = val("f_rstatus");
+    if (!batch) { toast("Batch number is required", "warn"); return false; }
+    if (qs === "" || !Number.isFinite(q) || q < 0) { toast("Quantity must be a number", "warn"); return false; }
+    const top = run ? first.top : tops().find(x => x.id === val("f_top"));
+    if (!top) return false;
+    const topPn = run ? top : top.pn;
+    const clash = parts().some(p => (p.batches || []).some(b => b.run && b.run !== run && pnKey(b.top) === pnKey(topPn) && pnKey(b.batch) === pnKey(batch)));
+    if (clash) { toast(`Batch ${batch} of ${topPn} is already entered`, "warn"); return false; }
+    if (run) {
+      linked.forEach(([, b]) => {
+        Object.assign(b, { batch, topQty: q, qty: q * (b.per || 1), date });
+        if (status) b.status = status;
+      });
+      save(); renderProduction(); toast("Batch updated on " + linked.length + " sub-assembl" + (linked.length > 1 ? "ies" : "y"));
+      return;
+    }
+    const id = uid(), notes = val("f_notes");
+    top.items.forEach(i => {
+      let p = findPart(i.pn);
+      if (!p) { p = { id: uid(), pn: i.pn, desc: i.desc || "", onHand: 0, created: Date.now(), batches: [] }; parts().push(p); }
+      else if (!p.desc && i.desc) p.desc = i.desc;
+      p.batches.push({ id: uid(), created: Date.now(), batch, qty: q * i.per, status, date, notes, run: id, top: top.pn, topQty: q, per: i.per });
+    });
+    save(); renderProduction(); toast(`Batch ${batch} added to ${top.items.length} sub-assembl${top.items.length > 1 ? "ies" : "y"}`);
+  });
+  if (!run) runPreview();
+}
+function deleteRun(run) {
+  const linked = runBatches(run);
+  if (!linked.length) return;
+  const b = linked[0][1];
+  if (!confirm(`Delete batch ${b.batch} of ${b.top} from ${linked.length} sub-assembl${linked.length > 1 ? "ies" : "y"}?`)) return;
+  linked.forEach(([p, x]) => { p.batches = p.batches.filter(y => y !== x); });
+  closeModal(); save(); renderProduction(); toast("Batch deleted", "warn");
+}
+function setOnHand(pid, v) {
+  const p = parts().find(x => x.id === pid), n = Number(v);
+  if (!p) return;
+  p.onHand = Number.isFinite(n) && n >= 0 ? n : 0;
+  save(); renderProduction();
+}
+
 function partsFiltered() {
   const q = ui.prodSearch.toLowerCase();
   const showDone = document.getElementById("showDoneParts").checked;
@@ -1289,19 +1486,20 @@ function partsFiltered() {
     const bs = p.batches || [];
     if (ui.prodStatus !== "All" && !bs.some(b => b.status === ui.prodStatus)) return false;
     if (!showDone && ui.prodStatus !== "Completed" && partInfo(p).closed) return false;
-    return !q || (p.pn + " " + (p.desc || "") + " " + bs.map(b => b.batch + " " + (b.notes || "")).join(" ")).toLowerCase().includes(q);
+    return !q || (p.pn + " " + (p.desc || "") + " " + bs.map(b => b.batch + " " + (b.top || "") + " " + (b.notes || "")).join(" ")).toLowerCase().includes(q);
   });
 }
 const PROD_SORT = {
   pn: p => String(p.pn), desc: p => String(p.desc || ""),
-  batches: p => (p.batches || []).length, qty: p => partInfo(p).total,
+  batches: p => (p.batches || []).length, open: p => partInfo(p).openQty,
+  onhand: p => p.onHand || 0, build: p => partInfo(p).toBuild,
   next: p => partInfo(p).next || "9999-12-31",
 };
 function partDetailHtml(p) {
   const bs = [...(p.batches || [])].sort((a, b) =>
     (a.date || "9999").localeCompare(b.date || "9999") || String(a.batch).localeCompare(String(b.batch), undefined, { numeric: true }));
   const enter = `onkeydown="if(event.key==='Enter')addBatchInline('${p.id}')"`;
-  return `<tr class="prod-detail"><td colspan="7">
+  return `<tr class="prod-detail"><td colspan="9">
     ${bs.length ? `<div class="qbd"><span class="lbl">Qty by date</span>${qtyByDate(p).map(g => {
       const n = g.date ? daysUntil(g.date) : null;
       const cls = !g.open ? "done" : n !== null && n < 0 ? "late" : n !== null && n <= 3 ? "soon" : "";
@@ -1309,12 +1507,13 @@ function partDetailHtml(p) {
       return `<span class="qbd-chip ${cls}" title="${tip}">${g.date ? fmtDate(g.date) : "No date"}<b>${fmtQty(g.qty)}</b></span>`;
     }).join("")}</div>
     <div class="batches">
-      <div class="b-row b-head"><span>Batch #</span><span class="num">Qty</span><span>Status</span><span>Fulfillment</span><span>Notes</span><span></span></div>
+      <div class="b-row b-head"><span>Batch #</span><span class="num">Qty</span><span>Status</span><span>Fulfillment</span><span>From</span><span>Notes</span><span></span></div>
       ${bs.map(b => `<div class="b-row">
         <span class="mono">${esc(b.batch)}</span>
         <span class="mono num">${fmtQty(b.qty)}</span>
         <span><span class="status-wrap" style="--c:${BATCH_COLORS[b.status]}"><select class="status-sel" title="Change status" onchange="setBatchStatus('${p.id}','${b.id}',this.value)">${selOpts(BATCH_STATUSES, b.status)}</select></span></span>
         <span>${dueBadge(b.date, b.status === "Completed") || "—"}</span>
+        <span class="b-from" title="${b.run ? esc(b.top) + " × " + fmtQty(b.topQty) + ", " + fmtQty(b.per) + " each" : ""}">${b.run ? esc(b.top) + " × " + fmtQty(b.topQty) : "—"}</span>
         <span class="b-note" title="${esc(b.notes)}">${esc(b.notes)}</span>
         <span class="b-actions">
           <button class="icon-btn" title="Edit" onclick="openBatchModal('${p.id}','${b.id}')">✎</button>
@@ -1350,10 +1549,10 @@ function renderProduction() {
 
   const wrap = document.getElementById("prodTableWrap");
   if (!rows.length) {
-    wrap.innerHTML = `<div class="empty-state"><div class="big">🏭</div>${parts().length ? "No parts match." : "No parts yet."} Add one with <b>＋ New Part</b>.</div>`;
+    wrap.innerHTML = `<div class="empty-state"><div class="big">🏭</div>${parts().length ? "No parts match." : "No parts yet."} Set up a top-level list, then add a batch with <b>＋ New Batch</b>.</div>`;
   } else {
     wrap.innerHTML = `<table class="data"><thead><tr>
-      ${th("prod", "pn", "Part #")}${th("prod", "desc", "Description")}${th("prod", "batches", "Batches")}${th("prod", "qty", "Quantity")}<th style="cursor:default">Status</th>${th("prod", "next", "Next Fulfillment")}<th style="cursor:default"></th>
+      ${th("prod", "pn", "Part #")}${th("prod", "desc", "Description")}${th("prod", "batches", "Batches")}${th("prod", "open", "Open Qty")}${th("prod", "onhand", "On Hand")}${th("prod", "build", "To Build")}<th style="cursor:default">Status</th>${th("prod", "next", "Next Fulfillment")}<th style="cursor:default"></th>
     </tr></thead><tbody>
     ${rows.map(p => {
       const bs = p.batches || [], i = partInfo(p), open = !!ui.expandedParts[p.id];
@@ -1361,8 +1560,10 @@ function renderProduction() {
         <td class="mono"><button class="prod-toggle" aria-expanded="${open}" title="${open ? "Hide" : "Show"} batches" onclick="togglePart('${p.id}')"><span class="chev">▸</span><b>${esc(p.pn)}</b></button></td>
         <td>${esc(p.desc) || "—"}</td>
         <td class="mono">${bs.length}</td>
-        <td><div class="mono" title="Completed of total">${fmtQty(i.done)} <span class="qty-of">/ ${fmtQty(i.total)}</span></div>
-            <div class="prog" style="margin-top:5px"><div style="width:${i.total ? i.done / i.total * 100 : 0}%"></div></div></td>
+        <td><div class="mono">${fmtQty(i.openQty)}</div>
+            <div class="prog" style="margin-top:5px" title="${fmtQty(i.done)} of ${fmtQty(i.total)} completed"><div style="width:${i.total ? i.done / i.total * 100 : 0}%"></div></div></td>
+        <td><input class="oh-in" type="number" min="0" step="1" value="${i.onHand}" title="On hand" aria-label="On hand for ${esc(p.pn)}" onchange="setOnHand('${p.id}',this.value)"></td>
+        <td><span class="to-build ${i.toBuild ? "" : "zero"}">${fmtQty(i.toBuild)}</span></td>
         <td>${BATCH_STATUSES.map(st => {
           const n = bs.filter(b => b.status === st).length;
           return n ? `<span class="pill sm" style="color:${BATCH_COLORS[st]};background:color-mix(in srgb, ${BATCH_COLORS[st]} 14%, transparent)">${n} ${st}</span>` : "";
@@ -1388,6 +1589,7 @@ function renderProduction() {
     `<div class="stat"><b>${openParts.length}</b> open parts</div>` +
     `<div class="stat"><b>${openB.length}</b> open batches</div>` +
     `<div class="stat"><b>${fmtQty(openB.reduce((n, b) => n + (b.qty || 0), 0))}</b> qty open</div>` +
+    `<div class="stat"><b>${fmtQty(parts().reduce((n, p) => n + partInfo(p).toBuild, 0))}</b> to build</div>` +
     (late ? `<div class="stat" style="border-color:var(--red)"><b style="color:var(--red)">${late}</b> late</div>` : "");
 }
 
@@ -2319,7 +2521,7 @@ document.getElementById("importFile").addEventListener("change", e => {
    The file handle is remembered in IndexedDB; after a browser restart
    you click the 💾 button once to re-grant write access.
    ===================================================================== */
-const REV = "rev 1.1.1";   // site port of local build 2026-10-09-o
+const REV = "rev 1.2.0";   // site port of local build 2026-10-09-o
 const LS_BACKUP_TS = "atlas_ops_last_backup";
 let backupHandle = null, backupTimer = null, backupPaused = false, backupError = "";
 
