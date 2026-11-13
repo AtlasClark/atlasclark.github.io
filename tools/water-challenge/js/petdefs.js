@@ -21,7 +21,7 @@ import * as C from "./config.js";
 import { PEN1_ART, EXTRA_ART } from "./pen1art.js";
 import { PEN2_ART, REWARD2_ART } from "./pen2art.js";
 import { PEN3_ART } from "./pen3art.js";
-import { PROP_ART, HOLIDAY_ART, PERSONAL_ART } from "./propart.js";
+import { PROP_ART, HOLIDAY_ART, PERSONAL_ART, SHOP_HAT_ART } from "./propart.js";
 import { CUP_ART, FX_ART } from "./styleart.js";
 
 export const PET_DEFS_FORMAT = 1;
@@ -34,10 +34,11 @@ export const PET_DEFS_FORMAT = 1;
 export const defs = {};            /* kind -> pet: the built-in drawing or its replacement */
 export const hats = {};            /* HAT_KEYS -> { pal, shapes }: the built-in drawing or its replacement */
 export const HOLIDAY_KEYS = Object.keys(HOLIDAY_ART);
-export const PERSONAL_KEYS = Object.keys(PERSONAL_ART);  /* hats given to one person (config PERSONAL_HATS) */
+export const PERSONAL_KEYS = Object.keys(PERSONAL_ART);
+export const SHOP_HAT_KEYS = Object.keys(SHOP_HAT_ART);    /* the Hat shop: "hat:<key>", as their cosmetics */  /* hats given to one person (config PERSONAL_HATS) */
 export const CUP_KEYS = Object.keys(CUP_ART);          /* "decor:<key>": Style shop cup items */
 export const FX_KEYS = Object.keys(FX_ART);            /* "effect:<key>": effect particles */
-export const HAT_KEYS = ["crown", "jester", "grave", "coin", "medal", ...HOLIDAY_KEYS, ...PERSONAL_KEYS, ...CUP_KEYS, ...FX_KEYS];
+export const HAT_KEYS = ["crown", "jester", "grave", "coin", "medal", ...HOLIDAY_KEYS, ...PERSONAL_KEYS, ...SHOP_HAT_KEYS, ...CUP_KEYS, ...FX_KEYS];
 export const EYE_INK = "#2a2118";
 
 const SHAPES = { ell: 1, path: 1, eye: 1 };
@@ -77,7 +78,7 @@ function seedPens() {
     if (swim.length) defs[k] = Object.assign({ pal, swim, portrait: null, crown: p.crown, range: 1 },
                                              ZONES.includes(p.zone) && p.zone !== "surface" ? { zone: p.zone } : {});
   }
-  for (const [key, h] of Object.entries({ ...PROP_ART, ...HOLIDAY_ART, ...PERSONAL_ART, ...CUP_ART, ...FX_ART })) {
+  for (const [key, h] of Object.entries({ ...PROP_ART, ...HOLIDAY_ART, ...PERSONAL_ART, ...SHOP_HAT_ART, ...CUP_ART, ...FX_ART })) {
     const pal = {};
     for (const [n, c] of Object.entries(h.pal)) { const v = cleanColour(c); if (v) pal[n] = v; }
     hats[key] = Object.assign({ pal, shapes: h.shapes.map(s => cleanShape(s, pal)).filter(Boolean) }, h.behind === true ? { behind: true } : {});

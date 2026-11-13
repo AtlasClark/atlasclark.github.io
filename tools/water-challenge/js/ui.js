@@ -260,7 +260,9 @@ function updateGlasses() {
        holiday with its own hats, every other pet wears that holiday's jester hat too; the
        icon over the glass still marks only the leader. */
     const lead = best > 0 && dayScoreFor(total, p, key) >= best - C.RATIO_EPSILON, leadJester = lead && !over;
-    const own = (S.settings.hats || {})[p.name];                 /* a personal hat, when no other hat is on */
+    /* when no other hat is on: a personal hat from Settings, else one bought in the Hat shop */
+    const bought = lookOf(p).hat ? "hat:" + lookOf(p).hat : "";
+    const own = [(S.settings.hats || {})[p.name], bought].find(k => k && petHats[k]) || "";
     st.duckCrown = lead || holidayHats || !!own;
     st.duckJester = lead ? leadJester : holidayHats ? true : own || false;
     st.duckMedal = wearsMedal(p, key);

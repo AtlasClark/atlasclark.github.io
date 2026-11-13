@@ -16,7 +16,7 @@ import { $, esc } from "./util.js";
 import { setMsg, ui, setHtml, render } from "./ui.js";
 
 let hooks = null, owner = null, running = false;
-const TABS = [{ key: "colour", name: "Colour", note: "Recolour any pet you have alive. Each recolour costs " + PAINT_COST + " shell" + (PAINT_COST === 1 ? "" : "s") + "." }, ...SLOTS];
+const TABS = [{ key: "colour", name: "Colour", note: "Recolour any pet you have alive. Each recolour costs " + PAINT_COST + " shell" + (PAINT_COST === 1 ? "" : "s") + "." }, ...SLOTS.filter(s => s.key !== "hat")];
 const SHELL = '<span class="shellico sm"></span>';
 
 export function initStyle(h, getOwner) {

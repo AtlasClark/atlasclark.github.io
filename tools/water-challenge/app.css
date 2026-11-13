@@ -1481,6 +1481,22 @@ li.pour.armed .undo-x { opacity: 1; background: #c4434f; color: #fff; }
 .style-item.owned .sp { color: var(--muted); }
 .style-item.worn .sp { color: var(--good); }
 .style-act { margin-top: 14px; }
+/* the Hat shop (rev 1.50.0) */
+.shop-hats { margin-top: 22px; }
+.hat-wrap { display: grid; grid-template-columns: 260px minmax(0, 1fr); gap: 22px; align-items: start; }
+@media (max-width: 700px) { .hat-wrap { grid-template-columns: 1fr; } }
+.hat-room canvas { height: 240px; }
+.hat-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(112px, 1fr)); gap: 6px; }
+.hat-card { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 8px 6px 7px; border-radius: 12px; cursor: pointer;
+            border: 1px solid var(--chip-line); background: var(--pc-bg); color: var(--ink-2); font: inherit; }
+.hat-card:hover { border-color: var(--accent); }
+.hat-card.on { border-color: var(--accent); box-shadow: inset 0 0 0 2px var(--accent); }
+.hat-card .hat-ico { display: block; height: 40px; width: 56px; }
+.hat-card .sn { font-weight: 800; font-size: 12px; text-align: center; line-height: 1.15; }
+.hat-card .sp { display: inline-flex; align-items: center; gap: 3px; font-size: 11.5px; font-weight: 700; color: var(--gold-ink); }
+.hat-card.owned .sp { color: var(--muted); }
+.hat-card.worn .sp { color: var(--good); }
+.hat-card .moves { margin-left: 3px; font-style: normal; color: var(--accent-ink); }
 .style-act .btn { margin-top: 6px; }
 .style-act .hint { margin: 6px 0 0; }
 .style-name { margin: 0 0 4px; font-size: 13px; }

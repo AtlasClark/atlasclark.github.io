@@ -12,7 +12,8 @@ export const SLOTS = [
   { key: "finish", name: "Finishes", note: "A new coat for whichever pet you wear." },
   { key: "effect", name: "Effects",  note: "Something going on around your pet." },
   { key: "decor",  name: "Cup",      note: "Something in or on your glass." },
-  { key: "theme",  name: "Themes",   note: "A new look for your whole page. Only you see it." }
+  { key: "theme",  name: "Themes",   note: "A new look for your whole page. Only you see it." },
+  { key: "hat",    name: "Hats",     note: "" }                     /* sold in the Hat shop (hatui.js), not a Style shop tab */
 ];
 const ITEMS = [
   /* themes restyle the wearer's own page (rev 1.39.0): themefx.js scenes + app.css tokens */
@@ -47,7 +48,20 @@ const ITEMS = [
   ["decor", "flag",      "Pirate flag",    18, "This glass is claimed."],
   ["decor", "castle",    "Sandcastle",     22, "A fixer-upper."],
   ["decor", "lights",    "Fairy lights",   25, "Strung round the glass."],
-  ["decor", "sub",       "Submarine",      100, "Parked on the bottom."]
+  ["decor", "sub",       "Submarine",      100, "Parked on the bottom."],
+  /* the Hat shop (rev 1.50.0): drawings in propart.js SHOP_HAT_ART, keyed "hat:<key>" */
+  ["hat", "beanie",   "Propeller beanie", 150, "Goes nowhere, fast."],
+  ["hat", "cowboy",   "Cowboy hat",       150, "For the wild west end of the office."],
+  ["hat", "viking",   "Viking helmet",    150, "Raids the water cooler."],
+  ["hat", "chef",     "Chef's hat",       150, "Only cooks with water."],
+  ["hat", "captain",  "Captain's cap",    150, "Runs a tight ship."],
+  ["hat", "fishbowl", "Fishbowl",         150, "A friend who swims along."],
+  ["hat", "cake",     "Birthday cake",    150, "It's somebody's birthday somewhere."],
+  ["hat", "boppers",  "Head boppers",     150, "Boing."],
+  ["hat", "swimcap",  "Flowery swim cap", 150, "Lane three, very fashionable."],
+  ["hat", "wizard",   "Wizard hat",       150, "Turns water into more water."],
+  ["hat", "duck",     "Rubber duck",      150, "Rides along on top."],
+  ["hat", "grad",     "Mortarboard",      150, "A degree in hydration."]
 ];
 export const COSMETICS = Object.fromEntries(ITEMS.map(([slot, key, name, price, blurb]) =>
   [slot + ":" + key, { id: slot + ":" + key, slot, key, name, price, blurb }]));

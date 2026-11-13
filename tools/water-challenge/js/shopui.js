@@ -14,6 +14,7 @@ import { PlinkoBoard } from "./plinko.js";
 import { $, esc, has, todayKey, prettyTime, localStamp, bus } from "./util.js";
 import { setMsg, ensureIcons, ui, render, setHtml } from "./ui.js";
 import { initStyle, renderStyle } from "./styleui.js";
+import { initHats, renderHats } from "./hatui.js";
 
 let hooks = null;            /* { settle, guard, askConfirm, pollSoon } from app.js */
 let board = null, holdTimer = 0;
@@ -38,6 +39,7 @@ export function initShop(h) {
     ' &middot; <span class="rar chest">&#9733; Chest</span> ' + pct(chestOdds());
   $("shopBalance").addEventListener("click", e => { if (e.target.closest("[data-act=whoami]")) hooks.whoAmI(); });
   initStyle(Object.assign({}, h, { rerender: () => renderShop() }), shopFor);
+  initHats(Object.assign({}, h, { rerender: () => renderShop() }), shopFor);
   $("plinkoDrop").addEventListener("click", dropToken);
   $("plinkoBets").innerHTML = C.SPLINKO_BETS.map(b => '<button type="button" class="seg" data-bet="' + b + '">' + b + '</button>').join("");
   $("plinkoMode").addEventListener("click", e => {
@@ -95,6 +97,7 @@ export function renderShop() {
     '<i class="dot" style="background:' + x.color + '"></i>' + esc(x.name) + '<b>' + shownBalance(x) + '</b></button>').join(""));
   $("shopGrid").hidden = !p;
   renderStyle();
+  renderHats();
   if (!p) {
     setHtml("shopBalance", S.participants.length
       ? 'Set <b>your glass</b> to shop: tokens are spent only from your own. <button type="button" class="btn primary small" data-act="whoami">Pick your glass</button>'

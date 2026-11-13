@@ -5,6 +5,7 @@ import * as C from "./config.js";
 import { defs, hats, drawShapes, drawHat, hatSvgFrom, hatAspect, medalSpot, bodyBox } from "./petdefs.js";
 import { todayKey, parseKey, monthDayOk } from "./util.js";
 import { finishFn, finishWrap } from "./cosmetics.js";
+import { HAT_MOTION } from "./propart.js";
 
 /* The events whose days are set in Settings > Events: the HOLIDAY_HATS entries with a theme. */
 export const EVENTS = C.HOLIDAY_HATS.filter(h => h.theme);
@@ -91,7 +92,41 @@ function critterEye(ctx, x, y, r, dead) {
 /* jester: false = the crown, true = the jester hat (or the day's holiday pair), or a
    hat key (a personal hat, rev 1.49.2). */
 function critterCrown(ctx, cx, cy, r, jester) {
-  drawHat(ctx, (typeof jester === "string" && hats[jester]) || hats[hatKeyFor(jester === true)], cx, cy, r);
+  if (typeof jester === "string") { if (hats[jester]) drawWornHat(ctx, jester, hats[jester], cx, cy, r); return; }   /* a hat this page doesn't know: none */
+  drawHat(ctx, hats[hatKeyFor(jester === true)], cx, cy, r);
+}
+
+/* Moving hats (rev 1.50.0): runs of shapes in a group named in HAT_MOTION[key] are drawn
+   moved by the clock; the rest as drawn. hatClock.t fixes the time (tests). */
+export const hatClock = { t: null };
+function drawWornHat(ctx, key, hat, cx, cy, r) {
+  const mo = HAT_MOTION[key];
+  if (!mo) { drawHat(ctx, hat, cx, cy, r); return; }
+  const t = hatClock.t ?? performance.now() / 1000, sh = hat.shapes;
+  ctx.save();
+  ctx.translate(cx, cy);
+  for (let i = 0; i < sh.length;) {
+    let j = i + 1;
+    while (j < sh.length && sh[j].g === sh[i].g) j++;
+    const m = sh[i].g && mo[sh[i].g];
+    if (m) { ctx.save(); moveHatPart(ctx, m, r, t); drawShapes(ctx, sh.slice(i, j), r, 0, hat.pal, false); ctx.restore(); }
+    else drawShapes(ctx, sh.slice(i, j), r, 0, hat.pal, false);
+    i = j;
+  }
+  ctx.restore();
+}
+function moveHatPart(ctx, m, r, t) {
+  const w = 6.2832 * (m.hz || 1) * t + (m.ph || 0), s = Math.sin(w), a = m.amp ?? 1;
+  const px = (m.at ? m.at[0] : 0) * r, py = (m.at ? m.at[1] : 0) * r, f = ((m.hz || 1) * t + (m.ph || 0) / 6.2832) % 1;
+  ctx.translate(px, py);
+  if (m.type === "flip") ctx.scale(Math.cos(w), 1);
+  else if (m.type === "sway") ctx.rotate(a * s);
+  else if (m.type === "bob") { ctx.translate(0, -a * (1 + s) / 2 * r); ctx.rotate((m.tilt || 0) * Math.cos(w)); }
+  else if (m.type === "flicker") { ctx.rotate(0.1 * Math.sin(w * 0.63)); ctx.scale(1 - 0.06 * s, 1 + a * (0.6 * s + 0.4 * Math.sin(w * 1.7))); }
+  else if (m.type === "swim") { ctx.translate(a * s * r, 0); ctx.scale(-Math.max(-1, Math.min(1, Math.cos(w) * 4)), 1); }
+  else if (m.type === "rise") { ctx.translate(0, -a * f * r); ctx.globalAlpha *= Math.sin(Math.PI * f); }
+  else if (m.type === "twinkle") { const k = 0.7 + 0.3 * s; ctx.scale(k, k); ctx.globalAlpha *= 0.55 + 0.45 * s; }
+  ctx.translate(-px, -py);
 }
 
 /* finish: an optional cosmetic finish key (cosmetics.js) for the pet's own colours. */

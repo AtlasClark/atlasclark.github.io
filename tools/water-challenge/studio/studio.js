@@ -4,7 +4,7 @@
    browser (IndexedDB) until it is saved. Reference images are never exported. */
 
 import * as C from "../js/config.js";
-import { defs, hats, HAT_KEYS, HOLIDAY_KEYS, PERSONAL_KEYS, CUP_KEYS, FX_KEYS, colourOf, PET_DEFS_FORMAT, fxSpot, medalSpot, drawShapes, ZONES, zoneOf,
+import { defs, hats, HAT_KEYS, HOLIDAY_KEYS, PERSONAL_KEYS, SHOP_HAT_KEYS, CUP_KEYS, FX_KEYS, colourOf, PET_DEFS_FORMAT, fxSpot, medalSpot, drawShapes, ZONES, zoneOf,
          bodySpan, depthShare, opacityOf, ZONE_LABELS } from "../js/petdefs.js";
 import { COSMETICS } from "../js/cosmetics.js";
 import { CUP_PLACE, CUP_H } from "../js/styleart.js";
@@ -16,7 +16,7 @@ import * as G from "./geom.js";
 import { CloudDir, hello } from "../js/cloud.js";
 import { kvGet } from "../js/store.js";
 
-const REV = "studio 1.20.4";
+const REV = "studio 1.21.0";
 const PETS_URL = "../pets/pets.json";
 const $ = id => document.getElementById(id);
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -49,10 +49,11 @@ const HAT_NAMES = { crown: "Crown", jester: "Jester hat", grave: "Headstone", co
 /* holiday hat key -> { holiday, role } from config */
 const HOLIDAY_OF = Object.fromEntries(C.HOLIDAY_HATS.flatMap(h => [[h.crown, { h, role: "crown" }], [h.jester, { h, role: "jester" }]]));
 const isHat = k => HAT_KEYS.includes(k);
-const wears = k => k === "crown" || k === "jester" || HOLIDAY_KEYS.includes(k) || PERSONAL_KEYS.includes(k);
+const wears = k => k === "crown" || k === "jester" || HOLIDAY_KEYS.includes(k) || PERSONAL_KEYS.includes(k) || SHOP_HAT_KEYS.includes(k);
 const isCup = k => CUP_KEYS.includes(k), isFx = k => FX_KEYS.includes(k);
 const hued = k => !isHat(k) || k === "grave" || isFx(k);
 for (const h of C.PERSONAL_HATS) HAT_NAMES[h.key] = h.name;
+for (const k of SHOP_HAT_KEYS) HAT_NAMES[k] = COSMETICS[k].name;
 for (const k of CUP_KEYS) HAT_NAMES[k] = COSMETICS[k].name;
 for (const k of FX_KEYS) HAT_NAMES[k] = { "effect:sparkles": "Sparkle", "effect:hearts": "Heart", "effect:notes": "Music note",
                                           "effect:stars": "Orbiting star", "effect:rain": "Rain cloud" }[k];
@@ -741,6 +742,7 @@ function renderPetList() {
                  { pen: "Hats and props" }, { name: "Crown and jester", i: 0, kinds: ["crown", "jester"] },
                  { name: "Holiday hats", i: 0, kinds: HOLIDAY_KEYS },
                  { name: "Personal hats", i: 0, kinds: PERSONAL_KEYS },
+                 { name: "Hat shop", i: 0, kinds: SHOP_HAT_KEYS },
                  { name: "Headstone, coin and medal", i: 0, kinds: ["grave", "coin", "medal"] },
                  { pen: "Style shop" }, { name: "Cup", i: 0, kinds: CUP_KEYS },
                  { name: "Effect particles", i: 0, kinds: FX_KEYS }];
@@ -1044,6 +1046,7 @@ function hatTab() {
     medal: "Worn for a day by yesterday&rsquo;s winner. The origin is each pet&rsquo;s medal spot (the middle of the disc), in units of the pet&rsquo;s size. The same drawing makes the small medal icon in the activity list and recap."
   }[k] || (HOLIDAY_OF[k] ? "Worn in place of the " + (HOLIDAY_OF[k].role === "crown" ? "crown (leader who met their goal)" : "jester hat (leader still under goal)") +
     " from the day before " + esc(HOLIDAY_OF[k].h.name) + " to the day after. The origin is each pet&rsquo;s crown spot; the same drawing makes the small hat icons."
+    : SHOP_HAT_KEYS.includes(k) ? "Sold in the Hat shop for " + COSMETICS[k].price + " shells; worn whenever the pet has no crown, jester, holiday or personal hat on. The origin is each pet&rsquo;s crown spot; pets face left, so the back of the hat is on the right. Shapes grouped and named in the page&rsquo;s HAT_MOTION move on the page (here they stand still)."
     : PERSONAL_KEYS.includes(k) ? "A personal hat, given to one person in the page&rsquo;s Settings. Their pet wears it whenever it has no crown, jester or holiday hat on. The origin is each pet&rsquo;s crown spot; pets face left, so the back of the hat is on the right."
     : isCup(k) ? "Style shop cup item. Units are the glass&rsquo;s inside width; the origin is " + CUP_AT[(CUP_PLACE[k.slice(6)] || {}).at || "bottom"] +
       ", and the dashed box is the inside of the glass. On the page it may reach just past the card. Fixed colours."
