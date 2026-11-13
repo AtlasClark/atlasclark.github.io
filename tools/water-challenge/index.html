@@ -84,6 +84,12 @@
           <p class="hint">Worn whenever the pet has no crown, jester or holiday hat on.</p>
           <div id="hatList" class="ev-list"></div>
         </details>
+        <details class="sp-card" data-card="prices">
+          <summary>Shop prices</summary>
+          <p class="hint">Leave a box blank for the usual price. A new price counts from the next purchase; nothing already bought changes.</p>
+          <div id="priceList" class="price-list"></div>
+          <button type="button" id="priceReset" class="btn muted small">Back to the usual prices</button>
+        </details>
         <details class="sp-card" data-card="roster">
           <summary>Roster <b id="rosterCount" class="sp-count"></b></summary>
           <p class="hint">Away hides a glass and pauses streaks and the year target.</p>
@@ -153,7 +159,7 @@
             <button type="button" id="bSyncNow" class="btn primary">Sync now</button></div>
         </details>
       </div>
-      <div class="sp-foot" id="spFoot"><span class="hint">Challenge, Goals and Events are shared with everyone in this challenge.</span>
+      <div class="sp-foot" id="spFoot"><span class="hint">Challenge, Goals, Events, hats and prices are shared with everyone in this challenge.</span>
         <button type="button" id="applySettings" class="btn primary">Save</button></div>
     </div>
   </header>
@@ -234,7 +240,7 @@
         </div>
         <div id="shopGrid" class="shop-grid">
             <div class="panel shop-reroll">
-              <div class="panel-heading"><p class="eyebrow">1 token &middot; once a day</p><h2>Reroll today's pet</h2></div>
+              <div class="panel-heading"><p class="eyebrow" id="rerollEyebrow">1 token &middot; once a day</p><h2>Reroll today's pet</h2></div>
               <div id="rerollBox"></div>
             </div>
             <div class="panel shop-buy">

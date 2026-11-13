@@ -10,7 +10,8 @@ import { saveParticipant, petKindFor, setSpendCheck } from "./store.js";
 import { has, todayKey, localStamp, shiftKey, parseKey, aAn, spendsBy } from "./util.js";
 import { applyRoll, dayRng, grantReward, isGrave, petBinIndex, penOf, binsFor, rollPen, pen2Open, pen3Open, pen3Earned, PEN3_CLOSED, hueOf } from "./pets.js";
 import { statsOf, racesOn, makeField, raceOdds, runRace, racePay, betHit, raceGrowth, raceXp, levelOf, rng, canRace } from "./race.js";
-import { COSMETICS, SLOTS, PAINT_COST } from "./cosmetics.js";
+import { COSMETICS, SLOTS } from "./cosmetics.js";
+import { live } from "./prices.js";
 import { hydrationEarned } from "./hydration.js";
 import { monsterEarned } from "./monster.js";
 
@@ -92,7 +93,7 @@ export function rerollBlock(p) {
   }
   const t = tierOf(Number(p.rollKind));                          /* a repeat: its shard goes back */
   if (!p.rollWasNew && t >= 0 && shards(p)[t] < 1) return "Today's " + C.PET_BINS[t].name + " shard is already spent.";
-  if (balance(p) < C.REROLL_COST) return "Needs " + C.REROLL_COST + " token.";
+  if (balance(p) < live.reroll) return "Needs " + live.reroll + " token" + (live.reroll === 1 ? "" : "s") + ".";
   return "";
 }
 
@@ -110,7 +111,7 @@ export async function reroll(p) {
   p.petRollDay = "";
   p.rerollDay = key;
   const res = applyRoll(p, dayRng(p.name, key + "#reroll"), key);
-  spend(p, "reroll", C.REROLL_COST, { pet: res.kind, from, fromFresh, fresh: !!res.fresh });
+  spend(p, "reroll", live.reroll, { pet: res.kind, from, fromFresh, fresh: !!res.fresh });
   const removed = drop.filter(k => !has(p.pets, k));             /* it may have come up again */
   if (!(await saveOrUndo(p, before, null, removed, null, true))) return null;
   return { from, res };
@@ -481,17 +482,17 @@ export function lookOf(p) {
   return out;
 }
 
-/* Recolour: a pet you have alive takes a new hue, for PAINT_COST. The latest "paint"
+/* Recolour: a pet you have alive takes a new hue, for live.paint shells. The latest "paint"
    spend for a kind wins over the hue it was caught with (pets.js hueOf). */
 export function paintBlock(p, k) {
   if (!has(p.pets, k)) return "Only a pet you have alive.";
-  if (shellBalance(p) < PAINT_COST) return "Needs " + PAINT_COST + " shell" + (PAINT_COST === 1 ? "" : "s") + ".";
+  if (shellBalance(p) < live.paint) return "Needs " + live.paint + " shell" + (live.paint === 1 ? "" : "s") + ".";
   return "";
 }
 export async function paintPet(p, k, hue) {
   if (paintBlock(p, k)) return null;
   const before = copy(p), h = ((Math.round(Number(hue)) % 360) + 360) % 360;
-  spend(p, "paint", PAINT_COST, { pet: k, hue: h });
+  spend(p, "paint", live.paint, { pet: k, hue: h });
   if (!(await saveOrUndo(p, before, null))) return null;
   return h;
 }

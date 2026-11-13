@@ -5,18 +5,19 @@
 import * as C from "./config.js";
 import { findParticipant } from "./model.js";
 import * as store from "./store.js";
-import { SLOTS, COSMETICS, itemsIn, PAINT_COST, drawDecor, drawEffect, decorBehind, decorDry } from "./cosmetics.js";
+import { SLOTS, COSMETICS, itemsIn, drawDecor, drawEffect, decorBehind, decorDry } from "./cosmetics.js";
 import { CUP_H } from "./styleart.js";
 import { defs, fxSpot, anchorY, zoneOf, lineArt } from "./petdefs.js";
 import { ownsCosmetic, cosmeticBlock, buyCosmetic, wearCosmetic, lookOf, paintBlock, paintPet, shellRun, shellAward, shellsEarned, pouredOn } from "./shop.js";
 import { hueOf, petLabel } from "./pets.js";
 import { drawCritter } from "./art.js";
 import { shownShells } from "./reveal.js";
+import { live } from "./prices.js";
 import { $, esc } from "./util.js";
 import { setMsg, ui, setHtml, render } from "./ui.js";
 
 let hooks = null, owner = null, running = false;
-const TABS = [{ key: "colour", name: "Colour", note: "Recolour any pet you have alive. Each recolour costs " + PAINT_COST + " shell" + (PAINT_COST === 1 ? "" : "s") + "." }, ...SLOTS.filter(s => s.key !== "hat")];
+const TABS = [{ key: "colour", name: "Colour", get note() { return "Recolour any pet you have alive. Each recolour costs " + live.paint + " shell" + (live.paint === 1 ? "" : "s") + "."; } }, ...SLOTS.filter(s => s.key !== "hat")];
 const SHELL = '<span class="shellico sm"></span>';
 
 export function initStyle(h, getOwner) {
@@ -91,7 +92,7 @@ export function renderStyle() {
       '<div class="style-hue"><input id="styleHue" type="range" min="0" max="359" value="' + Math.round(ui.styleHue) + '">' +
       '<span id="styleHueVal" class="style-swatch" style="background:hsl(' + Math.round(ui.styleHue) + ',62%,58%)"></span></div>' +
       '<button type="button" class="btn primary" data-do="paint"' + (why ? ' disabled' : '') + '>Recolour the ' + esc(petLabel(k)) +
-      ' &middot; ' + SHELL + PAINT_COST + '</button>' + (why ? '<p class="hint">' + esc(why) + '</p>' : ''));
+      ' &middot; ' + SHELL + live.paint + '</button>' + (why ? '<p class="hint">' + esc(why) + '</p>' : ''));
     startRoom();
     return;
   }
@@ -129,7 +130,7 @@ async function act(what, id) {
   }
   if (what === "paint") {
     const k = petFor(p);
-    const ok = await hooks.askConfirm("Recolour the " + petLabel(k) + "?", PAINT_COST + " shell" + (PAINT_COST === 1 ? "" : "s") + ". You can recolour it again any time.", "Recolour");
+    const ok = await hooks.askConfirm("Recolour the " + petLabel(k) + "?", live.paint + " shell" + (live.paint === 1 ? "" : "s") + ". You can recolour it again any time.", "Recolour");
     if (!ok) return;
   }
   await store.serial(async () => {

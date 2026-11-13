@@ -4,6 +4,7 @@
    The data comes from the cloud (an access code, cloud.js) or a shared folder. */
 
 import * as C from "./config.js";
+import { cleanPrices, PRICE_MAX } from "./prices.js";
 import { S, dataChanged, findParticipant, knownUsers, matchUser, totalOn, metGoal, currentGoalFor, streaks, isActive,
          stampDayGoals, currentGoal, currentAnnualGoal, currentIdleMax, challengeStart, challengeEnd } from "./model.js";
 import * as store from "./store.js";
@@ -695,14 +696,23 @@ async function applySettings() {
   }
   const sorted = o => JSON.stringify(Object.keys(o).sort().map(k => [k, o[k]]));
   const hatsChanged = sorted(hats) !== sorted(store.cleanHats(S.settings.hats));
-  if (!dailyChanged && !annualChanged && !startChanged && !idleChanged && !titleChanged && !tagChanged && !eventsChanged && !hatsChanged) { setMsg("Nothing changed.", true); closeSettings(); return; }
+  /* Shop prices: blank = the usual price */
+  const prices = {};
+  for (const inp of document.querySelectorAll("#priceList [data-price]")) {
+    const v = trim(inp.value);
+    if (!v) continue;
+    if (!/^\d{1,3}$/.test(v) || Number(v) < 1) { setMsg(inp.getAttribute("aria-label").replace(/ price in .*/, "") + ": a whole number from 1 to " + PRICE_MAX + ".", false); inp.focus(); return; }
+    prices[inp.dataset.price] = Number(v);
+  }
+  const pricesChanged = sorted(cleanPrices(prices)) !== sorted(cleanPrices(S.settings.prices));
+  if (!dailyChanged && !annualChanged && !startChanged && !idleChanged && !titleChanged && !tagChanged && !eventsChanged && !hatsChanged && !pricesChanged) { setMsg("Nothing changed.", true); closeSettings(); return; }
   await store.serial(async () => {
     const old = { ...S.settings };
     S.settings.annualGoalOz = a;
     if (startChanged) S.settings.startDate = sd;
     if (idleChanged) S.settings.idleSkipDays = Number(iv);
     if (dailyChanged) S.settings.dailyGoalOz = g;
-    S.settings.title = ti; S.settings.tagline = tg; S.settings.events = events; S.settings.hats = hats;
+    S.settings.title = ti; S.settings.tagline = tg; S.settings.events = events; S.settings.hats = hats; S.settings.prices = cleanPrices(prices);
     if (!(await store.saveSettings())) {
       S.settings = old;
       setMsg("Couldn't save settings. Try again.", false);
@@ -718,6 +728,7 @@ async function applySettings() {
     if (tagChanged) bits.push("Tagline " + (tg ? "set." : "back to the default."));
     if (eventsChanged) bits.push("Event days saved.");
     if (hatsChanged) bits.push("Hats saved.");
+    if (pricesChanged) bits.push("Prices saved.");
     if (idleChanged) bits.push("Streak grace: " + currentIdleMax() + " day" + (currentIdleMax() === 1 ? "" : "s") + ".");
     setMsg(bits.join("  "), true);
     await refresh();
@@ -772,12 +783,13 @@ function wire() {
   initShop({ settle, guard: shopGuard, askConfirm, pollSoon, whoAmI: () => askIdentity(false) });
   initCasino({ settle, guard: shopGuard, whoAmI: () => askIdentity(false) });
   $("cog").onclick = () => $("settingsPanel").hidden ? openSettings() : closeSettings();
+  $("priceReset").onclick = () => { for (const i of document.querySelectorAll("#priceList [data-price]")) i.value = ""; setMsg("Usual prices back in the boxes. Save to keep them.", true); };
   $("staleBanner").addEventListener("click", e => { if (e.target.closest("[data-act=hta-ok]")) htaDismiss(); });
   $("spClose").onclick = closeSettings;
   for (const d of document.querySelectorAll("#settingsPanel .sp-card")) d.addEventListener("toggle", rememberCards);
   $("applySettings").onclick = applySettings;
   $("settingsPanel").addEventListener("keydown", e => {             /* Enter saves Challenge and Goals, not the other cards */
-    if (e.key === "Enter" && e.target.tagName === "INPUT" && e.target.closest('[data-card=challenge],[data-card=goals],[data-card=events]')) applySettings();
+    if (e.key === "Enter" && e.target.tagName === "INPUT" && e.target.closest('[data-card=challenge],[data-card=goals],[data-card=events],[data-card=prices]')) applySettings();
   });
   $("pname").addEventListener("keydown", e => { if (e.key === "Enter") addParticipant(); });
   $("addP").onclick = addParticipant;

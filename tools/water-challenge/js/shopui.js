@@ -15,6 +15,7 @@ import { $, esc, has, todayKey, prettyTime, localStamp, bus } from "./util.js";
 import { setMsg, ensureIcons, ui, render, setHtml } from "./ui.js";
 import { initStyle, renderStyle } from "./styleui.js";
 import { initHats, renderHats } from "./hatui.js";
+import { live } from "./prices.js";
 
 let hooks = null;            /* { settle, guard, askConfirm, pollSoon } from app.js */
 let board = null, holdTimer = 0;
@@ -108,13 +109,14 @@ export function renderShop() {
   setHtml("shopBalance", '<span class="coin"></span><b>' + bal + '</b> token' + (bal === 1 ? '' : 's') +
     ' <span class="dim">&middot; ' + tokensEarned(p) + ' for goal days' + (bonus ? ' + ' + bonus + ' cap bonus' : '') +
     (fromChest ? ' + ' + fromChest + ' from the chest' : '') + ' &middot; ' + spentTotal(p) + ' spent</span>');
+  $("rerollEyebrow").innerHTML = live.reroll + " token" + (live.reroll === 1 ? "" : "s") + " &middot; once a day";
   const rb = rerollBlock(p), k = Number(p.rollKind), rolledToday = p.petRollDay === todayKey() && k >= 0, held = rollHoldLeft(p);
   setHtml("rerollBox", (rolledToday
       ? '<div class="reroll-now">' + (penOf(k) > 0 && !held ? '<i class="pi pi-' + k + '"></i>' : '') +
         '<div><span class="dim">Today\'s roll</span><br>' + (held ? '<b>?</b>' : '<b>' + esc(petLabel(k)) + '</b> <span class="rar">' + esc(rarityLabel(k)) + '</span>') +
         (p.rerollDay === todayKey() ? ' <span class="pill">rerolled</span>' : '') + '</div></div>'
       : '') +
-    '<button type="button" id="rerollBtn" class="btn primary"' + (rb ? ' disabled' : '') + '>Reroll &middot; ' + C.REROLL_COST + ' token</button>' +
+    '<button type="button" id="rerollBtn" class="btn primary"' + (rb ? ' disabled' : '') + '>Reroll &middot; ' + live.reroll + ' token' + (live.reroll === 1 ? '' : 's') + '</button>' +
     (rb ? '<p class="hint">' + esc(rb) + '</p>' : '<p class="hint">Normal odds. Replaces today\'s pet' +
           (rolledToday && !p.rollWasNew && tierOf(k) >= 0 ? ' and its shard' : '') + '.</p>'));
 
@@ -247,7 +249,7 @@ async function doReroll() {
   const p = shopFor();
   if (!p || rerollBlock(p)) return;
   const t = tierOf(Number(p.rollKind));
-  const ok = await hooks.askConfirm("Reroll " + p.name + "'s pet?", C.REROLL_COST + " token. Rolls again at normal odds" +
+  const ok = await hooks.askConfirm("Reroll " + p.name + "'s pet?", live.reroll + " token" + (live.reroll === 1 ? "" : "s") + ". Rolls again at normal odds" +
     (p.rollWasNew ? "; the " + petLabel(Number(p.rollKind)) + " leaves the collection"
                   : t >= 0 ? "; the " + tierName(t) + " shard from it goes back" : "") + ".", "Reroll");
   if (!ok) return;

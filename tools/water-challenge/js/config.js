@@ -1,8 +1,8 @@
 /* Water Challenge (web) - constants: rules, tunables and the on-disk contract
    (FORMAT_REV, UTF-16 LE + BOM JSON, unknown fields kept). */
 
-export const REV         = "rev 1.50.0";
-export const APP_VERSION = "web 1.50.0";   /* stamped as writerVersion */
+export const REV         = "rev 1.50.1";
+export const APP_VERSION = "web 1.50.1";   /* stamped as writerVersion */
 /* Every file is written at FORMAT_REV. A file stamped higher came from a newer
    build, and the page asks for a reload. */
 export const FORMAT_REV    = 22;
@@ -30,7 +30,7 @@ export const CAP_BONUS       = 5;
    bonus can't be farmed by wearing a cheap pet. Weight per rarity (Common .. ???). */
 export const DROWN_WEIGHTS   = [1, 2, 3, 4, 5];
 export const CAP_BONUS_SINCE = "2026-10-13";
-export const REROLL_COST  = 1;
+export const REROLL_COST  = 1;          /* built-in; the price in force is prices.js live.reroll */
 export const PLINKO_COST  = 1;
 export const PLINKO_ROWS  = 10;
 /* Slot -> PET_BINS index, left to right. Every peg is a fair 50/50 bounce, so the
@@ -125,7 +125,7 @@ export const MOVED_FILE       = "_moved.json";
    Every file the page is made of. When a new version is out, these are re-fetched
    past the browser cache before reloading, so old and new modules never mix. */
 export const SITE_FILES = ["./", "app.css",
-  "js/app.js", "js/art.js", "js/bottle.js", "js/cloud.js", "js/cloudui.js", "js/config.js", "js/glass.js", "js/guard.js", "js/hatui.js", "js/live.js", "js/model.js", "js/msg.js", "js/hydration.js", "js/hydfx.js", "js/themefx.js", "js/monster.js", "js/monsterfx.js", "js/cosmetics.js", "js/styleart.js", "js/styleui.js", "js/pen1art.js", "js/pen2art.js", "js/pen3art.js", "js/propart.js", "js/petdefs.js",
+  "js/app.js", "js/art.js", "js/bottle.js", "js/cloud.js", "js/cloudui.js", "js/config.js", "js/glass.js", "js/guard.js", "js/hatui.js", "js/prices.js", "js/live.js", "js/model.js", "js/msg.js", "js/hydration.js", "js/hydfx.js", "js/themefx.js", "js/monster.js", "js/monsterfx.js", "js/cosmetics.js", "js/styleart.js", "js/styleui.js", "js/pen1art.js", "js/pen2art.js", "js/pen3art.js", "js/propart.js", "js/petdefs.js",
   "js/pets.js", "js/plinko.js", "js/race.js", "js/raceui.js", "js/radial.js", "js/reveal.js", "js/shop.js", "js/shopui.js", "js/store.js", "js/ui.js", "js/util.js", "pets/pets.json"];
 export const VERSION_CHECK_MS = 300000;
 

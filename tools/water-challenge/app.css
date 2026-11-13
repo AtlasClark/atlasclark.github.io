@@ -852,6 +852,13 @@ h1 { margin: 4px 0 0; font-size: clamp(30px, 5vw, 52px); letter-spacing: -.04em;
 .ev-row .txt.md { width: 66px; text-align: center; font-variant-numeric: tabular-nums; }
 .ev-row .unit { margin: 0; }
 .hat-row { grid-template-columns: minmax(0, 1fr) auto; }
+/* Settings > Shop prices (rev 1.50.1) */
+.price-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 4px 14px; margin-top: 8px; }
+.price-h { grid-column: 1 / -1; margin: 10px 0 2px; font-size: 10.5px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: var(--faint); }
+.price-row { display: grid; grid-template-columns: minmax(0, 1fr) 58px; align-items: center; gap: 6px; font-size: 12.5px; color: var(--ink-2); }
+.price-row span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.price-row .txt { width: 58px; padding: 3px 6px; text-align: right; font-variant-numeric: tabular-nums; }
+.price-row.changed span { color: var(--accent-ink); font-weight: 700; }
 .hat-row select { padding: 4px 8px; }
 .sp-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 18px; border-top: 1px solid var(--line); background: var(--solid); }
 .sp-foot .hint { margin: 0; }

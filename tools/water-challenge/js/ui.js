@@ -20,6 +20,7 @@ import { defs as petDefs, hats as petHats, petSource, setLineArt, lineArt } from
 import { shownKind, hiddenPets, shownBalance, hiddenIds, rollHoldLeft, rollCardDone } from "./reveal.js";
 import { balance, spentTotal, spendsOn, earnedTotal, chestWinnings, shopDay, lookOf, winShare } from "./shop.js";
 import { COSMETICS, drawShell } from "./cosmetics.js";
+import { applyPrices, priceList, cleanPrices } from "./prices.js";
 import { isHydrationDay, teamSplash } from "./hydration.js";
 import { setHydrationDay } from "./hydfx.js";
 import { setHolidayTheme, seasonsOn, seasonOf } from "./themefx.js";
@@ -1162,6 +1163,7 @@ function renderBrand() {
 export function render() {
   maskEls = [];
   setEventRanges(S.settings.events);
+  applyPrices(S.settings.prices);
   renderBrand();
   renderEventBanner();
   G.setActive(ui.tab === "today");
@@ -1493,6 +1495,7 @@ export function fillSettings() {
   $("idleVal").value = currentIdleMax();
   renderEvents();
   renderHats();
+  renderPrices();
   renderRoster();
 }
 
@@ -1508,6 +1511,19 @@ function renderEvents() {
       '<span class="unit">to</span>' +
       '<input class="txt md" type="text" maxlength="5" spellcheck="false" data-k="to" placeholder="' + d.to + '" value="' + (own ? esc(r.to) : '') + '" aria-label="' + esc(h.name) + ' to (MM-DD)"></div>';
   }).join("");
+}
+
+/* Settings > Shop prices: one box per price, blank = the usual price. */
+export function renderPrices() {
+  const own = cleanPrices(S.settings.prices), h = [];
+  let group = "";
+  for (const p of priceList()) {
+    if (p.group !== group) { group = p.group; h.push('<div class="price-h">' + esc(group) + '</div>'); }
+    h.push('<label class="price-row' + (own[p.key] ? ' changed' : '') + '" title="' + esc(p.name) + ' &middot; usually ' + p.base + ' ' + p.unit + '"><span>' + esc(p.name) + '</span>' +
+           '<input class="txt" type="text" inputmode="numeric" maxlength="3" data-price="' + esc(p.key) + '" placeholder="' + p.base + '" value="' + (own[p.key] ?? '') + '"' +
+           ' aria-label="' + esc(p.name) + ' price in ' + p.unit + '"></label>');
+  }
+  $("priceList").innerHTML = h.join("");
 }
 
 /* Settings > Personal hats: who has been given one. */

@@ -14,6 +14,7 @@
    onto (no lock files), and the Worker takes the evening backup itself. */
 
 import * as C from "./config.js";
+import { cleanPrices } from "./prices.js";
 import { S, dataChanged, currentGoalFor, currentAnnualGoal, currentIdleMax,
          goalTunables, legacyFlat, challengeStart, forceLegacyStamps, personalGoal,
          defaultSettings } from "./model.js";
@@ -416,6 +417,7 @@ export async function loadSettings() {
     if (typeof o.tagline === "string") s.tagline = o.tagline.trim().slice(0, C.TAGLINE_MAX);
     if (o.events && typeof o.events === "object") s.events = cleanEvents(o.events);
     s.hats = cleanHats(o.hats);
+    s.prices = cleanPrices(o.prices);
     if ((!cloud || cloud.isAdmin()) &&                 /* in the cloud only an admin may write settings */
         (o.minGoalOz === undefined || o.goalFactor === undefined || o.minGoalDays === undefined ||
          o.dropTopDay === undefined || o.goalWindowDays === undefined || o.legacyFlatUntil === undefined)) {
@@ -463,6 +465,7 @@ export async function saveSettings() {
     (S.settings.tagline ? ',\n  "tagline": ' + q(S.settings.tagline) : '') +
     (Object.keys(S.settings.events || {}).length ? ',\n  "events": ' + JSON.stringify(cleanEvents(S.settings.events)) : '') +
     (Object.keys(cleanHats(S.settings.hats)).length ? ',\n  "hats": ' + JSON.stringify(cleanHats(S.settings.hats)) : '') +
+    (Object.keys(cleanPrices(S.settings.prices)).length ? ',\n  "prices": ' + JSON.stringify(cleanPrices(S.settings.prices)) : '') +
     ',\n  "updatedBy": ' + q(S.me) +
     ',\n  "updatedAt": ' + q(localStamp(new Date())) + '\n}\n';
   try {
