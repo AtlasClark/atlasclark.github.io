@@ -1,8 +1,8 @@
 /* Water Challenge (web) - constants: rules, tunables and the on-disk contract
    (FORMAT_REV, UTF-16 LE + BOM JSON, unknown fields kept). */
 
-export const REV         = "rev 1.49.2";
-export const APP_VERSION = "web 1.49.2";   /* stamped as writerVersion */
+export const REV         = "rev 1.49.3";
+export const APP_VERSION = "web 1.49.3";   /* stamped as writerVersion */
 /* Every file is written at FORMAT_REV. A file stamped higher came from a newer
    build, and the page asks for a reload. */
 export const FORMAT_REV    = 22;
@@ -61,7 +61,7 @@ export const PLINKO_ROW_SECS = 0.26;
    (_settings.json "hats": { name: key }). That person's pet wears it whenever it has no
    other hat on (the leader's crown or jester hat and holiday hats come first). Drawings
    in propart.js (PERSONAL_ART), editable in the Pet Studio. */
-export const PERSONAL_HATS = [{ key: "fedora", name: "Safari fedora" }];
+export const PERSONAL_HATS = [{ key: "fedora", name: "Safari fedora" }, { key: "dunce", name: "Dunce cap" }];
 export const RACE_KIND  = "race";
 export const RACE_HOUSE = -1;                /* "pet" of a house race: six strangers, none of them yours (rev 1.47.0) */
 export const RACE_STATS = ["Start", "Speed", "Stamina", "Burst", "Focus"];
