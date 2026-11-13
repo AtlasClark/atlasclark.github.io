@@ -886,17 +886,18 @@ const PRIORITIES = ["Low", "Medium", "High", "Critical"];
 const PRIO_COLORS = { Low: "var(--teal)", Medium: "var(--blue)", High: "var(--orange)", Critical: "var(--red)" };
 const PRIO_RANK = { Critical: 0, High: 1, Medium: 2, Low: 3 };
 const ORDER_TYPES = ["Fabrication", "Assembly", "Fab/Assembly", "Other"];
-const ORDER_STATUSES = ["Quote In Progress", "Order Confirmed", "Consignment Kitted", "Consignment Shipped", "In Production", "Shipped", "Received", "Complete"];
+const ORDER_STATUSES = ["Quote In Progress", "Order Confirmed", "Consignment Kitted", "Consignment Shipped", "In Production", "Shipped", "Received", "Ready For Mask", "Ready For Conformal", "Complete"];
 const ORDER_STATUS_COLORS = {
   "Quote In Progress": "var(--pink)", "Order Confirmed": "var(--blue)",
   "Consignment Kitted": "var(--purple)", "Consignment Shipped": "var(--teal)",
   "In Production": "var(--yellow)", "Shipped": "var(--orange)",
-  "Received": "var(--blue)", "Complete": "var(--green)",
+  "Received": "var(--blue)", "Ready For Mask": "var(--purple)", "Ready For Conformal": "var(--teal)",
+  "Complete": "var(--green)",
 };
 function phaseOf(o) {
   if (o && o.hold) return "On Hold";
   const i = ORDER_STATUSES.indexOf(typeof o === "string" ? o : o.status);
-  return i < 4 ? "Pre-Production" : i < 7 ? "Production" : "Complete";
+  return i < ORDER_STATUSES.indexOf("In Production") ? "Pre-Production" : i < ORDER_STATUSES.indexOf("Complete") ? "Production" : "Complete";
 }
 function orderCreated(o) {
   return o.createdDate || (o.created ? new Date(o.created).toISOString().slice(0, 10) : "");
@@ -1671,7 +1672,7 @@ function renderOrders() {
         <td>${fmtDate(orderCreated(o))}</td>
         <td>${dueBadge(o.due, o.status === "Complete") || "—"}</td>
         <td>${o.estShip
-          ? `<span class="due${o.status === "Complete" || ORDER_STATUSES.indexOf(o.status) >= 5 ? "" : (o.due && o.estShip > o.due ? " overdue" : (daysUntil(o.estShip) < 0 ? " overdue" : (daysUntil(o.estShip) <= 3 ? " soon" : "")))}"
+          ? `<span class="due${o.status === "Complete" || ORDER_STATUSES.indexOf(o.status) >= ORDER_STATUSES.indexOf("Shipped") ? "" : (o.due && o.estShip > o.due ? " overdue" : (daysUntil(o.estShip) < 0 ? " overdue" : (daysUntil(o.estShip) <= 3 ? " soon" : "")))}"
               title="${o.due && o.estShip > o.due ? "Est. ship is after the need-by date" : "Estimated ship date"}">🚚 ${fmtDate(o.estShip)}${o.due && o.estShip > o.due && o.status !== "Complete" ? " ⚠" : ""}</span>`
           : "—"}</td>
         <td><div style="display:flex;align-items:center;gap:6px;justify-content:flex-end">
@@ -2318,7 +2319,7 @@ document.getElementById("importFile").addEventListener("change", e => {
    The file handle is remembered in IndexedDB; after a browser restart
    you click the 💾 button once to re-grant write access.
    ===================================================================== */
-const REV = "rev 1.1.0";   // site port of local build 2026-10-09-o
+const REV = "rev 1.1.1";   // site port of local build 2026-10-09-o
 const LS_BACKUP_TS = "atlas_ops_last_backup";
 let backupHandle = null, backupTimer = null, backupPaused = false, backupError = "";
 
