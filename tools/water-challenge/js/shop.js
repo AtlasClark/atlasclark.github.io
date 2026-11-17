@@ -439,6 +439,43 @@ export function shopDay(p, key) {
   return d;
 }
 
+/* ---- casino tallies, for the recaps and History (rev 1.50.3) ------------------------- */
+/* p's casino on `key` (a day, or "" for every day): races with p's own pets (and how many
+   they won), house races, shell Plinko drops, 1v1 races won and lost (the result lives in
+   the accepter's file, so everyone's records are read), shells and tokens staked and paid
+   back, and the biggest single payouts: bestShell / bestToken { won, day }. */
+export function casinoOn(p, key = "") {
+  const on = s => !key || String(s.at).slice(0, 10) === key;
+  const c = { races: 0, raceWins: 0, house: 0, drops: 0, duelWins: 0, duelLosses: 0, shellIn: 0, shellBack: 0, tokenIn: 0, tokenBack: 0, bestShell: null, bestToken: null };
+  const top = (won, cur, at) => { const k = cur === "token" ? "bestToken" : "bestShell"; if (won > 0 && (!c[k] || won > c[k].won)) c[k] = { won, day: String(at).slice(0, 10) }; };
+  for (const s of spendsBy(p, C.RACE_KIND)) {
+    if (!on(s)) continue;
+    const bet = Number(s.bet) || 0, won = Number(s.won) || 0;
+    if (s.house) c.house++; else { c.races++; if (Number(s.place) === 1) c.raceWins++; }
+    if (s.cur === "token") { c.tokenIn += bet; c.tokenBack += won; } else { c.shellIn += bet; c.shellBack += won; }
+    top(won, s.cur === "token" ? "token" : "shell", s.at);
+  }
+  for (const s of spendsBy(p, C.SPLINKO_KIND)) {
+    if (!on(s)) continue;
+    c.drops++; c.shellIn += Number(s.bet) || 0; c.shellBack += Number(s.won) || 0;
+    top(Number(s.won) || 0, "shell", s.at);
+  }
+  for (const q of S.participants) for (const s of spendsBy(q, C.DUEL.kind)) {
+    if (s.role !== "take" || !on(s)) continue;
+    if (q.name === p.name) { if (s.win) c.duelWins++; else c.duelLosses++; }
+    else if (s.from === p.name) { if (s.win) c.duelLosses++; else c.duelWins++; }
+  }
+  c.any = c.races + c.house + c.drops + c.duelWins + c.duelLosses > 0;
+  return c;
+}
+/* Adds casino tallies b into a. */
+export function addCasino(a, b) {
+  for (const k of ["races", "raceWins", "house", "drops", "duelWins", "duelLosses", "shellIn", "shellBack", "tokenIn", "tokenBack"]) a[k] += b[k];
+  for (const k of ["bestShell", "bestToken"]) if (b[k] && (!a[k] || b[k].won > a[k].won)) a[k] = b[k];
+  a.any = a.any || b.any;
+  return a;
+}
+
 export function spendsOn(p, key) { return (p.spends || []).filter(s => String(s.at).slice(0, 10) === key); }
 
 /* ---- cosmetics --------------------------------------------------------------- */

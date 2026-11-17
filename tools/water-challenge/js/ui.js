@@ -18,7 +18,7 @@ import * as G from "./glass.js";
 import { diag, dir, cloud, sourceName } from "./store.js";
 import { defs as petDefs, hats as petHats, petSource, setLineArt, lineArt } from "./petdefs.js";
 import { shownKind, hiddenPets, shownBalance, hiddenIds, rollHoldLeft, rollCardDone } from "./reveal.js";
-import { balance, spentTotal, spendsOn, earnedTotal, chestWinnings, shopDay, lookOf, winShare } from "./shop.js";
+import { balance, spentTotal, spendsOn, earnedTotal, chestWinnings, shopDay, lookOf, winShare, casinoOn, addCasino } from "./shop.js";
 import { COSMETICS, drawShell } from "./cosmetics.js";
 import { applyPrices, priceList, cleanPrices } from "./prices.js";
 import { isHydrationDay, teamSplash } from "./hydration.js";
@@ -691,7 +691,8 @@ const SEASON_COLS = [
   { key: "name", label: "Who" }, { key: "wins", label: "Days won" }, { key: "goalDays", label: "Goal days" },
   { key: "capDays", label: "Cap days" }, { key: "bestWinStreak", label: "Longest win run" },
   { key: "bestGoalStreak", label: "Longest goal run" }, { key: "best", label: "Best day" },
-  { key: "total", label: "Total" }, { key: "avg", label: "Avg per day" }];
+  { key: "total", label: "Total" }, { key: "avg", label: "Avg per day" },
+  { key: "raceWins", label: "Races won" }, { key: "duelWins", label: "1v1 wins" }];
 let seasonSort = { key: "wins", dir: -1 };
 try { const s = JSON.parse(localStorage.getItem("awc-season-sort")); if (s && SEASON_COLS.some(c => c.key === s.key)) seasonSort = { key: s.key, dir: s.dir === 1 ? 1 : -1 }; } catch { }
 const seasonVal = (st, key) => key === "avg" ? (st.logged ? st.total / st.logged : 0) : st[key];
@@ -727,6 +728,13 @@ function renderHistory() {
   historyKey = k;
   const stats = seasonStats(), days = recentDays(C.CHART_DAYS), h = [];
   if (!stats.days) { $("history").innerHTML = '<p class="empty-state">Nothing logged yet.</p>'; return; }
+  const casino = {};                                                   /* every day's casino, per person (rev 1.50.3) */
+  for (const name of stats.order) {
+    const p = findParticipant(name), c = p ? casinoOn(p) : null;
+    casino[name] = c;
+    stats.people[name].raceWins = c ? c.raceWins : 0;
+    stats.people[name].duelWins = c ? c.duelWins : 0;
+  }
 
   h.push((parseKey(todayKey()).getDay() === 1 && weekRecapHtml()) || recapHtml());   /* Mondays: the week */
   h.push('<div class="season-strip">');
@@ -785,7 +793,7 @@ function renderHistory() {
            (st.overDays ? ' <span class="warn-mini" title="' + st.overDays + ' day(s) past the cap">&#9760;' + st.overDays + '</span>' : '') +
            '</td><td>' + st.bestWinStreak + '</td><td>' + st.bestGoalStreak + '</td><td title="' + esc(st.bestDay) + '">' +
            fmt(Math.round(st.best * 10) / 10) + '</td><td>' + fmtOz(st.total) + '</td><td>' +
-           (st.logged ? fmt(Math.round(st.total / st.logged * 10) / 10) : "0") + '</td></tr>');
+           (st.logged ? fmt(Math.round(st.total / st.logged * 10) / 10) : "0") + '</td><td>' + st.raceWins + '</td><td>' + st.duelWins + '</td></tr>');
   });
   h.push('</table></div>');
 
@@ -798,6 +806,15 @@ function renderHistory() {
   if (best) h.push('<div class="rec"><div class="rec-t">Biggest single day</div><div class="rec-v">' + fmt(Math.round(best.best * 10) / 10) +
                    '<span class="u">fl oz</span></div><div class="rec-w">' + esc(best.name) + ' &middot; ' + esc(best.bestDay) + '</div></div>');
   h.push(recordCard("Most poured overall", topOf(stats, "total"), "total", "fl oz"));
+  const racer = topOf(stats, "raceWins");
+  if (racer && racer.raceWins > 0) h.push(recordCard("Most races won", racer, "raceWins", "races"));
+  const duel = topOf(stats, "duelWins");
+  if (duel && duel.duelWins > 0) h.push(recordCard("Most 1v1 wins", duel, "duelWins", "wins"));
+  for (const [k, title, one, many] of [["bestShell", "Biggest shell win", "shell", "shells"], ["bestToken", "Biggest token win", "token", "tokens"]]) {
+    const big = stats.order.map(n => ({ n, b: casino[n] && casino[n][k] })).filter(x => x.b).reduce((a, x) => !a || x.b.won > a.b.won ? x : a, null);
+    if (big) h.push('<div class="rec"><div class="rec-t">' + title + '</div><div class="rec-v">' + big.b.won + '<span class="u">' + (big.b.won === 1 ? one : many) + '</span></div>' +
+                    '<div class="rec-w"><i class="dot" style="background:' + stats.people[big.n].color + '"></i>' + esc(big.n) + ' &middot; ' + esc(big.b.day) + '</div></div>');
+  }
   h.push('</div>');
   $("history").innerHTML = h.join("");
   $("history").onclick = onHistoryClick;
@@ -968,7 +985,7 @@ function recapHtml() {
 
   /* Pets: what changed in each pen. Plinko is folded to one line per person (new
      pets only); every drop is counted in the shop strip below instead. */
-  const ev = [], shop = [];
+  const ev = [], shop = [], casino = [];
   const icon = k => penOf(k) > 0 ? '<i class="pi pi-' + k + '"></i>' : '';
   const names = petList;
   for (const p of S.participants) {
@@ -982,7 +999,9 @@ function recapHtml() {
                                           (s.revived ? ' (back from the grave)' : '')));
     if (d.fresh.length) ev.push(line(icon(d.fresh[0]), 'won ' + names(d.fresh) + ' on Plinko'));
     if (d.revived.length) ev.push(line(icon(d.revived[0]), 'won ' + names(d.revived) + ' back from the grave on Plinko'));
-    if (d.drops || d.sDrops || d.races.length || d.buys.length || d.picks.length || d.fuses.length || d.rerolls.length) shop.push({ p, d });
+    if (d.drops || d.buys.length || d.picks.length || d.fuses.length || d.rerolls.length) shop.push({ p, d });
+    const c = casinoOn(p, day);
+    if (c.any) casino.push({ p, c });
   }
   h.push('<div><h4>Pets</h4>' + (ev.length ? '<ul class="rc-pets">' + ev.join("") + '</ul>' : '<p class="dim">No pet news.</p>') + '</div>');
 
@@ -990,6 +1009,7 @@ function recapHtml() {
          '"></i>' + esc(r.name) + '</span>').join("") : '<p class="dim">Everyone played.</p>') + '</div>');
   h.push('</div>');
   if (shop.length) h.push(recapShop(shop));
+  if (casino.length) h.push(recapCasino(casino));
   h.push('</section>');
   return h.join("");
 }
@@ -1007,7 +1027,7 @@ export function weekStats(today = todayKey()) {
   const team = days.reduce((a, d) => a + dayTotal(d), 0), prevTeam = prevDays.reduce((a, d) => a + dayTotal(d), 0);
   const rows = S.participants.map(p => {
     const r = { p, name: p.name, color: p.color, total: 0, goalDays: 0, won: 0, played: 0, here: 0, avg: 0, prevAvg: 0,
-                prevPlayed: 0, best: { oz: 0, day: "" }, found: [], revived: [], drowned: [], shop: null };
+                prevPlayed: 0, best: { oz: 0, day: "" }, found: [], revived: [], drowned: [], shop: null, casino: null };
     let share = 0, prevShare = 0;
     for (const d of days) {
       if (isAway(p, d)) continue;
@@ -1024,7 +1044,9 @@ export function weekStats(today = todayKey()) {
       for (const s of [...sd.buys, ...sd.picks]) (s.revived ? r.revived : r.found).push(Number(s.pet));
       r.revived.push(...sd.revived);
       if (grave !== null) r.drowned.push(grave);
-      if (sd.drops || sd.sDrops || sd.races.length || sd.buys.length || sd.picks.length || sd.fuses.length || sd.rerolls.length) {
+      const cd = casinoOn(p, d);
+      if (cd.any) r.casino = r.casino ? addCasino(r.casino, cd) : cd;
+      if (sd.drops || sd.buys.length || sd.picks.length || sd.fuses.length || sd.rerolls.length) {
         if (!r.shop) r.shop = { drops: 0, spent: 0, fresh: [], revived: [], repeats: 0, empty: 0, chestIn: 0, chestWon: 0, buys: [], picks: [], fuses: [], rerolls: [], sDrops: 0, sBet: 0, sWon: 0, races: [] };
         for (const f of ["drops", "spent", "repeats", "empty", "chestIn", "chestWon", "sDrops", "sBet", "sWon"]) r.shop[f] += sd[f];
         for (const f of ["fresh", "revived", "buys", "picks", "fuses", "rerolls", "races"]) r.shop[f].push(...sd[f]);
@@ -1095,6 +1117,18 @@ function weekRecapHtml() {
   if (chest) line("Chest", chest.label + ' won ' + plural(chest.best, "token"));
   const sunk = topBy(w.rows, r => r.drowned.length);
   if (sunk) line("Most drownings", sunk.label + ' &middot; ' + plural(sunk.best, "pet"));
+  /* the casino: fastest pets, 1v1 wins, the biggest payout, the luckiest purse */
+  const cas = w.rows.filter(r => r.casino);
+  const racer = topBy(cas, r => r.casino.raceWins);
+  if (racer) line("Fastest pets", racer.label + ' &middot; ' + plural(racer.best, "race") + ' won');
+  const dueller = topBy(cas, r => r.casino.duelWins);
+  if (dueller) line("1v1 champion", dueller.label + ' &middot; ' + plural(dueller.best, "win"));
+  for (const [k, cur, label] of [["bestShell", "shell", "Biggest shell win"], ["bestToken", "token", "Biggest token win"]]) {
+    const top = topBy(cas.filter(r => r.casino[k]), r => r.casino[k].won);
+    if (top) line(label, top.label + ' &middot; ' + coinsText(top.best, cur) + ' on ' + esc(weekday(top.who[0].casino[k].day)));
+  }
+  const lucky = topBy(cas, r => r.casino.shellBack - r.casino.shellIn);
+  if (lucky) line("Up at the casino", lucky.label + ' &middot; +' + plural(lucky.best, "shell"));
   h.push('<div><h4>Highlights</h4>' + (hl.length ? '<ul class="rc-hl">' + hl.join("") + '</ul>' : '<p class="dim">A quiet week.</p>') + '</div>');
 
   /* Pets: new finds and drownings, one line per person. */
@@ -1114,7 +1148,41 @@ function weekRecapHtml() {
   h.push('</div>');
   const shop = w.rows.filter(r => r.shop).map(r => ({ p: r.p, d: r.shop }));
   if (shop.length) h.push(recapShop(shop));
+  const casino = w.rows.filter(r => r.casino).map(r => ({ p: r.p, c: r.casino }));
+  if (casino.length) h.push(recapCasino(casino));
   h.push('</section>');
+  return h.join("");
+}
+
+/* The casino on the recap day or week: totals, then one line per person (what they
+   played, 1v1 record, shells and tokens net, biggest single win). */
+const coinsText = (n, cur) => plural(n, cur === "token" ? "token" : "shell");
+const net = (back, inn, cur) => { const d = back - inn; return '<span class="rc-net ' + (d > 0 ? 'up' : d < 0 ? 'down' : '') + '">' + (d > 0 ? '+' : d < 0 ? '&minus;' : '&plusmn;') +
+  Math.abs(d) + (cur === "token" ? '<span class="coin sm"></span>' : '<span class="shellico sm"></span>') + '</span>'; };
+function recapCasino(list) {
+  const t = list.reduce((a, x) => addCasino(a, x.c), { races: 0, raceWins: 0, house: 0, drops: 0, duelWins: 0, duelLosses: 0, shellIn: 0, shellBack: 0, tokenIn: 0, tokenBack: 0, bestShell: null, bestToken: null });
+  const duels = list.reduce((a, x) => a + x.c.duelWins, 0), sum = [];
+  if (t.races) sum.push(plural(t.races, "race"));
+  if (t.house) sum.push(plural(t.house, "house race"));
+  if (duels) sum.push(plural(duels, "1v1 race"));
+  if (t.drops) sum.push(plural(t.drops, "shell drop"));
+  if (t.shellIn) sum.push(t.shellIn + ' shells in, ' + t.shellBack + ' back');
+  if (t.tokenIn) sum.push(t.tokenIn + ' token' + (t.tokenIn === 1 ? '' : 's') + ' in, ' + t.tokenBack + ' back');
+  const h = ['<div class="recap-shop recap-casino"><h4>Casino</h4><p class="rc-shop-sum">' + sum.join(' &middot; ') + '</p><ul class="rc-shop-list">'];
+  list.sort((a, b) => (b.c.shellBack - b.c.shellIn) - (a.c.shellBack - a.c.shellIn) || (a.p.name < b.p.name ? -1 : 1));
+  for (const { p, c } of list) {
+    const bits = [];
+    if (c.races) bits.push(plural(c.races, "race") + (c.raceWins ? ', ' + c.raceWins + ' won' : ''));
+    if (c.house) bits.push(plural(c.house, "house race"));
+    if (c.duelWins + c.duelLosses) bits.push('1v1 ' + c.duelWins + '&ndash;' + c.duelLosses);
+    if (c.drops) bits.push(plural(c.drops, "shell drop"));
+    if (c.bestShell) bits.push('best win ' + coinsText(c.bestShell.won, "shell"));
+    if (c.bestToken) bits.push('best win ' + coinsText(c.bestToken.won, "token"));
+    h.push('<li><i class="dot" style="background:' + p.color + '"></i><strong>' + esc(p.name) + '</strong>' +
+           (c.shellIn || c.shellBack ? net(c.shellBack, c.shellIn, "shell") : '') + (c.tokenIn || c.tokenBack ? net(c.tokenBack, c.tokenIn, "token") : '') +
+           '<span class="dim">' + bits.join(' &middot; ') + '</span></li>');
+  }
+  h.push('</ul></div>');
   return h.join("");
 }
 
@@ -1135,8 +1203,6 @@ function recapShop(shop) {
     if (d.repeats) bits.push(d.repeats + ' repeat' + (d.repeats === 1 ? '' : 's'));
     if (d.chestIn) bits.push(d.chestIn + ' into the chest');
     if (d.empty) bits.push(d.empty + ' returned');
-    if (d.sDrops) bits.push(d.sDrops + ' shell drop' + (d.sDrops === 1 ? '' : 's') + ' (' + d.sBet + ' in, ' + d.sWon + ' back)');
-    if (d.races && d.races.length) { const w = d.races.filter(x => !x.house && Number(x.place) === 1).length; bits.push(d.races.length + ' race' + (d.races.length === 1 ? '' : 's') + (w ? ' (' + w + ' won)' : '')); }
     if (d.buys.length) bits.push(d.buys.length + ' bought');
     if (d.picks && d.picks.length) bits.push(d.picks.length + ' from shards');
     if (d.fuses && d.fuses.length) bits.push(d.fuses.length + ' combine' + (d.fuses.length === 1 ? '' : 's'));

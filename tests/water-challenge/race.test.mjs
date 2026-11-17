@@ -266,3 +266,29 @@ test("pen rewards stay out of the races; lookups by kind follow the spends as th
   p.spends = [];
   assert.equal(race.statsOf(p, 3).xp, 0, "and a replaced list too");
 });
+
+test("casino tallies for the recaps: races, house races, shell drops, 1v1 both ways, money in and back", async () => {
+  const { S } = await loadWeb([]);
+  const mk = (name, spends) => ({ name, color: "#60a5fa", created: "2026-11-01", away: [], pets: { 3: 10 }, graves: {}, entries: [], spends });
+  const a = mk("Ada Test", [
+    { id: "r1", at: "2026-11-10T10:00:00", kind: C.RACE_KIND, pet: 3, cur: "shell", bet: 5, won: 17, place: 1, xp: 30, d: [0, 0, 0, 0, 0] },
+    { id: "r2", at: "2026-11-10T11:00:00", kind: C.RACE_KIND, pet: 3, cur: "token", bet: 1, won: 0, place: 4, xp: 10, d: [0, 0, 0, 0, 0] },
+    { id: "r3", at: "2026-11-10T12:00:00", kind: C.RACE_KIND, pet: -1, house: true, cur: "shell", bet: 2, won: 0, place: 3 },
+    { id: "p1", at: "2026-11-10T13:00:00", kind: C.SPLINKO_KIND, cost: 0, bet: 10, won: 40, bin: 3, slot: 1 },
+    { id: "r4", at: "2026-11-11T10:00:00", kind: C.RACE_KIND, pet: 3, cur: "shell", bet: 2, won: 0, place: 2, xp: 20, d: [0, 0, 0, 0, 0] }]);
+  const b = mk("Ben Test", [
+    { id: "d1", at: "2026-11-10T14:00:00", kind: C.DUEL.kind, cost: 0, role: "take", ask: "x", from: "Ada Test", pet: 3, vs: 3, win: false, t: 1 },
+    { id: "d2", at: "2026-11-10T15:00:00", kind: C.DUEL.kind, cost: 0, role: "take", ask: "y", from: "Ada Test", pet: 3, vs: 3, win: true, t: 2 }]);
+  S.participants = [a, b]; model.dataChanged();
+  const day = shop.casinoOn(a, "2026-11-10");
+  assert.deepEqual([day.races, day.raceWins, day.house, day.drops, day.duelWins, day.duelLosses], [2, 1, 1, 1, 1, 1]);
+  assert.deepEqual([day.shellIn, day.shellBack, day.tokenIn, day.tokenBack], [17, 57, 1, 0]);
+  assert.deepEqual(day.bestShell, { won: 40, day: "2026-11-10" });
+  assert.equal(day.bestToken, null, "the token race was lost");
+  const all = shop.casinoOn(a);
+  assert.equal(all.races, 3);
+  assert.equal(shop.addCasino(shop.casinoOn(a, "2026-11-10"), shop.casinoOn(a, "2026-11-11")).races, 3);
+  const ben = shop.casinoOn(b, "2026-11-10");
+  assert.deepEqual([ben.duelWins, ben.duelLosses, ben.any], [1, 1, true]);
+  assert.equal(shop.casinoOn(b, "2026-11-11").any, false);
+});
