@@ -1,8 +1,8 @@
 /* Water Challenge (web) - constants: rules, tunables and the on-disk contract
    (FORMAT_REV, UTF-16 LE + BOM JSON, unknown fields kept). */
 
-export const REV         = "rev 1.50.4";
-export const APP_VERSION = "web 1.50.4";   /* stamped as writerVersion */
+export const REV         = "rev 1.50.5";
+export const APP_VERSION = "web 1.50.5";   /* stamped as writerVersion */
 /* Every file is written at FORMAT_REV. A file stamped higher came from a newer
    build, and the page asks for a reload. */
 export const FORMAT_REV    = 22;
@@ -69,7 +69,7 @@ export const RACE = { lanes: 6, perPet: 3, shellBets: [2, 5, 10], tokenBet: 1, t
                       base: [40, 44, 48, 53, 58, 58, 62], spread: 26, house: [230, 290], grow: 35, drop: 5, statMax: 99,
                       xp: [30, 20, 14, 10, 8, 6], levelXp: 50, maxLevel: 50,
                       edge: 0.88, tokenEdge: 0.92, maxMult: 12, tokenMax: 8, oddsRuns: 400,
-                      countSecs: 3, endSecs: 2.5, rate: 1.35 };     /* rate: the track plays this much faster than the race's clock */
+                      countSecs: 3, endSecs: 2.5, rate: 1.35, laughSecs: 2.8 };     /* rate: the track plays this much faster than the race's clock */
 /* Live 1v1 races (rev 1.49.0): one player's pet against another's, nothing staked, no
    experience, no daily limit. All of it is "duel" spends of cost 0, each in its writer's
    own file: role "ask" { to, pet } (open until answered, taken back or the day ends),

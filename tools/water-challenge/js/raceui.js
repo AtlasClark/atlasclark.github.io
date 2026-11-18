@@ -322,7 +322,7 @@ function paint() {
   if (run) { drawRun(performance.now()); return; }
   const p = shopFor();
   if (!p) return;
-  if (shown) { drawTrack(shown, shown.res.frames.at(-1).x, null, null, shown.res.secs + 9, 0, ""); return; }
+  if (shown) { drawTrack(shown, shown.res.frames.at(-1).x, null, null, shown.res.secs + 9, 0, ""); if (laugh) drawLaugh(performance.now()); return; }
   if (pick.pet !== HOUSE && !has(p.pets, pick.pet)) return;
   const setup = raceSetup(p, pick.pet);
   drawTrack({ setup, out: { color: p.color, bet: betOf() } }, setup.field.map(() => 0), null, null, -1, 0, "");
@@ -566,10 +566,53 @@ function tick(now) {
   else requestAnimationFrame(tick);
 }
 
+/* ---- the winner laughs (rev 1.50.5) ---------------------------------------------- */
+/* Your own pet finished out of the first three: the winner pops up from the bottom of
+   the pool, shakes with laughter and sinks back. None under reduced motion. */
+let laugh = null;                 /* { t0, f: the winner's racer, id } */
+const easeOut = x => 1 - (1 - x) * (1 - x) * (1 - x);
+function drawLaugh(now) {
+  const t = (now - laugh.t0) / 1000, T = R.laughSecs;
+  if (t >= T) return false;
+  const pr = LH * 0.82 * 2.1, cut = cutout(laugh.f, LH * 0.82), size = cut.size * 2.1;
+  const up = t < 0.38 ? easeOut(t / 0.38) : t > T - 0.42 ? 1 - easeOut((t - (T - 0.42)) / 0.42) : 1;
+  const laughing = t > 0.3 && t < T - 0.35, beat = Math.sin(t * 19);
+  const x = W * 0.5, rest = H - pr * 1.05, y = H + size * 0.55 + (rest - H - size * 0.55) * up + (laughing ? Math.abs(beat) * -pr * 0.07 : 0);
+  ctx.save();
+  ctx.beginPath(); ctx.rect(0, 0, W, H); ctx.clip();
+  ctx.translate(x, y);
+  ctx.rotate(laughing ? beat * 0.06 : 0);
+  ctx.drawImage(cut.img, -size / 2, -size / 2 - cut.foot * 2.1, size, size);
+  ctx.restore();
+  if (laughing) {                                                   /* HA HA, a word at a time, bouncing */
+    const n = Math.min(3, 1 + Math.floor((t - 0.3) / 0.35)), fs = Math.round(Math.max(14, LH * 0.62));
+    ctx.save();
+    ctx.font = "900 " + fs + "px system-ui, sans-serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.lineWidth = Math.max(3, fs * 0.2); ctx.lineJoin = "round"; ctx.strokeStyle = "rgba(10,30,55,.85)"; ctx.fillStyle = "#fff";
+    for (let i = 0; i < n; i++) {
+      const wx = x + size * 0.42 + i * fs * 1.7, wy = rest - size * 0.32 - i * fs * 0.55 + Math.sin(t * 14 + i * 1.7) * fs * 0.12;
+      ctx.strokeText("HA", wx, wy); ctx.fillText("HA", wx, wy);
+    }
+    ctx.restore();
+  }
+  return true;
+}
+function laughTick(now) {
+  if (!laugh || !shown || shown.id !== laugh.id) { laugh = null; return; }
+  drawTrack(shown, shown.res.frames.at(-1).x, null, null, shown.res.secs + 9, 0, "");
+  if (drawLaugh(now)) requestAnimationFrame(laughTick);
+  else { laugh = null; paint(); }
+}
+
 function finish() {
   const o = run.out;
   raceDone.add(run.id);
   shown = run; run = null; busy = false;
+  const reduce = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  if (o.kind !== HOUSE && o.place > 3 && !reduce) {
+    laugh = { t0: performance.now() + 350, f: o.field[o.places.indexOf(1)], id: shown.id };
+    requestAnimationFrame(laughTick);
+  }
   render();                                          /* balances, the Pets tab, the activity list */
   const who = o.kind === HOUSE ? o.name + " backed the " + petLabel(o.field[o.bet.on].kind) + ", which" : o.name + "'s " + petLabel(o.kind);
   setMsg(who + " finished " + ORD[(o.kind === HOUSE ? o.places[o.bet.on] : o.place) - 1] + (o.won ? ": +" + money(o.won, o.bet.cur) + "." : "."), !!o.won);
@@ -578,7 +621,7 @@ function finish() {
 /* ---- the race button ------------------------------------------------------------ */
 async function go() {
   if (run || busy) return;
-  if (shown) { shown = null; renderCasino(); return; }
+  if (shown) { shown = null; laugh = null; renderCasino(); return; }
   if (!hooks.guard()) return;
   const p = shopFor();
   if (!p) return;
