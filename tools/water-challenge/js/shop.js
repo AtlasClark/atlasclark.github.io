@@ -12,6 +12,7 @@ import { applyRoll, dayRng, grantReward, isGrave, petBinIndex, penOf, binsFor, r
 import { statsOf, racesOn, makeField, raceOdds, runRace, racePay, betHit, raceGrowth, raceXp, levelOf, rng, canRace } from "./race.js";
 import { COSMETICS, SLOTS } from "./cosmetics.js";
 import { live } from "./prices.js";
+import { draw as bjDraw, natural, closeHand } from "./blackjack.js";
 import { hydrationEarned } from "./hydration.js";
 import { monsterEarned } from "./monster.js";
 
@@ -19,10 +20,11 @@ const isShell = s => C.SHELL_KINDS.includes(s.kind);
 const isShard = s => C.SHARD_KINDS.includes(s.kind);
 const isSplinko = s => s.kind === C.SPLINKO_KIND;
 const isToss = s => s.kind === C.TOSS.kind;
-const notTokens = s => isShell(s) || isShard(s) || isSplinko(s) || isToss(s);
+const isBJ = s => s.kind === C.BJ.kind;
+const notTokens = s => isShell(s) || isShard(s) || isSplinko(s) || isToss(s) || isBJ(s);
 const isRace = s => s.kind === C.RACE_KIND;
 /* Games staked in shells, whose spend keeps { bet, won } and costs 0. */
-const shellGame = s => isSplinko(s) || isToss(s) || (isRace(s) && s.cur === "shell");
+const shellGame = s => isSplinko(s) || isToss(s) || isBJ(s) || (isRace(s) && s.cur === "shell");
 const raceWon = (p, cur) => spendsBy(p, C.RACE_KIND).reduce((a, s) => a + (s.cur === cur ? Number(s.won) || 0 : 0), 0);
 export const spentTotal = p => (p.spends || []).reduce((a, s) => a + (notTokens(s) ? 0 : Number(s.cost) || 0), 0);
 export const chestWinnings = p => (p.spends || []).reduce((a, s) => a + (s.chest ? Number(s.chest.won) || 0 : 0), 0);
@@ -74,6 +76,7 @@ setSpendCheck((m, disk) => {
   if (added.some(s => !notTokens(s) && Number(s.cost) > 0) && balance(m) < 0) return "not enough tokens";
   if (added.some(s => (isShell(s) && Number(s.cost) > 0) || (shellGame(s) && Number(s.bet) > 0)) && shellBalance(m) < 0) return "not enough shells";
   for (const s of added) if (isToss(s) && tossesOn(m, String(s.at).slice(0, 10)) > C.TOSS.perDay) return "no tosses left today";
+  for (const s of added) if (isBJ(s) && s.role === "deal" && bjHandsOn(m, String(s.at).slice(0, 10)) > C.BJ.perDay) return "no hands left today";
   return "";
 });
 
@@ -208,6 +211,43 @@ export async function tossPlay(p, bet, call, rnd = Math.random) {
   if (!(await saveOrUndo(p, before, null))) return null;
   return { id: s.id, bet, call, side, won };
 }
+/* ---- blackjack (rev 1.52.0, rules in blackjack.js) --------------------------------- */
+/* Hands dealt to p on a day. */
+export const bjHandsOn = (p, day = todayKey()) => spendsBy(p, C.BJ.kind).reduce((a, s) => a + (s.role === "deal" && String(s.at).slice(0, 10) === day ? 1 : 0), 0);
+export function bjBlock(p, bet) {
+  if (!C.BJ.bets.includes(bet)) return "Pick " + C.BJ.bets.join(", ") + " shells.";
+  if (bjHandsOn(p) >= C.BJ.perDay) return "That's " + C.BJ.perDay + " hands today. Back tomorrow.";
+  if (shellBalance(p) < bet) return "Needs " + bet + " shells.";
+  return "";
+}
+function bjEnd(p, hand, rnd) {
+  const r = closeHand(hand, rnd);
+  const s = spend(p, C.BJ.kind, 0, { role: "end", hand: hand.id, bet: hand.dbl ? hand.bet : 0, won: r.won, res: r.res, pc: hand.p.slice(), dc: hand.d.slice() });
+  hand.end = { id: s.id, res: r.res, won: r.won };
+}
+/* Deals a hand and takes the stake. A blackjack on either side ends it at once (hand.end). */
+export async function bjDeal(p, bet, rnd = Math.random) {
+  if (bjBlock(p, bet)) return null;
+  const before = copy(p);
+  const s = spend(p, C.BJ.kind, 0, { role: "deal", bet });
+  const hand = { id: s.id, bet, p: [bjDraw(rnd), bjDraw(rnd)], d: [bjDraw(rnd), bjDraw(rnd)], dbl: false, end: null };
+  if (natural(hand.p) || natural(hand.d)) bjEnd(p, hand, rnd);
+  if (!(await saveOrUndo(p, before, null))) return null;
+  return hand;
+}
+/* Ends the hand: "stand", "double" (one more card, the stake again) or "bust" (after a hit).
+   The result is saved before the dealer's cards are shown. */
+export async function bjFinish(p, hand, how, rnd = Math.random) {
+  if (hand.end) return hand;
+  if (how === "double" && (hand.p.length !== 2 || shellBalance(p) < hand.bet)) return null;
+  const before = copy(p), was = { p: hand.p.slice(), d: hand.d.slice(), dbl: hand.dbl };
+  if (how === "double") { hand.p.push(bjDraw(rnd)); hand.dbl = true; }
+  bjEnd(p, hand, rnd);
+  if (await saveOrUndo(p, before, null)) return hand;
+  Object.assign(hand, was, { end: null });
+  return null;
+}
+export const bjWon = p => spendsBy(p, C.BJ.kind).reduce((a, s) => a + (Number(s.won) || 0), 0);
 export const tossWon = p => spendsBy(p, C.TOSS.kind).reduce((a, s) => a + (Number(s.won) || 0), 0);
 
 /* ---- pet races (rules in race.js) -------------------------------------------------- */
@@ -462,12 +502,12 @@ export function shopDay(p, key) {
 
 /* ---- casino tallies, for the recaps and History (rev 1.50.3) ------------------------- */
 /* p's casino on `key` (a day, or "" for every day): races with p's own pets (and how many
-   they won), house races, shell Plinko drops, shell tosses (and right calls), 1v1 races won and lost (the result lives in
+   they won), house races, shell Plinko drops, shell tosses (and right calls), blackjack hands (and wins), 1v1 races won and lost (the result lives in
    the accepter's file, so everyone's records are read), shells and tokens staked and paid
    back, and the biggest single payouts: bestShell / bestToken { won, day }. */
 export function casinoOn(p, key = "") {
   const on = s => !key || String(s.at).slice(0, 10) === key;
-  const c = { races: 0, raceWins: 0, house: 0, drops: 0, tosses: 0, tossWins: 0, duelWins: 0, duelLosses: 0, shellIn: 0, shellBack: 0, tokenIn: 0, tokenBack: 0, bestShell: null, bestToken: null };
+  const c = { races: 0, raceWins: 0, house: 0, drops: 0, tosses: 0, tossWins: 0, hands: 0, handWins: 0, duelWins: 0, duelLosses: 0, shellIn: 0, shellBack: 0, tokenIn: 0, tokenBack: 0, bestShell: null, bestToken: null };
   const top = (won, cur, at) => { const k = cur === "token" ? "bestToken" : "bestShell"; if (won > 0 && (!c[k] || won > c[k].won)) c[k] = { won, day: String(at).slice(0, 10) }; };
   for (const s of spendsBy(p, C.RACE_KIND)) {
     if (!on(s)) continue;
@@ -488,17 +528,25 @@ export function casinoOn(p, key = "") {
     c.shellIn += Number(s.bet) || 0; c.shellBack += won;
     top(won, "shell", s.at);
   }
+  for (const s of spendsBy(p, C.BJ.kind)) {
+    if (!on(s)) continue;
+    const won = Number(s.won) || 0;
+    if (s.role === "deal") c.hands++;
+    else if (s.res === "bj" || s.res === "win") c.handWins++;
+    c.shellIn += Number(s.bet) || 0; c.shellBack += won;
+    top(won, "shell", s.at);
+  }
   for (const q of S.participants) for (const s of spendsBy(q, C.DUEL.kind)) {
     if (s.role !== "take" || !on(s)) continue;
     if (q.name === p.name) { if (s.win) c.duelWins++; else c.duelLosses++; }
     else if (s.from === p.name) { if (s.win) c.duelLosses++; else c.duelWins++; }
   }
-  c.any = c.races + c.house + c.drops + c.tosses + c.duelWins + c.duelLosses > 0;
+  c.any = c.races + c.house + c.drops + c.tosses + c.hands + c.duelWins + c.duelLosses > 0;
   return c;
 }
 /* Adds casino tallies b into a. */
 export function addCasino(a, b) {
-  for (const k of ["races", "raceWins", "house", "drops", "tosses", "tossWins", "duelWins", "duelLosses", "shellIn", "shellBack", "tokenIn", "tokenBack"]) a[k] += b[k];
+  for (const k of ["races", "raceWins", "house", "drops", "tosses", "tossWins", "hands", "handWins", "duelWins", "duelLosses", "shellIn", "shellBack", "tokenIn", "tokenBack"]) a[k] += b[k];
   for (const k of ["bestShell", "bestToken"]) if (b[k] && (!a[k] || b[k].won > a[k].won)) a[k] = b[k];
   a.any = a.any || b.any;
   return a;
@@ -580,7 +628,7 @@ function runs(p) {
   return out;
 }
 export const shellAward = run => Math.min(C.SHELL_MAX, Math.max(1, run));
-export function shellsEarned(p) { return Object.values(runs(p)).reduce((a, r) => a + shellAward(r), 0) + hydrationEarned(p).shells + monsterEarned(p).shells + winShells(p) + splinkoWon(p) + tossWon(p) + raceWon(p, "shell"); }
+export function shellsEarned(p) { return Object.values(runs(p)).reduce((a, r) => a + shellAward(r), 0) + hydrationEarned(p).shells + monsterEarned(p).shells + winShells(p) + splinkoWon(p) + tossWon(p) + bjWon(p) + raceWon(p, "shell"); }
 /* Shells won back on shell Plinko (the stakes are in shellsSpent). */
 export const splinkoWon = p => spendsBy(p, C.SPLINKO_KIND).reduce((a, s) => a + (Number(s.won) || 0), 0);
 /* Day wins pay WIN_SHELLS, split between that day's winners (model.dayWinners). */

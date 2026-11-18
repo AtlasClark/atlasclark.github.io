@@ -321,17 +321,21 @@
             <span id="plinkoNote" class="hint"></span></div>
           <ul id="plinkoFeed" class="plinko-feed"></ul>
         </div>
-        <div class="panel casino-toss">
-          <div class="panel-heading"><p class="eyebrow">Call it. Double or nothing.</p><h2>Shell toss</h2></div>
-          <div id="tossWrap" class="toss-wrap"><canvas id="tossCanvas" aria-label="The shell toss"></canvas></div>
-          <div id="tossResult" class="toss-result" role="status"></div>
-          <div class="plinko-mode">
-            <span class="seg-group" id="tossCall" role="group" aria-label="Your call"><button type="button" class="seg" data-call="shell">Shell up</button><button type="button" class="seg" data-call="pearl">Pearl up</button></span>
-            <span class="seg-group toss-stake" id="tossStake" role="group" aria-label="Shells staked"><button type="button" class="seg" data-step="-1" aria-label="One shell less">&minus;</button><input id="tossBet" type="number" min="1" step="1" inputmode="numeric" aria-label="Shells staked"><button type="button" class="seg" data-step="1" aria-label="One shell more">+</button><button type="button" class="seg" data-step="max">Max</button></span>
+        <div class="panel casino-bj">
+          <div class="panel-heading"><p class="eyebrow">Dealer stands on 17. Blackjack pays 3 to 2.</p><h2>Blackjack</h2></div>
+          <div class="bj-table">
+            <div class="bj-row"><span class="bj-who">Dealer <b id="bjDTot"></b></span><div id="bjDealer" class="bj-cards"></div></div>
+            <div id="bjMsg" class="bj-msg" role="status"></div>
+            <div class="bj-row"><span class="bj-who">You <b id="bjPTot"></b></span><div id="bjPlayer" class="bj-cards"></div></div>
           </div>
-          <div class="plinko-go"><button type="button" id="tossGo" class="btn primary">Toss</button>
-            <span id="tossNote" class="hint"></span></div>
-          <ul id="tossFeed" class="plinko-feed"></ul>
+          <div class="plinko-mode"><span class="seg-group" id="bjStakes" role="group" aria-label="Shells staked"></span></div>
+          <div class="plinko-go bj-acts" id="bjActs">
+            <button type="button" class="btn primary" data-bj="deal" id="bjDeal">Deal</button>
+            <button type="button" class="btn primary" data-bj="hit" hidden>Hit</button>
+            <button type="button" class="btn" data-bj="stand" hidden>Stand</button>
+            <button type="button" class="btn" data-bj="double" hidden>Double</button>
+            <span id="bjNote" class="hint"></span></div>
+          <ul id="bjFeed" class="plinko-feed"></ul>
         </div>
         </div>
       </div>

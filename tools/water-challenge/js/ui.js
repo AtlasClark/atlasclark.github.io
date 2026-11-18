@@ -337,7 +337,7 @@ function renderActivity() {
     if (p.graveDay === key && Number(p.deadKind) >= 0) pets.push({ kind: "grave", p, pet: Number(p.deadKind), ts: t.grave });
     /* buys and rerolls one row each; Plinko folded to one row per person (a ball
        still falling stays out until it lands) */
-    const hid = hiddenIds(p), drops = [], sdrops = [], races = [], tosses = [];
+    const hid = hiddenIds(p), drops = [], sdrops = [], races = [], tosses = [], hands = [];
     for (const s of spendsOn(p, key)) {
       if (hid.has(s.id)) continue;
       if (held && s.kind === "reroll" && Number(s.pet) === Number(p.rollKind)) continue;   /* its card is still turning */
@@ -345,12 +345,17 @@ function renderActivity() {
       else if (s.kind === C.SPLINKO_KIND) sdrops.push(s);
       else if (s.kind === C.RACE_KIND) races.push(s);
       else if (s.kind === C.TOSS.kind) tosses.push(s);
+      else if (s.kind === C.BJ.kind) hands.push(s);
       else if (s.kind === C.DUEL.kind) { if (s.role === "take") pets.push({ kind: "spend", p, s, ts: s.at }); }   /* only a race that was run */
       else pets.push({ kind: "spend", p, s, ts: s.at });
     }
     if (races.length) {                                              /* races: one row per person as well */
       races.sort((a, b) => atOf(a.at) - atOf(b.at));
       pets.push({ kind: "races", p, races, ts: races[races.length - 1].at, from: races[0].at });
+    }
+    if (hands.length) {                                              /* blackjack: one row per person */
+      hands.sort((a, b) => atOf(a.at) - atOf(b.at));
+      pets.push({ kind: "bj", p, hands, ts: hands[hands.length - 1].at, from: hands[0].at });
     }
     if (tosses.length) {                                             /* shell tosses: one row per person */
       tosses.sort((a, b) => atOf(a.at) - atOf(b.at));
@@ -382,6 +387,7 @@ function renderActivity() {
     if (a.kind === "splinko") return '<li class="ev-shop" title="' + a.drops.length + ' drop' + (a.drops.length === 1 ? '' : 's') + ', ' +
                                      esc(prettyTime(a.from)) + ' to ' + esc(prettyTime(a.ts)) + '">' + splinkoLine(a.p, a.drops, when) + '</li>';
     if (a.kind === "races") return '<li class="ev-shop">' + raceLine(a.p, a.races, when) + '</li>';
+    if (a.kind === "bj") return '<li class="ev-shop">' + bjLine(a.p, a.hands, when) + '</li>';
     if (a.kind === "tosses") return '<li class="ev-shop">' + tossLine(a.p, a.tosses, when) + '</li>';
     if (a.kind === "roll") {
       return '<li class="ev-pet">' + '<span class="tag">' + (a.fresh ? "new pet" : "pet") + '</span>' + when +
@@ -893,6 +899,21 @@ function tossLine(p, tosses, when) {
   const right = tosses.filter(s => Number(s.won) > 0).length;
   return head + 'tossed ' + tosses.length + ' times, ' + right + ' right <span class="dim">&middot; ' + coins(bet, "shell") + ' in, ' + won + ' back</span>';
 }
+/* A person's blackjack as one line: one hand says how it ended, more are summed. A deal with
+   no end (still on the table, or left unfinished) counts its stake as in. */
+const BJ_RES = { bj: "blackjack", win: "won", push: "push", lose: "lost", bust: "bust" };
+function bjLine(p, hands, when) {
+  const head = '<span class="tag">blackjack</span>' + when + '<strong>' + esc(p.name) + '</strong> ';
+  const deals = hands.filter(s => s.role === "deal"), ends = hands.filter(s => s.role === "end");
+  const bet = hands.reduce((a, s) => a + (Number(s.bet) || 0), 0), won = ends.reduce((a, s) => a + (Number(s.won) || 0), 0);
+  if (deals.length === 1 && ends.length === 1) {
+    const e = ends[0], w = Number(e.won) || 0;
+    return head + 'played a hand of blackjack: ' + esc(BJ_RES[e.res] || "?") + (w > bet ? ' <span class="pill good">+' + coins(w - bet, "shell") + '</span>'
+      : w === bet ? ' <span class="dim">&middot; stake back</span>' : ' <span class="dim">&middot; lost ' + coins(bet, "shell") + '</span>');
+  }
+  const wins = ends.filter(s => s.res === "bj" || s.res === "win").length;
+  return head + 'played ' + plural(deals.length || ends.length, "hand") + ' of blackjack, won ' + wins + ' <span class="dim">&middot; ' + coins(bet, "shell") + ' in, ' + won + ' back</span>';
+}
 /* A person's races as one line: one race says how it went, more are summed. */
 const PLACES = ["1st", "2nd", "3rd", "4th", "5th", "6th"];
 const coins = (n, cur) => n + ' ' + (cur === "token" ? 'token' : 'shell') + (n === 1 ? '' : 's');
@@ -932,6 +953,7 @@ function spendLine(p, s, when) {
   if (s.kind === C.SPLINKO_KIND) return splinkoLine(p, [s], when);
   if (s.kind === C.RACE_KIND) return raceLine(p, [s], when);
   if (s.kind === C.TOSS.kind) return tossLine(p, [s], when);
+  if (s.kind === C.BJ.kind) return bjLine(p, [s], when);
   if (s.kind === C.DUEL.kind) return '<span class="tag">1v1</span>' + when + '<strong>' + esc(p.name) + '</strong>&rsquo;s ' + esc(petLabel(k)) + (s.win ? ' beat ' : ' lost to ') +
                                      '<strong>' + esc(String(s.from || "?")) + '</strong>&rsquo;s ' + esc(petLabel(Number(s.vs)));
   if (s.kind === "cosmetic") return '<span class="tag">style</span>' + when + name + 'bought ' + esc((COSMETICS[s.item] || { name: "a look" }).name) +
@@ -1180,13 +1202,14 @@ const coinsText = (n, cur) => plural(n, cur === "token" ? "token" : "shell");
 const net = (back, inn, cur) => { const d = back - inn; return '<span class="rc-net ' + (d > 0 ? 'up' : d < 0 ? 'down' : '') + '">' + (d > 0 ? '+' : d < 0 ? '&minus;' : '&plusmn;') +
   Math.abs(d) + (cur === "token" ? '<span class="coin sm"></span>' : '<span class="shellico sm"></span>') + '</span>'; };
 function recapCasino(list) {
-  const t = list.reduce((a, x) => addCasino(a, x.c), { races: 0, raceWins: 0, house: 0, drops: 0, tosses: 0, tossWins: 0, duelWins: 0, duelLosses: 0, shellIn: 0, shellBack: 0, tokenIn: 0, tokenBack: 0, bestShell: null, bestToken: null });
+  const t = list.reduce((a, x) => addCasino(a, x.c), { races: 0, raceWins: 0, house: 0, drops: 0, tosses: 0, tossWins: 0, hands: 0, handWins: 0, duelWins: 0, duelLosses: 0, shellIn: 0, shellBack: 0, tokenIn: 0, tokenBack: 0, bestShell: null, bestToken: null });
   const duels = list.reduce((a, x) => a + x.c.duelWins, 0), sum = [];
   if (t.races) sum.push(plural(t.races, "race"));
   if (t.house) sum.push(plural(t.house, "house race"));
   if (duels) sum.push(plural(duels, "1v1 race"));
   if (t.drops) sum.push(plural(t.drops, "shell drop"));
   if (t.tosses) sum.push(t.tosses + (t.tosses === 1 ? " shell toss" : " shell tosses"));
+  if (t.hands) sum.push(plural(t.hands, "blackjack hand"));
   if (t.shellIn) sum.push(t.shellIn + ' shells in, ' + t.shellBack + ' back');
   if (t.tokenIn) sum.push(t.tokenIn + ' token' + (t.tokenIn === 1 ? '' : 's') + ' in, ' + t.tokenBack + ' back');
   const h = ['<div class="recap-shop recap-casino"><h4>Casino</h4><p class="rc-shop-sum">' + sum.join(' &middot; ') + '</p><ul class="rc-shop-list">'];
@@ -1198,6 +1221,7 @@ function recapCasino(list) {
     if (c.duelWins + c.duelLosses) bits.push('1v1 ' + c.duelWins + '&ndash;' + c.duelLosses);
     if (c.drops) bits.push(plural(c.drops, "shell drop"));
     if (c.tosses) bits.push(c.tosses + (c.tosses === 1 ? ' toss' : ' tosses') + ', ' + c.tossWins + ' right');
+    if (c.hands) bits.push(plural(c.hands, "blackjack hand") + ', ' + c.handWins + ' won');
     if (c.bestShell) bits.push('best win ' + coinsText(c.bestShell.won, "shell"));
     if (c.bestToken) bits.push('best win ' + coinsText(c.bestToken.won, "token"));
     h.push('<li><i class="dot" style="background:' + p.color + '"></i><strong>' + esc(p.name) + '</strong>' +

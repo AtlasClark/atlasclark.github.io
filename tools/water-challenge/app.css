@@ -1340,16 +1340,32 @@ li.pour.armed .undo-x { opacity: 1; background: #c4434f; color: #fff; }
 @media (max-width: 1180px) { .casino-grid { grid-template-columns: minmax(0, 1fr); } }
 .casino-side { display: grid; gap: 22px; align-content: start; min-width: 0; }
 .casino-side > .panel { margin: 0; }
-/* Shell toss (rev 1.51.0) */
-.toss-wrap { display: flex; justify-content: center; margin: 4px 0 6px; }
-.toss-wrap canvas { display: block; border-radius: 14px; background: var(--solid-2); }
-.toss-result { min-height: 26px; text-align: center; font-size: 15px; color: var(--ink-2); }
-.toss-result b { color: var(--title); margin-right: 4px; }
-.toss-stake input { width: 46px; border: 0; border-left: 1px solid var(--chip-line); border-right: 1px solid var(--chip-line); background: none;
-  color: var(--ink); font: inherit; font-weight: 800; text-align: center; -moz-appearance: textfield; appearance: textfield; }
-.toss-stake input::-webkit-outer-spin-button, .toss-stake input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
-.toss-stake input:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
-.toss-stake input + .seg { border-left: 0; }
+/* Blackjack (rev 1.52.0): a pool table with water cards (rev 1.52.0 water design: fixed colours, the same in every theme) */
+.bj-table { display: grid; gap: 6px; margin: 4px 0 6px; padding: 16px 14px 14px; border-radius: 16px; justify-items: center;
+  background:
+    radial-gradient(28% 18% at 22% 30%, rgba(255,255,255,.13), transparent 70%),
+    radial-gradient(34% 20% at 74% 62%, rgba(255,255,255,.11), transparent 70%),
+    radial-gradient(24% 14% at 46% 86%, rgba(255,255,255,.09), transparent 70%),
+    radial-gradient(120% 90% at 50% 30%, #2a9ed8, #1676b4 62%, #0f5a90);
+  box-shadow: inset 0 0 0 5px #e4f3fa, inset 0 0 0 6px rgba(9,50,80,.25), inset 0 3px 16px rgba(5,40,70,.45); }
+.bj-row { display: grid; gap: 6px; justify-items: center; width: 100%; }
+.bj-who { font-size: 11px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; color: rgba(232,246,255,.78); }
+.bj-who b { margin-left: 6px; font-size: 14px; letter-spacing: 0; color: #fff; }
+.bj-who b small { font-size: 10px; font-weight: 700; opacity: .7; margin-left: 3px; }
+.bj-cards { display: flex; justify-content: center; min-height: 84px; }
+.bj-card { position: relative; width: 58px; height: 82px; margin-left: -16px; border-radius: 8px; color: #163650;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='58' height='12' viewBox='0 0 58 12'%3E%3Cpath d='M0 6Q7.25 1 14.5 6T29 6T43.5 6T58 6V12H0Z' fill='%2366b8e6' fill-opacity='.22'/%3E%3C/svg%3E") bottom / 100% 12px no-repeat, linear-gradient(#fdfeff, #eef7fc);
+  box-shadow: 0 3px 8px rgba(4,36,62,.4), inset 0 0 0 1px rgba(16,80,130,.18); display: grid; place-items: center; font-weight: 800; }
+.bj-card:first-child { margin-left: 0; }
+.bj-card.red { color: #d23b4e; }
+.bj-card b { position: absolute; top: 4px; left: 6px; font-size: 15px; line-height: 1; }
+.bj-card i { font-style: normal; font-size: 28px; line-height: 1; margin-top: -4px; }
+.bj-card.back { background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='58' height='82' viewBox='0 0 58 82'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0' stop-color='%232f9ad8'/%3E%3Cstop offset='1' stop-color='%230f5a90'/%3E%3C/linearGradient%3E%3Cpattern id='w' width='12' height='7' patternUnits='userSpaceOnUse'%3E%3Cpath d='M0 4.5Q3 1 6 4.5T12 4.5' fill='none' stroke='%23fff' stroke-opacity='.25' stroke-width='1.1'/%3E%3C/pattern%3E%3C/defs%3E%3Crect width='58' height='82' rx='6' fill='url(%23g)'/%3E%3Crect x='4' y='4' width='50' height='74' rx='4' fill='url(%23w)' stroke='%23fff' stroke-opacity='.8' stroke-width='1.2'/%3E%3Ccircle cx='29' cy='41' r='14' fill='%230d4f80' stroke='%23fff' stroke-opacity='.7'/%3E%3Cpath d='M18.5 44Q17.5 33 29 30.5Q40.5 33 39.5 44L33 46.5H25Z' fill='%23ffc9ad' stroke='%23fff' stroke-width='1'/%3E%3Cpath d='M29 46V31.5M29 46L23.5 33M29 46L34.5 33M29 46L19.5 38M29 46L38.5 38' stroke='%23d9805c' stroke-width='.9' fill='none'/%3E%3C/svg%3E") center / 100% 100% no-repeat; box-shadow: 0 3px 8px rgba(4,36,62,.4); }
+.bj-card.deal { animation: bj-in .32s ease-out both; animation-delay: calc(var(--i, 0) * .14s); }
+@keyframes bj-in { from { transform: translate(60px, -40px) rotate(8deg); opacity: 0; } to { transform: none; opacity: 1; } }
+.bj-msg { min-height: 26px; display: flex; align-items: center; justify-content: center; gap: 8px; font-weight: 800; color: #fff; font-size: 15px; }
+.bj-msg .pill { font-size: 12px; }
+.bj-acts .btn[hidden] { display: none; }
 .shop-balance .shellico { display: inline-block; width: 17px; height: 17px; vertical-align: -3px; margin-right: 5px; }
 .race-pets { display: flex; flex-wrap: wrap; gap: 6px; max-height: 148px; overflow: auto; padding: 2px; }
 .race-pet { position: relative; padding: 4px 4px 3px; border: 1px solid var(--chip-line); border-radius: 12px; background: var(--pc-bg); cursor: pointer; }
@@ -1601,7 +1617,12 @@ li.pour.armed .undo-x { opacity: 1; background: #c4434f; color: #fff; }
 
 @media (max-width: 640px) {
   .shell { padding: 16px 16px 70px; }
-  .page-header { grid-template-columns: auto 1fr auto; }
+  /* buttons and the sync pill on one row, the title under them (the pill ran off the screen, rev 1.51.1) */
+  .page-header { grid-template-columns: auto minmax(0, 1fr); grid-template-areas: "left right" "mid mid"; row-gap: 8px; }
+  .hdr-left { grid-area: left; }
+  .hdr-right { grid-area: right; min-width: 0; }
+  .hdr-mid { grid-area: mid; }
+  .sync-pill { overflow: hidden; text-overflow: ellipsis; }
   .eyebrow { letter-spacing: .1em; }
   .participant-card { margin-bottom: 16px; }
   .panel { padding: 18px 16px; }

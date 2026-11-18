@@ -1,8 +1,8 @@
 /* Water Challenge (web) - constants: rules, tunables and the on-disk contract
    (FORMAT_REV, UTF-16 LE + BOM JSON, unknown fields kept). */
 
-export const REV         = "rev 1.51.0";
-export const APP_VERSION = "web 1.51.0";   /* stamped as writerVersion */
+export const REV         = "rev 1.52.0";
+export const APP_VERSION = "web 1.52.0";   /* stamped as writerVersion */
 /* Every file is written at FORMAT_REV. A file stamped higher came from a newer
    build, and the page asks for a reload. */
 export const FORMAT_REV    = 22;
@@ -52,11 +52,18 @@ export const SPLINKO_MULT   = [0.5, 1, 2, 4, 10];
 export const SPLINKO_CENTRE = 0.3;
 export const splinkoMult = bin => bin === CHEST ? SPLINKO_CENTRE : (SPLINKO_MULT[bin] ?? 0);
 export const PLINKO_ROW_SECS = 0.26;
-/* Shell toss (rev 1.51.0, js/tossui.js): call Shell up or Pearl up, stake any whole 1..max
+/* Shell toss (rev 1.51.0; its card was taken off the Casino tab in 1.52.0, the rules stay so
+   past tosses still count): call Shell up or Pearl up, stake any whole 1..max
    shells (never past the balance); the right call pays double. A true 50/50 with no house
    edge, so the cap and perDay keep it small (and the log: one record per toss, about
    120 characters). A "toss" spend keeps { bet, call, side, won } and costs 0. */
 export const TOSS = { kind: "toss", max: 25, perDay: 20, sides: ["shell", "pearl"], secs: 1.7 };
+/* Blackjack (rev 1.52.0; rules js/blackjack.js, table js/bjui.js): shells 2 / 5 / 10, an endless deck, the dealer
+   stands on all 17s, blackjack pays 3 to 2 rounded down, double on the first two cards, no split or insurance.
+   "bj" spends cost 0: { role: "deal", bet } at the deal (the stake goes at once), then { role: "end", hand (the deal's
+   id), bet (a double's extra stake, else 0), won, res, pc, dc } when it ends. A hand left unfinished loses its stake.
+   perDay hands a day; step = seconds between the dealer's cards. */
+export const BJ = { kind: "bj", bets: [2, 5, 10], perDay: 20, step: 0.6 };
 /* Pet races (rev 1.46.0, js/race.js): your pet against five others; a stake on any racer,
    to win or to finish in the first three. A "race" spend keeps { pet, cur, bet, on, type,
    won, place, xp, d } (cost = the stake for tokens, 0 for shells, as shell Plinko).
@@ -131,7 +138,7 @@ export const MOVED_FILE       = "_moved.json";
    past the browser cache before reloading, so old and new modules never mix. */
 export const SITE_FILES = ["./", "app.css",
   "js/app.js", "js/art.js", "js/bottle.js", "js/cloud.js", "js/cloudui.js", "js/config.js", "js/glass.js", "js/guard.js", "js/hatui.js", "js/prices.js", "js/live.js", "js/model.js", "js/msg.js", "js/hydration.js", "js/hydfx.js", "js/themefx.js", "js/monster.js", "js/monsterfx.js", "js/cosmetics.js", "js/styleart.js", "js/styleui.js", "js/pen1art.js", "js/pen2art.js", "js/pen3art.js", "js/propart.js", "js/petdefs.js",
-  "js/pets.js", "js/plinko.js", "js/race.js", "js/raceui.js", "js/radial.js", "js/reveal.js", "js/shop.js", "js/shopui.js", "js/store.js", "js/tossui.js", "js/ui.js", "js/util.js", "pets/pets.json"];
+  "js/pets.js", "js/plinko.js", "js/race.js", "js/raceui.js", "js/radial.js", "js/reveal.js", "js/shop.js", "js/shopui.js", "js/store.js", "js/blackjack.js", "js/bjui.js", "js/ui.js", "js/util.js", "pets/pets.json"];
 export const VERSION_CHECK_MS = 300000;
 
 /* ---- goals (fallbacks; live values come from _settings.json) ---- */

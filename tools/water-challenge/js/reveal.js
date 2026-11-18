@@ -17,14 +17,16 @@ export const RACE_HOLD_MS = 26000;
 export const raceDone = new Set();               /* race and toss ids shown to the end on this page */
 /* A shell toss (rev 1.51.0) is held the same way, until it lands here or for TOSS_HOLD_MS. */
 export const TOSS_HOLD_MS = 6000;
+/* A blackjack hand's end (rev 1.52.0) waits for the dealer's cards to be shown here. */
+export const BJ_HOLD_MS = 12000;
 export function racesHeld(p, now = Date.now()) {
   const cut = localStamp(new Date(now - RACE_HOLD_MS - 60000)), out = [];     /* stamps before this are past any hold: no date to parse */
-  for (const [kind, hold] of [[C.RACE_KIND, RACE_HOLD_MS], [C.TOSS.kind, TOSS_HOLD_MS]]) {
+  for (const [kind, hold] of [[C.RACE_KIND, RACE_HOLD_MS], [C.TOSS.kind, TOSS_HOLD_MS], [C.BJ.kind, BJ_HOLD_MS]]) {
     const list = spendsBy(p, kind);
     for (let i = list.length - 1; i >= 0; i--) {                               /* newest first; stop at the first old one */
       const s = list[i];
       if (String(s.at) < cut) break;
-      if (raceDone.has(s.id)) continue;
+      if (raceDone.has(s.id) || (s.kind === C.BJ.kind && s.role === "deal")) continue;   /* a deal's stake shows at once */
       const age = now - new Date(s.at).getTime();
       if (age > -5000 && age < hold) out.push(s);
     }
