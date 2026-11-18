@@ -14,10 +14,12 @@ export const HOLD_MS = C.LIVE_SHOW_MS + 3000;
 /* Races work the same way: saved when they start, shown when they finish. A race is held
    until its finish on this page (raceDone), or for RACE_HOLD_MS on a page not showing it. */
 export const RACE_HOLD_MS = 26000;
-export const raceDone = new Set();
+export const raceDone = new Set();               /* race and toss ids shown to the end on this page */
+/* A shell toss (rev 1.51.0) is held the same way, until it lands here or for TOSS_HOLD_MS. */
+export const TOSS_HOLD_MS = 6000;
 export function racesHeld(p, now = Date.now()) {
   const cut = localStamp(new Date(now - RACE_HOLD_MS - 60000)), out = [];     /* stamps before this are past any hold: no date to parse */
-  for (const [kind, hold] of [[C.RACE_KIND, RACE_HOLD_MS]]) {
+  for (const [kind, hold] of [[C.RACE_KIND, RACE_HOLD_MS], [C.TOSS.kind, TOSS_HOLD_MS]]) {
     const list = spendsBy(p, kind);
     for (let i = list.length - 1; i >= 0; i--) {                               /* newest first; stop at the first old one */
       const s = list[i];
@@ -29,7 +31,7 @@ export function racesHeld(p, now = Date.now()) {
   }
   return out;
 }
-const heldWon = (p, cur) => racesHeld(p).reduce((a, s) => a + (s.cur === cur ? Number(s.won) || 0 : 0), 0);
+const heldWon = (p, cur) => racesHeld(p).reduce((a, s) => a + ((s.cur || "shell") === cur ? Number(s.won) || 0 : 0), 0);   /* a toss has no cur: shells */
 export const landed = new Set();                  /* drop ids whose ball landed on this page */
 let flying = () => [];                            /* set by shopui: events still falling on the board */
 export function setFlying(fn) { flying = fn; }

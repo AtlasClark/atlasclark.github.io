@@ -233,16 +233,17 @@
 
     <section id="view-shop" hidden>
       <div id="shopMain">
-        <div class="panel shop-top">
-          <div class="panel-heading"><p class="eyebrow">1 token per goal day &middot; 5 per day over the cap</p><h2>Token shop</h2></div>
-          <div id="shopWho" class="shop-who"></div>
-          <p id="shopBalance" class="shop-balance"></p>
+        <div class="shop-head">
+          <div class="panel shop-top">
+            <div class="panel-heading"><p class="eyebrow">1 token per goal day &middot; 5 per day over the cap</p><h2>Token shop</h2></div>
+            <p id="shopBalance" class="shop-balance"></p>
+          </div>
+          <div id="shopReroll" class="panel shop-reroll">
+            <div class="panel-heading"><p class="eyebrow" id="rerollEyebrow">1 token &middot; once a day</p><h2>Reroll today's pet</h2></div>
+            <div id="rerollBox"></div>
+          </div>
         </div>
         <div id="shopGrid" class="shop-grid">
-            <div class="panel shop-reroll">
-              <div class="panel-heading"><p class="eyebrow" id="rerollEyebrow">1 token &middot; once a day</p><h2>Reroll today's pet</h2></div>
-              <div id="rerollBox"></div>
-            </div>
             <div class="panel shop-buy">
               <div class="panel-heading"><p class="eyebrow">Repeats give shards &middot; Combine 3 into 1 of the next tier</p><h2>Shards</h2></div>
               <div id="shardBar" class="shard-bar"></div>
@@ -303,6 +304,7 @@
             <ul id="raceFeed" class="plinko-feed"></ul>
           </div>
         </div>
+        <div class="casino-side">
         <div class="panel shop-plinko">
           <div class="panel-heading"><p class="eyebrow" id="plinkoEyebrow">1 token per drop</p><h2>Plinko</h2></div>
           <p class="hint">Each peg is a 50/50 bounce. The slot sets the rarity, and you win any pet of that rarity; one you have alive gives a shard.
@@ -318,6 +320,19 @@
           <div class="plinko-go"><button type="button" id="plinkoDrop" class="btn primary">Drop a token</button>
             <span id="plinkoNote" class="hint"></span></div>
           <ul id="plinkoFeed" class="plinko-feed"></ul>
+        </div>
+        <div class="panel casino-toss">
+          <div class="panel-heading"><p class="eyebrow">Call it. Double or nothing.</p><h2>Shell toss</h2></div>
+          <div id="tossWrap" class="toss-wrap"><canvas id="tossCanvas" aria-label="The shell toss"></canvas></div>
+          <div id="tossResult" class="toss-result" role="status"></div>
+          <div class="plinko-mode">
+            <span class="seg-group" id="tossCall" role="group" aria-label="Your call"><button type="button" class="seg" data-call="shell">Shell up</button><button type="button" class="seg" data-call="pearl">Pearl up</button></span>
+            <span class="seg-group toss-stake" id="tossStake" role="group" aria-label="Shells staked"><button type="button" class="seg" data-step="-1" aria-label="One shell less">&minus;</button><input id="tossBet" type="number" min="1" step="1" inputmode="numeric" aria-label="Shells staked"><button type="button" class="seg" data-step="1" aria-label="One shell more">+</button><button type="button" class="seg" data-step="max">Max</button></span>
+          </div>
+          <div class="plinko-go"><button type="button" id="tossGo" class="btn primary">Toss</button>
+            <span id="tossNote" class="hint"></span></div>
+          <ul id="tossFeed" class="plinko-feed"></ul>
+        </div>
         </div>
       </div>
     </section>

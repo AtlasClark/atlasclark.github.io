@@ -18,10 +18,11 @@ import { monsterEarned } from "./monster.js";
 const isShell = s => C.SHELL_KINDS.includes(s.kind);
 const isShard = s => C.SHARD_KINDS.includes(s.kind);
 const isSplinko = s => s.kind === C.SPLINKO_KIND;
-const notTokens = s => isShell(s) || isShard(s) || isSplinko(s);
+const isToss = s => s.kind === C.TOSS.kind;
+const notTokens = s => isShell(s) || isShard(s) || isSplinko(s) || isToss(s);
 const isRace = s => s.kind === C.RACE_KIND;
 /* Games staked in shells, whose spend keeps { bet, won } and costs 0. */
-const shellGame = s => isSplinko(s) || (isRace(s) && s.cur === "shell");
+const shellGame = s => isSplinko(s) || isToss(s) || (isRace(s) && s.cur === "shell");
 const raceWon = (p, cur) => spendsBy(p, C.RACE_KIND).reduce((a, s) => a + (s.cur === cur ? Number(s.won) || 0 : 0), 0);
 export const spentTotal = p => (p.spends || []).reduce((a, s) => a + (notTokens(s) ? 0 : Number(s.cost) || 0), 0);
 export const chestWinnings = p => (p.spends || []).reduce((a, s) => a + (s.chest ? Number(s.chest.won) || 0 : 0), 0);
@@ -72,6 +73,7 @@ setSpendCheck((m, disk) => {
   }
   if (added.some(s => !notTokens(s) && Number(s.cost) > 0) && balance(m) < 0) return "not enough tokens";
   if (added.some(s => (isShell(s) && Number(s.cost) > 0) || (shellGame(s) && Number(s.bet) > 0)) && shellBalance(m) < 0) return "not enough shells";
+  for (const s of added) if (isToss(s) && tossesOn(m, String(s.at).slice(0, 10)) > C.TOSS.perDay) return "no tosses left today";
   return "";
 });
 
@@ -188,6 +190,25 @@ export async function splinkoPlay(p, bet, rnd = Math.random) {
   if (!(await saveOrUndo(p, before, null))) return null;
   return { id: s.id, at: Date.now(), name: p.name, color: p.color, kind: C.PET_NO_PET, bin, slot, path, shell: { bet, won } };
 }
+
+/* ---- shell toss (rev 1.51.0) ------------------------------------------------------- */
+/* p's tosses on a day. */
+export const tossesOn = (p, day = todayKey()) => spendsBy(p, C.TOSS.kind).reduce((a, s) => a + (String(s.at).slice(0, 10) === day ? 1 : 0), 0);
+export function tossBlock(p, bet) {
+  if (!Number.isInteger(bet) || bet < 1 || bet > C.TOSS.max) return "Stake 1 to " + C.TOSS.max + " shells.";
+  if (tossesOn(p) >= C.TOSS.perDay) return "That's " + C.TOSS.perDay + " tosses today. Back tomorrow.";
+  if (shellBalance(p) < bet) return "Needs " + bet + " shells.";
+  return "";
+}
+/* Takes the stake and pays a right call now; the page only shows the toss. */
+export async function tossPlay(p, bet, call, rnd = Math.random) {
+  if (!C.TOSS.sides.includes(call) || tossBlock(p, bet)) return null;
+  const before = copy(p), side = C.TOSS.sides[rnd() < 0.5 ? 0 : 1], won = side === call ? bet * 2 : 0;
+  const s = spend(p, C.TOSS.kind, 0, { bet, call, side, won });
+  if (!(await saveOrUndo(p, before, null))) return null;
+  return { id: s.id, bet, call, side, won };
+}
+export const tossWon = p => spendsBy(p, C.TOSS.kind).reduce((a, s) => a + (Number(s.won) || 0), 0);
 
 /* ---- pet races (rules in race.js) -------------------------------------------------- */
 /* The race p's pet k would run now: the field (five others, drawn for this pet, day and
@@ -441,12 +462,12 @@ export function shopDay(p, key) {
 
 /* ---- casino tallies, for the recaps and History (rev 1.50.3) ------------------------- */
 /* p's casino on `key` (a day, or "" for every day): races with p's own pets (and how many
-   they won), house races, shell Plinko drops, 1v1 races won and lost (the result lives in
+   they won), house races, shell Plinko drops, shell tosses (and right calls), 1v1 races won and lost (the result lives in
    the accepter's file, so everyone's records are read), shells and tokens staked and paid
    back, and the biggest single payouts: bestShell / bestToken { won, day }. */
 export function casinoOn(p, key = "") {
   const on = s => !key || String(s.at).slice(0, 10) === key;
-  const c = { races: 0, raceWins: 0, house: 0, drops: 0, duelWins: 0, duelLosses: 0, shellIn: 0, shellBack: 0, tokenIn: 0, tokenBack: 0, bestShell: null, bestToken: null };
+  const c = { races: 0, raceWins: 0, house: 0, drops: 0, tosses: 0, tossWins: 0, duelWins: 0, duelLosses: 0, shellIn: 0, shellBack: 0, tokenIn: 0, tokenBack: 0, bestShell: null, bestToken: null };
   const top = (won, cur, at) => { const k = cur === "token" ? "bestToken" : "bestShell"; if (won > 0 && (!c[k] || won > c[k].won)) c[k] = { won, day: String(at).slice(0, 10) }; };
   for (const s of spendsBy(p, C.RACE_KIND)) {
     if (!on(s)) continue;
@@ -460,17 +481,24 @@ export function casinoOn(p, key = "") {
     c.drops++; c.shellIn += Number(s.bet) || 0; c.shellBack += Number(s.won) || 0;
     top(Number(s.won) || 0, "shell", s.at);
   }
+  for (const s of spendsBy(p, C.TOSS.kind)) {
+    if (!on(s)) continue;
+    const won = Number(s.won) || 0;
+    c.tosses++; if (won) c.tossWins++;
+    c.shellIn += Number(s.bet) || 0; c.shellBack += won;
+    top(won, "shell", s.at);
+  }
   for (const q of S.participants) for (const s of spendsBy(q, C.DUEL.kind)) {
     if (s.role !== "take" || !on(s)) continue;
     if (q.name === p.name) { if (s.win) c.duelWins++; else c.duelLosses++; }
     else if (s.from === p.name) { if (s.win) c.duelLosses++; else c.duelWins++; }
   }
-  c.any = c.races + c.house + c.drops + c.duelWins + c.duelLosses > 0;
+  c.any = c.races + c.house + c.drops + c.tosses + c.duelWins + c.duelLosses > 0;
   return c;
 }
 /* Adds casino tallies b into a. */
 export function addCasino(a, b) {
-  for (const k of ["races", "raceWins", "house", "drops", "duelWins", "duelLosses", "shellIn", "shellBack", "tokenIn", "tokenBack"]) a[k] += b[k];
+  for (const k of ["races", "raceWins", "house", "drops", "tosses", "tossWins", "duelWins", "duelLosses", "shellIn", "shellBack", "tokenIn", "tokenBack"]) a[k] += b[k];
   for (const k of ["bestShell", "bestToken"]) if (b[k] && (!a[k] || b[k].won > a[k].won)) a[k] = b[k];
   a.any = a.any || b.any;
   return a;
@@ -552,7 +580,7 @@ function runs(p) {
   return out;
 }
 export const shellAward = run => Math.min(C.SHELL_MAX, Math.max(1, run));
-export function shellsEarned(p) { return Object.values(runs(p)).reduce((a, r) => a + shellAward(r), 0) + hydrationEarned(p).shells + monsterEarned(p).shells + winShells(p) + splinkoWon(p) + raceWon(p, "shell"); }
+export function shellsEarned(p) { return Object.values(runs(p)).reduce((a, r) => a + shellAward(r), 0) + hydrationEarned(p).shells + monsterEarned(p).shells + winShells(p) + splinkoWon(p) + tossWon(p) + raceWon(p, "shell"); }
 /* Shells won back on shell Plinko (the stakes are in shellsSpent). */
 export const splinkoWon = p => spendsBy(p, C.SPLINKO_KIND).reduce((a, s) => a + (Number(s.won) || 0), 0);
 /* Day wins pay WIN_SHELLS, split between that day's winners (model.dayWinners). */

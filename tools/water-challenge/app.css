@@ -1328,20 +1328,28 @@ li.pour.armed .undo-x { opacity: 1; background: #c4434f; color: #fff; }
 .style-bal .run i { width: 8px; height: 8px; border-radius: 50%; background: var(--chip-line); }
 .style-bal .run i.on { background: #f6a98a; }
 .shop-top .panel-heading { margin-bottom: 10px; }
-.shop-who { display: flex; flex-wrap: wrap; gap: 6px; }
-.who-chip { display: inline-flex; align-items: center; gap: 2px; padding: 6px 12px; border-radius: 999px; border: 1px solid var(--chip-line);
-  background: var(--solid); color: var(--ink-2); font-weight: 700; font-size: 13px; transition: background .12s, border-color .12s; }
-.who-chip b { margin-left: 6px; font-size: 11px; color: var(--gold-ink); }
-.who-chip.on { border-color: var(--pc); box-shadow: inset 0 0 0 2px var(--pc); }
-.who-chip:disabled { opacity: .55; cursor: not-allowed; }
 .shop-balance { margin: 12px 0 0; font-size: 16px; color: var(--ink-2); }
 .shop-balance b { font-size: 24px; color: var(--title); }
-.shop-grid { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 22px; margin-top: 22px; }
-@media (max-width: 900px) { .shop-grid { grid-template-columns: 1fr; } }
-.shop-grid > .panel { align-self: start; }
+/* balance and reroll side by side (rev 1.50.6), shards full width under them */
+.shop-head { display: grid; grid-template-columns: minmax(0, 1fr) minmax(300px, 440px); gap: 22px; }
+@media (max-width: 900px) { .shop-head { grid-template-columns: 1fr; } }
+.shop-head > .panel { margin: 0; }
+.shop-grid { margin-top: 22px; }
 /* the Casino tab (rev 1.46.0): the races, with Plinko beside them on a wide screen */
 .casino-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(320px, 520px); gap: 22px; margin-top: 22px; align-items: start; }
 @media (max-width: 1180px) { .casino-grid { grid-template-columns: minmax(0, 1fr); } }
+.casino-side { display: grid; gap: 22px; align-content: start; min-width: 0; }
+.casino-side > .panel { margin: 0; }
+/* Shell toss (rev 1.51.0) */
+.toss-wrap { display: flex; justify-content: center; margin: 4px 0 6px; }
+.toss-wrap canvas { display: block; border-radius: 14px; background: var(--solid-2); }
+.toss-result { min-height: 26px; text-align: center; font-size: 15px; color: var(--ink-2); }
+.toss-result b { color: var(--title); margin-right: 4px; }
+.toss-stake input { width: 46px; border: 0; border-left: 1px solid var(--chip-line); border-right: 1px solid var(--chip-line); background: none;
+  color: var(--ink); font: inherit; font-weight: 800; text-align: center; -moz-appearance: textfield; appearance: textfield; }
+.toss-stake input::-webkit-outer-spin-button, .toss-stake input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.toss-stake input:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.toss-stake input + .seg { border-left: 0; }
 .shop-balance .shellico { display: inline-block; width: 17px; height: 17px; vertical-align: -3px; margin-right: 5px; }
 .race-pets { display: flex; flex-wrap: wrap; gap: 6px; max-height: 148px; overflow: auto; padding: 2px; }
 .race-pet { position: relative; padding: 4px 4px 3px; border: 1px solid var(--chip-line); border-radius: 12px; background: var(--pc-bg); cursor: pointer; }

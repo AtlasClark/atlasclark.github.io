@@ -92,11 +92,7 @@ export function shopFor() {
 export function renderShop() {
   ensureIcons();
   const p = shopFor();
-  setHtml("shopWho", S.participants.map(x =>
-    '<button type="button" class="who-chip' + (x === p ? " on" : "") + '" style="--pc:' + x.color + '"' +
-    (x === p ? '' : ' disabled title="Only ' + esc(x.name) + '&rsquo;s own browser can spend these"') + '>' +
-    '<i class="dot" style="background:' + x.color + '"></i>' + esc(x.name) + '<b>' + shownBalance(x) + '</b></button>').join(""));
-  $("shopGrid").hidden = !p;
+  $("shopGrid").hidden = $("shopReroll").hidden = !p;
   renderStyle();
   renderHats();
   if (!p) {
