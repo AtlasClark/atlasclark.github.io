@@ -80,13 +80,18 @@ test("payouts keep a house edge on every bet, and one win stays small", () => {
   assert.equal(R.shellBets.at(-1) * R.maxMult, 120, "the most one shell bet can win");
 });
 
-test("what a race teaches: winners gain, the last lose a point, stats stay inside their limits", () => {
+test("what a race teaches: a place raises two stats, 4th keeps them, 5th and 6th lose a point, stats stay inside their limits", () => {
   const base = [...race.baseStats(0)], info = { early: 1, mid: 2, bursts: 2, stumbles: 0 };
   const rnd = race.rng(9);
   assert.equal(sum(race.raceGrowth(base, base, info, 1, false, rnd)), 3);
   assert.equal(sum(race.raceGrowth(base, base, info, 2, false, rnd)), 2);
-  assert.equal(sum(race.raceGrowth(base, base, info, 3, true, rnd)), 2, "third place plus a new level");
+  assert.equal(sum(race.raceGrowth(base, base, info, 3, true, rnd)), 3, "third place plus a new level");
+  for (let i = 0; i < 40; i++) for (const place of [2, 3]) {
+    const g = race.raceGrowth(base, base, info, place, false, rnd);
+    assert.equal(g.filter(v => v === 1).length, 2, "two different stats, +1 each");
+  }
   assert.equal(sum(race.raceGrowth(base, base, info, 4, false, rnd)), 0);
+  assert.equal(sum(race.raceGrowth(base, base, info, 5, false, rnd)), -1);
   assert.equal(sum(race.raceGrowth(base, base, info, 6, false, rnd)), -1);
   const top = base.map(b => Math.min(R.statMax, b + R.grow)), low = base.map(b => b - R.drop);
   assert.deepEqual(race.raceGrowth(top, base, info, 1, true, rnd), [0, 0, 0, 0, 0], "nothing above the limit");

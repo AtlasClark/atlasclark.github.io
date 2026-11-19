@@ -189,7 +189,9 @@ export function racePay(cur, type, chance, bet) {
 export const betHit = (type, place) => type === "top3" ? place <= 3 : place === 1;
 
 /* ---- what a race teaches ---------------------------------------------------------- */
-const GAINS = [[2, 1], [1, 1], [1], [], [-1], [-1]];
+/* By place (rev 1.52.1, user: every place raises two stats, so a pet still grows against a strong field):
+   1st +2 and +1, 2nd and 3rd +1 and +1, 4th no change, 5th and 6th -1. */
+const GAINS = [[2, 1], [1, 1], [1, 1], [], [-1], [-1]];
 /* The stat changes for finishing in `place` (1-based) with this race's info, drawn from
    rnd: good places add points to what went well, bad ones take a point from what went
    badly; a new level adds one more. Changes stop at the stat's limits. */
@@ -197,12 +199,16 @@ export function raceGrowth(st, base, info, place, levelUp, rnd, n = R.lanes) {
   const d = st.map(() => 0);
   const up = [1 + 2 * (n - info.early) / (n - 1), 2, 1 + Math.max(0, info.mid - place), 1 + info.bursts, info.stumbles ? 0.5 : 2.5];
   const down = [1 + 2 * (info.early - 1) / (n - 1), 1.5, 1 + Math.max(0, place - info.mid), info.bursts ? 0.5 : 2.5, 0.5 + 1.5 * info.stumbles];
-  const moves = (GAINS[Math.min(place, GAINS.length) - 1] || []).concat(levelUp ? [1] : []);
-  for (const m of moves) {
-    const w = (m > 0 ? up : down).map((v, i) => {
+  const gains = GAINS[Math.min(place, GAINS.length) - 1] || [], moves = gains.concat(levelUp ? [1] : []);
+  for (const [j, m] of moves.entries()) {
+    let w = (m > 0 ? up : down).map((v, i) => {
       const now = st[i] + d[i];
       return (m > 0 ? now + m <= highOf(base[i]) : now + m >= lowOf(base[i])) ? v : 0;
     });
+    if (m > 0 && j < gains.length) {                                  /* a place's gains go to different stats */
+      const fresh = w.map((v, i) => d[i] > 0 ? 0 : v);
+      if (sum(fresh) > 0) w = fresh;
+    }
     const total = sum(w);
     if (!(total > 0)) continue;
     let pick = rnd() * total, i = 0;

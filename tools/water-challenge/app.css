@@ -1366,6 +1366,10 @@ li.pour.armed .undo-x { opacity: 1; background: #c4434f; color: #fff; }
 .bj-msg { min-height: 26px; display: flex; align-items: center; justify-content: center; gap: 8px; font-weight: 800; color: #fff; font-size: 15px; }
 .bj-msg .pill { font-size: 12px; }
 .bj-acts .btn[hidden] { display: none; }
+/* Stand and Double in the table's blues (rev 1.52.1): plain .btn has no fill, so they vanished on a light page */
+.bj-acts .btn.bj-stand { background: #1676b4; }
+.bj-acts .btn.bj-double { background: #0f4c7a; }
+.bj-acts .btn:disabled { opacity: .45; cursor: default; filter: none; transform: none; }
 .shop-balance .shellico { display: inline-block; width: 17px; height: 17px; vertical-align: -3px; margin-right: 5px; }
 .race-pets { display: flex; flex-wrap: wrap; gap: 6px; max-height: 148px; overflow: auto; padding: 2px; }
 .race-pet { position: relative; padding: 4px 4px 3px; border: 1px solid var(--chip-line); border-radius: 12px; background: var(--pc-bg); cursor: pointer; }
