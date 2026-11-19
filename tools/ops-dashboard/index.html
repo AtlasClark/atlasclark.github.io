@@ -1365,6 +1365,7 @@ function openTopsModal() {
     ${list.length ? list.map(t => `<div class="tl-row">
       <div class="tl-main"><b class="mono">${esc(t.pn)}</b>${t.desc ? `<span style="font-size:12.5px;color:var(--text-dim)">${esc(t.desc)}</span>` : ""}
         <span class="tl-subs">${t.items.map(i => esc(i.pn) + " ×" + fmtQty(i.per)).join(" · ")}</span></div>
+      <button class="icon-btn" title="New list based on this one" onclick="openTopModal(null,'${t.id}')">⧉</button>
       <button class="icon-btn" title="Edit" onclick="openTopModal('${t.id}')">✎</button>
       <button class="icon-btn" title="Delete" onclick="deleteTop('${t.id}')">🗑</button>
     </div>`).join("") : `<div class="log-empty">No top-level lists yet.</div>`}
@@ -1372,10 +1373,26 @@ function openTopsModal() {
   `, null);
   document.getElementById("modalSave").style.display = "none";
 }
-function openTopModal(id) {
-  const t = id ? tops().find(x => x.id === id) : { pn: "", desc: "", items: [{ pn: "", per: 1, desc: "" }] };
+/* a new list can start as a copy of another list's sub-assemblies (fromId) */
+function copyTopItems(fromId) {
+  const src = tops().find(x => x.id === fromId), el = document.getElementById("f_items");
+  if (!el) return;
+  el.innerHTML = (src ? src.items : [{ pn: "", per: 1, desc: "" }]).map(topItemRow).join("");
+  if (!src) return;
+  const d = document.getElementById("f_tdesc");
+  if (d && !d.value.trim()) d.value = src.desc || "";
+}
+function openTopModal(id, fromId) {
+  const src = fromId ? tops().find(x => x.id === fromId) : null;
+  const t = id ? tops().find(x => x.id === id)
+    : { pn: "", desc: src ? src.desc : "", items: src ? src.items.map(i => ({ ...i })) : [{ pn: "", per: 1, desc: "" }] };
   if (!t) return;
+  const others = [...tops()].sort((a, b) => a.pn.localeCompare(b.pn, undefined, { numeric: true }));
   openModal(id ? "Edit Top-level List" : "New Top-level List", `
+    ${!id && others.length ? fld("Based on", `<select id="f_tfrom" onchange="copyTopItems(this.value)">
+      <option value="">Start empty</option>
+      ${others.map(o => `<option value="${o.id}" ${o.id === fromId ? "selected" : ""}>${esc(o.pn)}${o.desc ? " · " + esc(o.desc) : ""}</option>`).join("")}
+    </select>`) : ""}
     <div class="field-row">
       ${fld("Top-level part number", `<input id="f_tpn" value="${esc(t.pn)}" placeholder="Part number">`)}
       ${fld("Description", `<input id="f_tdesc" value="${esc(t.desc)}" placeholder="What it is">`)}
@@ -2728,7 +2745,7 @@ document.getElementById("importFile").addEventListener("change", e => {
    The file handle is remembered in IndexedDB; after a browser restart
    you click the 💾 button once to re-grant write access.
    ===================================================================== */
-const REV = "rev 1.3.2";   // site port of local build 2026-10-09-o
+const REV = "rev 1.3.3";   // site port of local build 2026-10-09-o
 const LS_BACKUP_TS = "atlas_ops_last_backup";
 let backupHandle = null, backupTimer = null, backupPaused = false, backupError = "";
 
