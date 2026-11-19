@@ -1581,13 +1581,46 @@ function planImport(lines) {
   });
   return plan;
 }
+/* The order table may be one tab of a larger workbook: try the tab used last time, then the
+   active tab, then every other tab, and take the first with the Item / Qty open headings. */
+const LS_IMPORT_TAB = "atlas_ops_import_tab";
 async function importSheetFile(file) {
-  let rows;
+  let wb = null, tab = "", rows;
   try {
-    rows = /\.(csv|tsv|txt)$/i.test(file.name) ? await SHEET.readCSVFile(file) : await SHEET.readActiveSheet(await file.arrayBuffer());
+    if (/\.(csv|tsv|txt)$/i.test(file.name)) rows = await SHEET.readCSVFile(file);
+    else {
+      wb = await SHEET.openWorkbook(await file.arrayBuffer());
+      let last = ""; try { last = localStorage.getItem(LS_IMPORT_TAB) || ""; } catch (e) {}
+      const order = [...new Set([last, wb.active, ...wb.names])].filter(n => wb.names.includes(n));
+      for (const n of order) {
+        const r = await wb.read(n);
+        if (!parseOrderSheet(r).error) { tab = n; rows = r; break; }
+      }
+      if (!tab) { toast("No tab has the Item and Qty open headings. Tabs: " + wb.names.join(", "), "err"); return; }
+    }
   } catch (e) { toast("Couldn't read the file: " + e.message, "err"); return; }
+  showImport(file, wb, tab, rows);
+}
+async function switchImportTab(name) {
+  const c = importCtx;
+  if (!c || !c.wb) return;
+  try { showImport(c.file, c.wb, name, await c.wb.read(name)); }
+  catch (e) { toast("Couldn't read the tab: " + e.message, "err"); }
+}
+let importCtx = null;
+function showImport(file, wb, tab, rows) {
+  importCtx = { file, wb };
   const res = parseOrderSheet(rows);
-  if (res.error) { toast(res.error, "err"); return; }
+  const tabPick = wb && wb.names.length > 1 ? `<div class="field-row" style="grid-template-columns:auto 1fr;align-items:center">
+      <span class="imp-skip">Tab</span>
+      <select id="f_imptab" onchange="switchImportTab(this.value)">${wb.names.map(n => `<option ${n === tab ? "selected" : ""}>${esc(n)}</option>`).join("")}</select>
+    </div>` : "";
+  if (res.error) {
+    openModal("Import Batches · " + file.name, `${tabPick}<div class="log-empty">${esc(res.error)}</div>`, null);
+    document.querySelector("#overlay .modal").classList.add("wide");
+    document.getElementById("modalSave").style.display = "none";
+    return;
+  }
   const plan = planImport(res.lines);
   const qd = (was, now, f) => was !== now ? `<span class="was">${f(was)}</span><span class="chg">${f(now)}</span>` : f(now);
   const row = (l, change) => `<tr><td class="mono">${esc(l.batch)}</td><td>${esc(l.order) || "—"}</td><td class="mono">${esc(l.top)}</td>
@@ -1596,6 +1629,7 @@ async function importSheetFile(file) {
   const missing = [...new Set(plan.noList.map(l => l.top))];
   const n = plan.add.length + plan.change.length;
   openModal("Import Batches · " + file.name, `
+    ${tabPick}
     <div class="imp-sum">
       <span><b>${plan.add.length}</b> new</span><span><b>${plan.change.length}</b> changed</span><span><b>${plan.same.length}</b> same</span>
       ${plan.noList.length ? `<span><b>${plan.noList.length}</b> no top-level list</span>` : ""}
@@ -1610,6 +1644,7 @@ async function importSheetFile(file) {
     ${res.skipped.length ? `<details class="imp-skip"><summary>Rows not read</summary>${res.skipped.slice(0, 40).map(s => `Row ${s.row}: ${esc(s.why)}`).join("<br>")}${res.skipped.length > 40 ? "<br>…" : ""}</details>` : ""}
   `, () => {
     if (!n) return;
+    if (tab) try { localStorage.setItem(LS_IMPORT_TAB, tab); } catch (e) {}
     plan.add.forEach(l => addRun(l.list, { batch: l.batch, q: l.q, date: l.date, notes: l.note, order: l.order, po: l.po }));
     plan.change.forEach(l => l.subs.forEach(b => {
       Object.assign(b, { topQty: l.q, qty: l.q * (b.per || 1), date: l.date });
@@ -2678,7 +2713,7 @@ document.getElementById("importFile").addEventListener("change", e => {
    The file handle is remembered in IndexedDB; after a browser restart
    you click the 💾 button once to re-grant write access.
    ===================================================================== */
-const REV = "rev 1.3.0";   // site port of local build 2026-10-09-o
+const REV = "rev 1.3.1";   // site port of local build 2026-10-09-o
 const LS_BACKUP_TS = "atlas_ops_last_backup";
 let backupHandle = null, backupTimer = null, backupPaused = false, backupError = "";
 

@@ -1,6 +1,6 @@
 /*
   Ops Dashboard — file readers (copied from Kit Studio's js/xlsx.js)
-  Scope: reads the active sheet of an .xlsx/.xlsm/.xltx workbook into a grid of
+  Scope: lists the tabs of an .xlsx/.xlsm/.xltx workbook and reads any tab into a grid of
   trimmed strings (minimal ZIP + SpreadsheetML reader on the browser's
   DecompressionStream; adapted from the PCB Viewer), and reads CSV/TSV text
   with delimiter detection and a Windows-1252 fallback. Files are read in
@@ -44,8 +44,9 @@
   const colIdx = ref => { let n = 0; for (const ch of ref.replace(/\d+/g, "")) n = n * 26 + (ch.charCodeAt(0) - 64); return n - 1; };
   const REL_NS = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
 
-  // Active sheet → rows[r][c] (0-based), strings trimmed, gaps as "".
-  async function readActiveSheet(buf) {
+  // Workbook → tab names (in workbook order), the active tab, and read(name) → rows[r][c]
+  // (0-based, strings trimmed, gaps as "").
+  async function openWorkbook(buf) {
     const z = await unzip(buf);
     const wb = xml(await z.text("xl/workbook.xml") || "<x/>");
     const rels = xml(await z.text("xl/_rels/workbook.xml.rels") || "<x/>");
@@ -56,36 +57,47 @@
     if (!sheets.length) throw new Error("The workbook has no sheets.");
     const view = wb.getElementsByTagName("workbookView")[0];
     const active = Math.min(+(view && view.getAttribute("activeTab")) || 0, sheets.length - 1);
-    const sh = sheets[active];
-    const rid = sh.getAttribute("r:id") || sh.getAttributeNS(REL_NS, "id");
-    let target = relMap.get(rid) || "";
-    if (!target) throw new Error("Could not locate the active sheet.");
-    target = target.startsWith("/") ? target.slice(1) : "xl/" + target.replace(/^\.\//, "");
+    const names = sheets.map(sh => sh.getAttribute("name") || "");
 
-    const ss = [];
-    const sst = await z.text("xl/sharedStrings.xml");
-    if (sst) for (const si of xml(sst).getElementsByTagName("si")) {
-      let s = ""; for (const t of si.getElementsByTagName("t")) if (t.parentElement.localName !== "rPh") s += t.textContent; ss.push(s);
-    }
-
-    const rows = [];
-    for (const row of xml(await z.text(target) || "<x/>").getElementsByTagName("row")) {
-      const r = [];
-      for (const c of row.getElementsByTagName("c")) {
-        const ty = c.getAttribute("t"), v = c.getElementsByTagName("v")[0];
-        let val = "";
-        if (ty === "s") val = ss[+(v && v.textContent)] || "";
-        else if (ty === "inlineStr") { const is = c.getElementsByTagName("is")[0]; val = is ? is.textContent : ""; }
-        else if (ty === "b") val = v && v.textContent === "1" ? "TRUE" : "FALSE";
-        else val = v ? v.textContent : "";
-        // Numeric cells: drop float noise ("0.10000000000000001" → "0.1")
-        if (!ty && /^-?\d+(\.\d+)?(e[-+]?\d+)?$/i.test(val)) val = String(Number(val));
-        r[colIdx(c.getAttribute("r") || "A")] = val;
+    let ss = null;   // shared strings, read once on the first tab read
+    async function strings() {
+      if (ss) return ss;
+      ss = [];
+      const sst = await z.text("xl/sharedStrings.xml");
+      if (sst) for (const si of xml(sst).getElementsByTagName("si")) {
+        let t = ""; for (const x of si.getElementsByTagName("t")) if (x.parentElement.localName !== "rPh") t += x.textContent; ss.push(t);
       }
-      rows[(+row.getAttribute("r") || rows.length + 1) - 1] = Array.from(r, x => x == null ? "" : String(x).trim());
+      return ss;
     }
-    return Array.from(rows, x => x || []);
+    async function read(name) {
+      const sh = sheets[names.indexOf(name)];
+      if (!sh) throw new Error("No tab named " + name);
+      const rid = sh.getAttribute("r:id") || sh.getAttributeNS(REL_NS, "id");
+      let target = relMap.get(rid) || "";
+      if (!target) throw new Error("Could not locate the tab " + name);
+      target = target.startsWith("/") ? target.slice(1) : "xl/" + target.replace(/^\.\//, "");
+      const sst = await strings(), rows = [];
+      for (const row of xml(await z.text(target) || "<x/>").getElementsByTagName("row")) {
+        const r = [];
+        for (const c of row.getElementsByTagName("c")) {
+          const ty = c.getAttribute("t"), v = c.getElementsByTagName("v")[0];
+          let val = "";
+          if (ty === "s") val = sst[+(v && v.textContent)] || "";
+          else if (ty === "inlineStr") { const is = c.getElementsByTagName("is")[0]; val = is ? is.textContent : ""; }
+          else if (ty === "b") val = v && v.textContent === "1" ? "TRUE" : "FALSE";
+          else val = v ? v.textContent : "";
+          // Numeric cells: drop float noise ("0.10000000000000001" → "0.1")
+          if (!ty && /^-?\d+(\.\d+)?(e[-+]?\d+)?$/i.test(val)) val = String(Number(val));
+          r[colIdx(c.getAttribute("r") || "A")] = val;
+        }
+        rows[(+row.getAttribute("r") || rows.length + 1) - 1] = Array.from(r, x => x == null ? "" : String(x).trim());
+      }
+      return Array.from(rows, x => x || []);
+    }
+    return { names, active: names[active], read };
   }
+
+  async function readActiveSheet(buf) { const wb = await openWorkbook(buf); return wb.read(wb.active); }
 
   // ---------- CSV ----------
   function decodeText(buf) {
@@ -112,5 +124,5 @@
 
   async function readCSVFile(file) { return parseCSV(decodeText(await file.arrayBuffer())); }
 
-  window.SHEET = { readActiveSheet, parseCSV, readCSVFile };
+  window.SHEET = { openWorkbook, readActiveSheet, parseCSV, readCSVFile };
 })();
