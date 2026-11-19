@@ -1005,7 +1005,7 @@ function cleanState(data) {
       if (!okId(b.id)) b.id = uid();
       if (b.run !== undefined && !okId(b.run)) { delete b.run; delete b.top; }   // batch made from a top-level list
       if (b.run) { b.top = String(b.top || ""); b.topQty = num(b.topQty); b.per = num(b.per) || 1; }
-      ["order", "po"].forEach(k => { if (b[k] !== undefined && typeof b[k] !== "string") delete b[k]; });
+      ["order", "po", "ln"].forEach(k => { if (b[k] !== undefined && typeof b[k] !== "string") delete b[k]; });
       b.status = known(b.status, BATCH_STATUSES, "Queued");
       b.qty = Number.isFinite(Number(b.qty)) && Number(b.qty) >= 0 ? Number(b.qty) : 0;
       if (typeof b.date !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(b.date)) b.date = "";
@@ -1300,7 +1300,7 @@ function openBatchModal(pid, bid) {
   if (!b) return;
   openModal((bid ? "Edit Batch" : "New Batch") + " · " + p.pn, `
     ${b.run ? `<div class="run-preview"><span>From <b>${esc(b.top)}</b> batch <b>${esc(b.batch)}</b> × ${fmtQty(b.topQty)} (${fmtQty(b.per)} each)</span>
-      ${b.order || b.po ? `<span>${b.order ? "Order " + esc(b.order) : ""}${b.order && b.po ? " · " : ""}${b.po ? "PO " + esc(b.po) : ""}</span>` : ""}
+      ${b.ln || b.order || b.po ? `<span>${[b.ln && "Line " + esc(b.ln), b.order && "Order " + esc(b.order), b.po && "PO " + esc(b.po)].filter(Boolean).join(" · ")}</span>` : ""}
       <button class="btn" style="align-self:flex-start" onclick="closeModal();openRunModal('${b.run}')">Edit for every sub-assembly</button></div>` : ""}
     <div class="field-row">
       ${fld("Batch number", `<input id="f_batch" value="${esc(b.batch)}" placeholder="Batch number">`)}
@@ -1443,7 +1443,7 @@ function openRunModal(run) {
     return;
   }
   const list = [...tops()].sort((a, b) => a.pn.localeCompare(b.pn, undefined, { numeric: true }));
-  const r = first ? { batch: first.batch, qty: first.topQty, date: first.date } : { batch: "", qty: "", date: "" };
+  const r = first ? { batch: first.batch, qty: first.topQty, date: first.date, ln: first.ln || "" } : { batch: "", qty: "", date: "", ln: "" };
   openModal(run ? "Edit Batch · " + first.top : "New Batch", `
     ${run ? `<div class="run-preview"><span><b>${esc(first.top)}</b> · ${linked.length} sub-assembl${linked.length > 1 ? "ies" : "y"}: ${linked.map(([p]) => esc(p.pn)).join(", ")}</span></div>`
       : fld("Top-level", `<select id="f_top" onchange="runPreview()">${list.map(t => `<option value="${t.id}">${esc(t.pn)}${t.desc ? " · " + esc(t.desc) : ""}</option>`).join("")}</select>`)}
@@ -1452,29 +1452,35 @@ function openRunModal(run) {
       ${fld("Top-level quantity", `<input type="number" min="0" step="1" id="f_rqty" value="${esc(r.qty)}" oninput="runPreview()">`)}
     </div>
     <div class="field-row">
+      ${fld("Line item", `<input id="f_rln" value="${esc(r.ln)}" placeholder="Optional">`)}
+      <div></div>
+    </div>
+    <div class="field-row">
       ${fld("Status", `<select id="f_rstatus">${run ? `<option value="">Keep each</option>` : ""}${selOpts(BATCH_STATUSES, run ? "" : "Queued")}</select>`)}
       ${fld("Fulfillment date", `<input type="date" id="f_rdate" value="${esc(r.date)}">`)}
     </div>
     ${run ? `<button class="btn btn-danger" style="align-self:flex-start" onclick="deleteRun('${run}')">Delete this batch from every sub-assembly</button>`
       : `${fld("Notes", `<textarea id="f_notes" placeholder="Anything to remember"></textarea>`)}<div class="run-preview" id="runPreview"></div>`}
   `, () => {
-    const batch = val("f_rbatch"), qs = val("f_rqty"), q = Number(qs), date = val("f_rdate"), status = val("f_rstatus");
+    const batch = val("f_rbatch"), qs = val("f_rqty"), q = Number(qs), date = val("f_rdate"), status = val("f_rstatus"), ln = val("f_rln");
     if (!batch) { toast("Batch number is required", "warn"); return false; }
     if (qs === "" || !Number.isFinite(q) || q < 0) { toast("Quantity must be a number", "warn"); return false; }
     const top = run ? first.top : tops().find(x => x.id === val("f_top"));
     if (!top) return false;
     const topPn = run ? top : top.pn;
-    const clash = parts().some(p => (p.batches || []).some(b => b.run && b.run !== run && pnKey(b.top) === pnKey(topPn) && pnKey(b.batch) === pnKey(batch)));
-    if (clash) { toast(`Batch ${batch} of ${topPn} is already entered`, "warn"); return false; }
+    const clash = parts().some(p => (p.batches || []).some(b => b.run && b.run !== run && pnKey(b.top) === pnKey(topPn) &&
+      pnKey(b.batch) === pnKey(batch) && pnKey(b.ln) === pnKey(ln)));
+    if (clash) { toast(`Batch ${batch}${ln ? " line " + ln : ""} of ${topPn} is already entered`, "warn"); return false; }
     if (run) {
       linked.forEach(([, b]) => {
         Object.assign(b, { batch, topQty: q, qty: q * (b.per || 1), date });
+        if (ln) b.ln = ln; else delete b.ln;
         if (status) b.status = status;
       });
       save(); renderProduction(); toast("Batch updated on " + linked.length + " sub-assembl" + (linked.length > 1 ? "ies" : "y"));
       return;
     }
-    addRun(top, { batch, q, status, date, notes: val("f_notes") });
+    addRun(top, { batch, ln, q, status, date, notes: val("f_notes") });
     save(); renderProduction(); toast(`Batch ${batch} added to ${top.items.length} sub-assembl${top.items.length > 1 ? "ies" : "y"}`);
   });
   if (!run) runPreview();
@@ -1495,6 +1501,7 @@ function addRun(top, r) {
     else if (!p.desc && i.desc) p.desc = i.desc;
     const b = { id: uid(), created: Date.now(), batch: r.batch, qty: r.q * i.per, status: r.status || "Queued", date: r.date || "",
       notes: r.notes || "", run: id, top: top.pn, topQty: r.q, per: i.per };
+    if (r.ln) b.ln = r.ln;
     if (r.order) b.order = r.order;
     if (r.po) b.po = r.po;
     p.batches.push(b);
@@ -1504,8 +1511,9 @@ function addRun(top, r) {
 
 /* ---- order sheet import ----
    Layout: one heading row (Ln, Item, Description, Qty open, Date, ...). Below it, each batch is
-   a blank row, a batch line (order name, batch #, ordered date, customer PO in the first four
-   heading columns), then its lines (Ln number, top-level part #, description, open qty, date). */
+   a blank row, a batch line (order name, batch #, date in the Ln / Item / Description columns),
+   then its lines (line item in Ln, top-level part #, description, open qty, date). Each line is
+   its own entry, keyed by batch # + top-level + line item. */
 const hkey = s => String(s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
 function sheetDate(v) {
   v = String(v || "").trim();
@@ -1525,7 +1533,7 @@ function parseOrderSheet(rows) {
   if (hi < 0) return { error: "No heading row with Item and Qty open was found." };
   const head = rows[hi].map(hkey), col = n => head.indexOf(n);
   const C = { ln: col("ln"), item: col("item"), desc: col("description"), qty: col("qtyopen"), date: col("date"), note: col("note") };
-  const g4 = [C.ln, C.item, C.desc, C.qty].map((c, i) => c >= 0 ? c : i);   // batch line uses the first four columns
+  const g3 = [C.ln, C.item, C.desc].map((c, i) => c >= 0 ? c : i);   // batch line: order name, batch #, date
   const cell = (r, c) => c >= 0 ? String(r[c] ?? "").trim() : "";
   const lines = [], skipped = [];
   let group = null, afterBreak = true;
@@ -1536,12 +1544,12 @@ function parseOrderSheet(rows) {
     const ln = cell(r, C.ln), item = cell(r, C.item), qs = cell(r, C.qty).replace(/,/g, "");
     const isLine = item && /^-?\d+(\.\d+)?$/.test(qs) && (C.ln < 0 || /^\d+(\.\d+)?$/.test(ln));
     if (isLine && group) {
-      lines.push({ row, batch: group.batch, order: group.order, po: group.po, ordered: group.ordered, ln,
+      lines.push({ row, batch: group.batch, order: group.order, ordered: group.ordered, ln,
         top: item, desc: cell(r, C.desc), q: Number(qs), date: sheetDate(cell(r, C.date)), note: cell(r, C.note) });
       afterBreak = false;
-    } else if (!isLine && afterBreak) {
-      const [order, batch, ordered, po] = g4.map(c => cell(r, c));
-      group = batch ? { order, batch, ordered: sheetDate(ordered), po } : null;
+    } else if (!isLine && (afterBreak || (cell(r, g3[0]) && cell(r, g3[1])))) {   // a blank row above, or an order name + batch #
+      const [order, batch, ordered] = g3.map(c => cell(r, c));
+      group = batch ? { order, batch, ordered: sheetDate(ordered) } : null;
       if (!batch) skipped.push({ row, why: "Batch line with no batch number" });
       afterBreak = false;
     } else skipped.push({ row, why: isLine ? "Line with no batch above it" : "Not a batch or a line" });
@@ -1550,28 +1558,35 @@ function parseOrderSheet(rows) {
 }
 /* compare the sheet with what is entered: new / changed / same / no list */
 function planImport(lines) {
+  const key = (batch, top, ln) => pnKey(batch) + "|" + pnKey(top) + "|" + pnKey(ln);
   const byKey = new Map();
   lines.forEach(l => {
-    const k = pnKey(l.batch) + "|" + pnKey(l.top), o = byKey.get(k);
+    const k = key(l.batch, l.top, l.ln), o = byKey.get(k);
     if (!o) byKey.set(k, { ...l, rows: [l.row] });
-    else {                                                   // same top-level twice in a batch: one entry
+    else {                                                   // same line listed twice: one entry
       o.q += l.q; o.rows.push(l.row);
       if (l.date && (!o.date || l.date < o.date)) o.date = l.date;
     }
   });
-  const runs = new Map();                                    // batch|top -> [sub-batches]
-  parts().forEach(p => (p.batches || []).forEach(b => {
-    if (!b.run) return;
-    const k = pnKey(b.batch) + "|" + pnKey(b.top);
-    (runs.get(k) || runs.set(k, []).get(k)).push(b);
-  }));
+  const runs = new Map(), noLn = new Map();                  // key -> sub-batches of one run
+  const byRun = new Map();
+  parts().forEach(p => (p.batches || []).forEach(b => { if (b.run) (byRun.get(b.run) || byRun.set(b.run, []).get(b.run)).push(b); }));
+  byRun.forEach(subs => {
+    const b = subs[0];
+    if (b.ln) runs.set(key(b.batch, b.top, b.ln), subs);
+    else {                                                   // entered before line items were kept
+      const k = pnKey(b.batch) + "|" + pnKey(b.top);
+      (noLn.get(k) || noLn.set(k, []).get(k)).push(subs);
+    }
+  });
   const plan = { add: [], change: [], same: [], noList: [], zero: [] };
   byKey.forEach((l, k) => {
-    const have = runs.get(k);
+    let have = runs.get(k);
+    if (!have) { const old = noLn.get(pnKey(l.batch) + "|" + pnKey(l.top)); if (old && old.length) have = old.shift(); }
     if (have) {
       const b = have[0], date = l.date || b.date;
-      const diff = b.topQty !== l.q || b.date !== date || (l.order && b.order !== l.order) || (l.po && b.po !== l.po);
-      (diff ? plan.change : plan.same).push({ ...l, date, was: { q: b.topQty, date: b.date }, subs: have });
+      const diff = b.topQty !== l.q || b.date !== date || (b.ln || "") !== l.ln || (l.order && b.order !== l.order);
+      (diff ? plan.change : plan.same).push({ ...l, date, was: { q: b.topQty, date: b.date, ln: b.ln || "" }, subs: have });
       return;
     }
     const top = tops().find(t => pnKey(t.pn) === pnKey(l.top));
@@ -1623,7 +1638,7 @@ function showImport(file, wb, tab, rows) {
   }
   const plan = planImport(res.lines);
   const qd = (was, now, f) => was !== now ? `<span class="was">${f(was)}</span><span class="chg">${f(now)}</span>` : f(now);
-  const row = (l, change) => `<tr><td class="mono">${esc(l.batch)}</td><td>${esc(l.order) || "—"}</td><td class="mono">${esc(l.top)}</td>
+  const row = (l, change) => `<tr><td class="mono">${esc(l.batch)}</td><td class="mono">${change && l.was.ln !== l.ln ? qd(l.was.ln || "—", l.ln || "—", esc) : esc(l.ln) || "—"}</td><td>${esc(l.order) || "—"}</td><td class="mono">${esc(l.top)}</td>
     <td class="mono">${change ? qd(l.was.q, l.q, fmtQty) : fmtQty(l.q)}</td>
     <td>${change ? qd(l.was.date, l.date, d => d ? fmtDate(d) : "—") : (l.date ? fmtDate(l.date) : "—")}</td></tr>`;
   const missing = [...new Set(plan.noList.map(l => l.top))];
@@ -1636,7 +1651,7 @@ function showImport(file, wb, tab, rows) {
       ${plan.zero.length ? `<span><b>${plan.zero.length}</b> new with 0 open</span>` : ""}
       ${res.skipped.length ? `<span><b>${res.skipped.length}</b> rows not read</span>` : ""}
     </div>
-    ${n ? `<div class="imp-scroll"><table class="imp-table"><thead><tr><th>Batch #</th><th>Order</th><th>Top-level</th><th>Qty open</th><th>Date</th></tr></thead><tbody>
+    ${n ? `<div class="imp-scroll"><table class="imp-table"><thead><tr><th>Batch #</th><th>Ln</th><th>Order</th><th>Top-level</th><th>Qty open</th><th>Date</th></tr></thead><tbody>
       ${plan.add.map(l => row(l, false)).join("")}${plan.change.map(l => row(l, true)).join("")}
     </tbody></table></div>` : `<div class="log-empty">Nothing to add or change.</div>`}
     ${missing.length ? `<div class="imp-skip"><b>No top-level list for:</b> ${missing.map(esc).join(", ")}<br>
@@ -1645,11 +1660,11 @@ function showImport(file, wb, tab, rows) {
   `, () => {
     if (!n) return;
     if (tab) try { localStorage.setItem(LS_IMPORT_TAB, tab); } catch (e) {}
-    plan.add.forEach(l => addRun(l.list, { batch: l.batch, q: l.q, date: l.date, notes: l.note, order: l.order, po: l.po }));
+    plan.add.forEach(l => addRun(l.list, { batch: l.batch, ln: l.ln, q: l.q, date: l.date, notes: l.note, order: l.order }));
     plan.change.forEach(l => l.subs.forEach(b => {
       Object.assign(b, { topQty: l.q, qty: l.q * (b.per || 1), date: l.date });
+      if (l.ln) b.ln = l.ln;
       if (l.order) b.order = l.order;
-      if (l.po) b.po = l.po;
     }));
     save(); renderProduction();
     toast(`Imported: ${plan.add.length} new, ${plan.change.length} changed`);
@@ -1678,7 +1693,7 @@ function partsFiltered() {
     const bs = p.batches || [];
     if (ui.prodStatus !== "All" && !bs.some(b => b.status === ui.prodStatus)) return false;
     if (!showDone && ui.prodStatus !== "Completed" && partInfo(p).closed) return false;
-    return !q || (p.pn + " " + (p.desc || "") + " " + bs.map(b => b.batch + " " + (b.top || "") + " " + (b.order || "") + " " + (b.po || "") + " " + (b.notes || "")).join(" ")).toLowerCase().includes(q);
+    return !q || (p.pn + " " + (p.desc || "") + " " + bs.map(b => b.batch + " " + (b.top || "") + " " + (b.order || "") + " " + (b.po || "") + " " + (b.ln || "") + " " + (b.notes || "")).join(" ")).toLowerCase().includes(q);
   });
 }
 const PROD_SORT = {
@@ -1705,7 +1720,7 @@ function partDetailHtml(p) {
         <span class="mono num">${fmtQty(b.qty)}</span>
         <span><span class="status-wrap" style="--c:${BATCH_COLORS[b.status]}"><select class="status-sel" title="Change status" onchange="setBatchStatus('${p.id}','${b.id}',this.value)">${selOpts(BATCH_STATUSES, b.status)}</select></span></span>
         <span>${dueBadge(b.date, b.status === "Completed") || "—"}</span>
-        <span class="b-from" title="${b.run ? esc(b.top) + " × " + fmtQty(b.topQty) + ", " + fmtQty(b.per) + " each" : ""}">${b.run ? esc(b.top) + " × " + fmtQty(b.topQty) : "—"}</span>
+        <span class="b-from" title="${b.run ? esc(b.top) + " × " + fmtQty(b.topQty) + ", " + fmtQty(b.per) + " each" + (b.ln ? ", line " + esc(b.ln) : "") : ""}">${b.run ? esc(b.top) + " × " + fmtQty(b.topQty) + (b.ln ? " · Ln " + esc(b.ln) : "") : "—"}</span>
         <span class="b-note" title="${esc(b.notes)}">${esc(b.notes)}</span>
         <span class="b-actions">
           <button class="icon-btn" title="Edit" onclick="openBatchModal('${p.id}','${b.id}')">✎</button>
@@ -2713,7 +2728,7 @@ document.getElementById("importFile").addEventListener("change", e => {
    The file handle is remembered in IndexedDB; after a browser restart
    you click the 💾 button once to re-grant write access.
    ===================================================================== */
-const REV = "rev 1.3.1";   // site port of local build 2026-10-09-o
+const REV = "rev 1.3.2";   // site port of local build 2026-10-09-o
 const LS_BACKUP_TS = "atlas_ops_last_backup";
 let backupHandle = null, backupTimer = null, backupPaused = false, backupError = "";
 
