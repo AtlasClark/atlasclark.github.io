@@ -484,7 +484,8 @@ function shopGuard() {
     /* the status line and the reload banner are at the top, often out of view from the shop */
     if (!$("confirmDialog").open) {
       askConfirm("A new version is out", "The shop opens again once this page reloads to " + ui.staleRev +
-                 ". Your water and pets are saved.", "Reload now").then(ok => { if (ok) { $("updateBtn").disabled = true; freshReload(); } });
+                 ". Your water and pets are saved." + (ui.newNotes && ui.newNotes.length ? "\n\nWhat's new:\n" + ui.newNotes.map(n => "• " + n).join("\n") : ""),
+                 "Reload now").then(ok => { if (ok) { $("updateBtn").disabled = true; freshReload(); } });
     }
     return false;
   }
@@ -1030,8 +1031,26 @@ async function checkVersion(atBoot) {
   }
   $("updateRev").textContent = rev.replace("rev ", "");
   $("updateBanner").hidden = false;
+  if (ui.staleRev !== rev) {
+    ui.newNotes = await newNotes();
+    $("updateNotes").innerHTML = ui.newNotes.map(n => "<li>" + esc(n) + "</li>").join("");
+    $("updateNotes").hidden = !ui.newNotes.length;
+  }
   ui.staleRev = rev;
   return false;
+}
+
+/* What's new (rev 1.53.1): the site's changes.json lines for every version after this page's,
+   newest first, at most CHANGE_LINES. [] when the file can't be read. */
+const CHANGE_LINES = 6;
+const revParts = r => String(r).replace(/^\D+/, "").split(".").map(Number);
+const revNewer = (a, b) => { const x = revParts(a), y = revParts(b); for (let i = 0; i < 3; i++) if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) > (y[i] || 0); return false; };
+async function newNotes() {
+  try {
+    const list = await (await fetch("changes.json?check=" + Date.now(), { cache: "no-store" })).json();
+    return (Array.isArray(list) ? list : []).filter(v => v && revNewer(v.rev, C.REV) && Array.isArray(v.notes))
+      .flatMap(v => v.notes.map(String)).slice(0, CHANGE_LINES);
+  } catch { return []; }
 }
 
 /* ---- boot --------------------------------------------------------------- */

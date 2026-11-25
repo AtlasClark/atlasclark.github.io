@@ -1004,8 +1004,12 @@ h1 { margin: 4px 0 0; font-size: clamp(30px, 5vw, 52px); letter-spacing: -.04em;
   background: var(--note-bg); border: 1px solid var(--note-line); color: var(--note-ink);
   font-size: 13px; font-weight: 600;
 }
-.banner.update { display: flex; align-items: center; justify-content: center; gap: 12px;
+.banner.update { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 12px;
   background: var(--accent-soft); border-color: var(--chip-line); color: var(--accent-ink); }
+/* what's new (rev 1.53.1): changes.json lines for every version after this page's */
+.update-notes { flex: 1 0 100%; margin: 0; padding: 0; list-style-position: inside; text-align: center; font-weight: 500; line-height: 1.5; }
+#confirmText { white-space: pre-line; }
+.update-notes li::marker { color: var(--accent); }
 .banner.warn { background: var(--warn-bg); border-color: var(--warn-line); color: var(--warn-ink); }
 .banner.warn .btn { background: var(--warn-ink); color: var(--warn-bg); }
 

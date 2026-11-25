@@ -1,8 +1,8 @@
 /* Water Challenge (web) - constants: rules, tunables and the on-disk contract
    (FORMAT_REV, UTF-16 LE + BOM JSON, unknown fields kept). */
 
-export const REV         = "rev 1.53.0";
-export const APP_VERSION = "web 1.53.0";   /* stamped as writerVersion */
+export const REV         = "rev 1.53.1";
+export const APP_VERSION = "web 1.53.1";   /* stamped as writerVersion */
 /* Every file is written at FORMAT_REV. A file stamped higher came from a newer
    build, and the page asks for a reload. */
 export const FORMAT_REV    = 22;
@@ -138,7 +138,7 @@ export const MOVED_FILE       = "_moved.json";
    past the browser cache before reloading, so old and new modules never mix. */
 export const SITE_FILES = ["./", "app.css",
   "js/app.js", "js/art.js", "js/bottle.js", "js/cloud.js", "js/cloudui.js", "js/config.js", "js/glass.js", "js/guard.js", "js/hatui.js", "js/prices.js", "js/live.js", "js/model.js", "js/msg.js", "js/hydration.js", "js/hydfx.js", "js/themefx.js", "js/monster.js", "js/monsterfx.js", "js/cosmetics.js", "js/styleart.js", "js/styleui.js", "js/pen1art.js", "js/pen2art.js", "js/pen3art.js", "js/propart.js", "js/petdefs.js",
-  "js/pets.js", "js/plinko.js", "js/race.js", "js/raceui.js", "js/radial.js", "js/reveal.js", "js/shop.js", "js/shopui.js", "js/store.js", "js/blackjack.js", "js/bjui.js", "js/dragon.js", "js/dither.js", "js/ui.js", "js/util.js", "pets/pets.json"];
+  "js/pets.js", "js/plinko.js", "js/race.js", "js/raceui.js", "js/radial.js", "js/reveal.js", "js/shop.js", "js/shopui.js", "js/store.js", "js/blackjack.js", "js/bjui.js", "js/dragon.js", "js/dither.js", "js/ui.js", "js/util.js", "pets/pets.json", "changes.json"];
 export const VERSION_CHECK_MS = 300000;
 
 /* ---- goals (fallbacks; live values come from _settings.json) ---- */
@@ -273,7 +273,7 @@ export const PET_COUNT        = 25;                /* per pen */
 export const HOMUNCULUS_KIND  = 25;
 export const MYSTERY_KIND     = 26;
 export const MYSTERY_CHANCE   = 0.006;
-/* The dragon (rev 1.53.0, js/dragon.js): stays its first `stay` weekdays, then may leave on each later
+/* The dragon (rev 1.53.0, js/dragon.js): stays the `stay` weekdays after the day it came (rev 1.53.1), then may leave on each later
    weekday (chance `leave`); can't drown; no new pets are rolled while it stays (goal tokens still count);
    its owner may send it away. Comes at a level from `lv` with `perLevel` stat points per level above 1, and
    brings a hoard of `tokens` and `shells` (whole numbers in each range). Rolls before `since` bring no hoard. */

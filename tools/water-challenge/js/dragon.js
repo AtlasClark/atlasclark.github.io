@@ -1,6 +1,6 @@
 /* The dragon (rev 1.53.0): the one pet that is not in a pen. A goal roll brings it now and
-   then (MYSTERY_CHANCE). It chooses the player for a while: it stays its first DRAGON.stay
-   weekdays (the day it came counts when it is a weekday), then each later weekday it may
+   then (MYSTERY_CHANCE). It chooses the player for a while: it stays the DRAGON.stay
+   weekdays after the day it came, then each later weekday it may
    leave (DRAGON.leave). It comes at a random level (DRAGON.lv) with stats raised to match,
    and brings its hoard: tokens and shells, paid once when it comes.
    Everything here is worked out from the person's name and days (seeded draws), so every
@@ -43,9 +43,10 @@ export function dragonArrival(p) {
   return last >= D.since ? last : D.since;
 }
 
-/* Its guaranteed weekdays: the last one. */
+/* Its guaranteed weekdays: the last one. It comes at the end of a goal day, so that day
+   doesn't count (rev 1.53.1): the next DRAGON.stay weekdays are its own. */
 export function dragonSafeUntil(arrival) {
-  let d = arrival, n = 0;
+  let d = shiftKey(arrival, 1), n = 0;
   for (let i = 0; i < 30; i++, d = shiftKey(d, 1)) if (isWeekday(d) && ++n >= D.stay) return d;
   return d;
 }

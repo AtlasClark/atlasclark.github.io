@@ -704,7 +704,7 @@ function dragonRow(p, mine) {
   return '<div class="dragon-row">' +
     '<div class="pc dragon' + (worn ? ' equipped' : '') + '" data-act="equip" data-kind="' + C.MYSTERY_KIND + '" role="button" tabindex="0" title="' +
       esc(C.PET_NAMES[C.MYSTERY_KIND]) + ' &middot; click to ' + (worn ? 'take it off' : 'wear it') + '"><i class="pi pi-' + C.MYSTERY_KIND + '"></i></div>' +
-    '<div class="dr-text">' + (info ? '<b>Came ' + esc(prettyDate(info.since)) + '</b><br>' : '') + 'No new pets while it stays.</div>' +
+    '<div class="dr-text">' + (info ? '<b>Arrived ' + esc(prettyDate(info.since)) + '</b><br>' : '') + 'No new goal pets</div>' +
     (p.name === S.mine ? '<button type="button" class="btn small muted" data-act="dismiss">Send it away</button>' : '') + '</div>';
 }
 

@@ -16,7 +16,7 @@ const D = C.DRAGON;
 const dow = k => new Date(k + "T12:00:00").getDay();
 const weekday = k => dow(k) > 0 && dow(k) < 6;
 
-test("it stays its first two weekdays, then leaves on a weekday about 1 in 3", () => {
+test("it stays the two weekdays after the day it came, then leaves on a weekday about 1 in 3", () => {
   const counts = [];
   for (let i = 0; i < 3000; i++) {
     const name = "Ada" + i, came = "2026-12-0" + (1 + (i % 7));        /* every day of the week */
@@ -28,7 +28,8 @@ test("it stays its first two weekdays, then leaves on a weekday about 1 in 3", (
     for (let d = new Date(safe + "T12:00:00"); ; ) { d.setDate(d.getDate() + 1); const k = d.toISOString().slice(0, 10); if (weekday(k)) n++; if (k === left) break; }
     counts.push(n);
   }
-  assert.equal(dragon.dragonSafeUntil("2026-12-07"), "2026-12-08", "came Monday: Monday and Tuesday");
+  assert.equal(dragon.dragonSafeUntil("2026-12-07"), "2026-12-09", "came Monday (after a goal): Tuesday and Wednesday");
+  assert.equal(dragon.dragonSafeUntil("2026-12-04"), "2026-12-08", "came Friday: Monday and Tuesday");
   assert.equal(dragon.dragonSafeUntil("2026-12-05"), "2026-12-08", "came Saturday: Monday and Tuesday");
   const firstDay = counts.filter(n => n === 1).length / counts.length, mean = counts.reduce((a, b) => a + b) / counts.length;
   assert.ok(Math.abs(firstDay - D.leave) < 0.04, "leaves on its first chance " + firstDay);
