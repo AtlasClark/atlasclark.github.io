@@ -21,6 +21,8 @@ const ITEMS = [
   ["theme", "hairline", "Hairline", 50, "Fine grey lines. Glasses and pets turn to line art."],
   ["theme", "blueprint", "Blueprint", 50, "A drafting sheet. Glasses and pets drawn in white line, water hatched."],
   ["theme", "synthwave", "Synthwave", 50, "Neon sunset over a rolling grid."],
+  ["theme", "dither", "Dither", 50, "Two blues and a grid of dots, like an old screen."],
+  ["theme", "hoard", "Dragon's hoard", 0, "Gold and embers. Yours while a dragon stays with you."],   /* not sold: a dragon's (below) */
   ["finish", "pastel",  "Pastel",       15, "Soft and chalky."],
   ["finish", "shadow",  "Shadow",       15, "Dark and moody."],
   ["finish", "frost",   "Frost",        20, "Icy blue, whatever it was."],
@@ -65,6 +67,8 @@ const ITEMS = [
 ];
 export const COSMETICS = Object.fromEntries(ITEMS.map(([slot, key, name, price, blurb]) =>
   [slot + ":" + key, { id: slot + ":" + key, slot, key, name, price, blurb }]));
+/* Not sold (rev 1.53.0): held while a dragon stays with the player (shop.js ownsCosmetic). */
+for (const id of ["theme:hoard"]) COSMETICS[id].dragon = true;
 export const itemsIn = slot => Object.values(COSMETICS).filter(i => i.slot === slot);
 export const PAINT_COST = 1;
 
@@ -247,10 +251,13 @@ const BUBBLES = 6;
 function bubbles(ctx, x, y, top, W, t) {
   const dist = y - top - W * 0.02;
   if (dist < W * 0.08) return;                                           /* no water above it */
-  const v = W * 0.16;
+  /* Each bubble runs a fixed cycle (rev 1.53.0): the share of the way up comes from the clock alone, then
+     scales to the depth. It was (t * speed) % depth, and the depth moves with every wave, so a large t sent
+     the bubbles jumping, racing or running backwards. */
+  const secs = 3.4;
   ctx.save();
   for (let k = 0; k < BUBBLES; k++) {
-    const rise = (t * v * (1 + 0.12 * Math.sin(k * 2.3)) + k * dist / BUBBLES) % dist, u = rise / dist;
+    const c = t / (secs * (1 + 0.12 * Math.sin(k * 2.3))) + k / BUBBLES, u = c - Math.floor(c), rise = u * dist;
     const r = W * (0.007 + 0.007 * u + 0.0015 * ((k * 7) % 3)), bx = x + Math.sin(t * 2.2 + k * 1.7) * W * 0.012 * u, by = y - rise;
     ctx.globalAlpha = Math.max(0, Math.min(1, u / 0.08, (1 - u) / 0.08));
     ctx.beginPath(); ctx.arc(bx, by, r, 0, Math.PI * 2);

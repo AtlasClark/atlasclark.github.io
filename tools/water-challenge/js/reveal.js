@@ -9,6 +9,7 @@ import { S, petEventTimes } from "./model.js";
 import { todayKey, localStamp, spendsBy } from "./util.js";
 import { petKindFor } from "./store.js";
 import { pendingDrops, balance, chestRaw, shards, shellBalance, duelEnds } from "./shop.js";
+import { hoardOf } from "./dragon.js";
 
 export const HOLD_MS = C.LIVE_SHOW_MS + 3000;
 /* Races work the same way: saved when they start, shown when they finish. A race is held
@@ -76,13 +77,20 @@ export function shownKind(p) {
   return d ? Number(d.was) : petKindFor(p);
 }
 
+/* A dragon's hoard (rev 1.53.0) waits with its card, like the roll that brought it. */
+function heldHoard(p) {
+  const key = todayKey();
+  if (p.petRollDay !== key || Number(p.rollKind) !== C.MYSTERY_KIND || key < C.DRAGON.since || !rollHoldLeft(p)) return { tokens: 0, shells: 0 };
+  return hoardOf(p.name, key);
+}
+
 export function shownBalance(p) {
-  return balance(p) - pending(p).reduce((a, d) => a + (d.chest ? Number(d.chest.won) || 0 : 0), 0) - heldWon(p, "token");
+  return balance(p) - pending(p).reduce((a, d) => a + (d.chest ? Number(d.chest.won) || 0 : 0), 0) - heldWon(p, "token") - heldHoard(p).tokens;
 }
 
 /* Shells as this page may show them: a shell drop's stake is gone at once, its win waits for the ball. */
 export function shownShells(p) {
-  return shellBalance(p) - pending(p).reduce((a, d) => a + (d.shell ? Number(d.shell.won) || 0 : 0), 0) - heldWon(p, "shell");
+  return shellBalance(p) - pending(p).reduce((a, d) => a + (d.shell ? Number(d.shell.won) || 0 : 0), 0) - heldWon(p, "shell") - heldHoard(p).shells;
 }
 
 /* Shards as this page may show them: no repeat still falling or still on its card. */

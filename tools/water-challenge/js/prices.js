@@ -22,7 +22,7 @@ export function priceList() {
     ...[1, 2, 3].map(pen => ({ key: "shard" + pen, name: "A " + C.PEN_LABELS[pen].toLowerCase() + " pet", group: "Tokens and shards", unit: "shards", base: BASE.shard[pen] })),
     { key: "paint", name: "Recolour", group: "Style shop", unit: "shells", base: BASE.paint }];
   for (const s of SLOTS) for (const it of Object.values(COSMETICS)) {
-    if (it.slot === s.key) out.push({ key: it.id, name: it.name, group: s.key === "hat" ? "Hat shop" : "Style shop: " + s.name, unit: "shells", base: it.base });
+    if (it.slot === s.key && !it.dragon) out.push({ key: it.id, name: it.name, group: s.key === "hat" ? "Hat shop" : "Style shop: " + s.name, unit: "shells", base: it.base });
   }
   return out;
 }

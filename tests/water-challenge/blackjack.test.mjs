@@ -65,8 +65,8 @@ test("a deal takes the stake at once; stand saves the result; a double takes the
   assert.deepEqual([e.role, e.hand, e.bet, e.won, e.pc, e.dc], ["end", h.id, 0, 10, [K, card(9)], [card(10), card(7)]]);
   assert.equal(shop.shellBalance(p), 45);
 
-  const d = await shop.bjDeal(p, 10, deck(card(6), card(5), card(10), card(6), card(9), K));   /* you 11, dealer 16 */
-  await shop.bjFinish(p, d, "double");
+  const d = await shop.bjDeal(p, 10, deck(card(6), card(5), card(10), card(6)));   /* you 11, dealer 16 */
+  await shop.bjFinish(p, d, "double", deck(card(9), K));                     /* the double's card, then the dealer's */
   assert.deepEqual([d.p.length, d.dbl, d.end.res, d.end.won], [3, true, "win", 40], "11 + 9 = 20; the dealer draws a K and busts");
   assert.equal(p.spends.at(-1).bet, 10, "the double's extra stake is on the end record");
   assert.equal(shop.shellBalance(p), 45 - 20 + 40);

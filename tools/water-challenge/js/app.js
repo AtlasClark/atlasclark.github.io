@@ -10,7 +10,7 @@ import { S, dataChanged, findParticipant, knownUsers, matchUser, totalOn, metGoa
 import * as store from "./store.js";
 import * as cloud from "./cloud.js";
 import { initCloudUi, applyRole, fillCloudCards } from "./cloudui.js";
-import { reconcilePets, equipPet } from "./pets.js";
+import { reconcilePets, equipPet, dismissDragon } from "./pets.js";
 import { rollCardQueued, anyHeld } from "./reveal.js";
 import * as G from "./glass.js";
 import { startLive, onLive, emit } from "./live.js";
@@ -876,6 +876,15 @@ function wire() {
     if (fold && foldCard) { togglePetFold(foldCard.dataset.name); render(); return; }
     const tab = e.target.closest("[data-act=pen]"), tabCard = e.target.closest(".pet-card");
     if (tab && tabCard) { ui.petPen[tabCard.dataset.name] = Number(tab.dataset.pen); render(); return; }
+    const dis = e.target.closest("[data-act=dismiss]"), disCard = e.target.closest(".pet-card");
+    if (dis && disCard) {                                    /* send the dragon away: own glass only (pets.js checks too) */
+      const name = disCard.dataset.name;
+      if (name !== S.mine || !guard()) return;
+      askConfirm("Send the dragon away?", "It leaves for good. The hoard it brought stays yours.", "Send it away").then(ok => {
+        if (ok) store.serial(async () => { await dismissDragon(name); await settle(); });
+      });
+      return;
+    }
     const t = e.target.closest("[data-act=equip]"), card = e.target.closest(".pet-card");
     if (!t || !card || !guard()) return;
     store.serial(async () => { await equipPet(card.dataset.name, Number(t.dataset.kind)); await settle(); });

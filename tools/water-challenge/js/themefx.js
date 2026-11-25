@@ -1068,6 +1068,167 @@ function timeCar(ctx, w, h, t, sc, night) {
   ctx.restore();
 }
 
+/* ---- Dither (rev 1.53.0, bought theme): two blues in an ordered 4 x 4 Bayer dot pattern ----
+   The page is drawn small (CELL screen px per dot) and scaled up without smoothing: a sky
+   with a sun (moon at night) and its halo, and a sea whose waves roll and whose bubbles
+   rise as single dots. The sky is worked out once per size; each frame redoes the sea. */
+const BAYER4 = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5].map(v => (v + 0.5) / 16);
+const DITHER_CELL = 3;
+function ditherScene() {
+  const rnd = seeded(53);
+  return { w: 0, h: 0, night: null, cv: null, img: null, sky: null,
+           bubbles: Array.from({ length: 26 }, () => ({ x: rnd(), p: rnd(), v: 0.04 + rnd() * 0.06, s: rnd() < 0.3 ? 2 : 1 })) };
+}
+function drawDither(ctx, w, h, t, sc, night) {
+  const bw = Math.ceil(w / DITHER_CELL), bh = Math.ceil(h / DITHER_CELL), sea = Math.round(bh * 0.64);
+  const [A, B] = night ? [[8, 25, 48], [86, 206, 220]] : [[226, 246, 247], [24, 72, 118]];   /* paper, ink */
+  if (sc.w !== bw || sc.h !== bh || sc.night !== night) {             /* a new size or light: the sky again */
+    sc.w = bw; sc.h = bh; sc.night = night;
+    sc.cv = document.createElement("canvas"); sc.cv.width = bw; sc.cv.height = bh;
+    sc.img = sc.cv.getContext("2d").createImageData(bw, bh);
+    const sx = bw * 0.8, sy = bh * 0.2, sr = Math.max(6, Math.min(bw, bh) * 0.09), d = sc.img.data;
+    for (let y = 0; y < sea; y++) for (let x = 0; x < bw; x++) {
+      const r = Math.hypot(x - sx, y - sy);
+      let v = night ? 0.03 + 0.12 * (1 - y / sea) : 0.02 + 0.13 * (y / sea);
+      if (r < sr) v = night ? 0.72 : 0.42;                              /* the disc */
+      else v += (night ? 0.3 : 0.22) * Math.max(0, 1 - (r - sr) / (sr * 2.2));   /* its halo */
+      const on = v > BAYER4[(y & 3) * 4 + (x & 3)], c = on ? B : A, i = (y * bw + x) * 4;
+      d[i] = c[0]; d[i + 1] = c[1]; d[i + 2] = c[2]; d[i + 3] = 255;
+    }
+  }
+  const d = sc.img.data, depth = bh - sea;
+  for (let x = 0; x < bw; x++) {                                       /* the sea, rolling */
+    const top = sea - 3 + Math.sin(x * 0.05 + t * 0.7) * 2 + Math.sin(x * 0.13 - t * 1.2) * 1;
+    for (let y = sea - 6; y < bh; y++) {
+      let v;
+      if (y < top) v = night ? 0.03 + 0.12 * (1 - y / sea) : 0.02 + 0.13 * (y / sea);   /* sky above the wave */
+      else {
+        const u = (y - top) / depth;
+        v = (night ? 0.62 - 0.42 * u : 0.3 + 0.5 * u) + 0.1 * Math.sin(x * 0.09 + y * 0.31 - t * 1.6);
+        if (y - top < 1.2) v = night ? 0.95 : 0.9;                     /* the crest line */
+      }
+      const on = v > BAYER4[(y & 3) * 4 + (x & 3)], c = on ? B : A, i = (y * bw + x) * 4;
+      d[i] = c[0]; d[i + 1] = c[1]; d[i + 2] = c[2]; d[i + 3] = 255;
+    }
+  }
+  for (const b of sc.bubbles) {                                         /* bubbles: paper dots rising through the sea */
+    const u = (t * b.v + b.p) % 1, x = Math.round(b.x * (bw - 2)), y = Math.round(bh - 2 - u * (depth - 6));
+    for (let dy = 0; dy < b.s; dy++) for (let dx = 0; dx < b.s; dx++) {
+      const i = ((y + dy) * bw + x + dx) * 4;
+      if (i >= 0 && i < d.length - 3) { d[i] = A[0]; d[i + 1] = A[1]; d[i + 2] = A[2]; }
+    }
+  }
+  sc.cv.getContext("2d").putImageData(sc.img, 0, 0);
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(sc.cv, 0, 0, bw * DITHER_CELL, bh * DITHER_CELL);
+  ctx.imageSmoothingEnabled = true;
+}
+
+/* ---- Dragon's hoard (rev 1.53.0, worn while a dragon stays): heaps of gold in a cave ----
+   Dark: a warm cave, glowing gold, embers rising, and now and then an eye opening in the
+   dark. Light: a sunlit treasure room with dust in the air. The heaps are drawn once per
+   size and light; glints, embers and the eye each frame. */
+function hoardScene() {
+  const rnd = seeded(71);
+  const coins = [];
+  for (let i = 0; i < 420; i++) coins.push({ x: rnd(), d: rnd(), r: 0.55 + rnd() * 0.6, t: rnd() * 0.5 - 0.25, s: rnd() });
+  return { coins, gems: Array.from({ length: 16 }, () => ({ x: rnd(), d: rnd() * 0.7, c: Math.floor(rnd() * 4), r: rnd() })),
+           glints: Array.from({ length: 22 }, () => ({ x: rnd(), d: rnd(), p: rnd() * 6.28, s: 0.6 + rnd() * 1.2 })),
+           embers: Array.from({ length: 46 }, () => ({ x: rnd(), p: rnd(), v: 0.03 + rnd() * 0.05, a: rnd() * 6.28, s: 0.8 + rnd() * 1.6 })),
+           heaps: null, key: "", eyeAt: 25 + rnd() * 30 };
+}
+/* The heaps' top edge at x (0..1), in px from the bottom. */
+const heapTop = (x, h) => h * (0.1 + 0.11 * Math.exp(-((x - 0.16) ** 2) / 0.012) + 0.16 * Math.exp(-((x - 0.55) ** 2) / 0.02) + 0.09 * Math.exp(-((x - 0.9) ** 2) / 0.008));
+const GEMS = ["#e0344f", "#2fbf71", "#3b8ff0", "#b65cf0"];
+function drawHeaps(w, h, sc, night) {
+  const c = document.createElement("canvas"), dpr = Math.min(devicePixelRatio || 1, 2);
+  c.width = Math.round(w * dpr); c.height = Math.round(h * dpr);
+  const g = c.getContext("2d");
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const R = Math.max(5, Math.min(11, w / 150));
+  g.beginPath(); g.moveTo(0, h);                                         /* the heaps' body */
+  for (let x = 0; x <= w; x += 6) g.lineTo(x, h - heapTop(x / w, h));
+  g.lineTo(w, h); g.closePath();
+  const body = g.createLinearGradient(0, h * 0.7, 0, h);
+  body.addColorStop(0, night ? "#c98c1c" : "#e6b43c"); body.addColorStop(1, night ? "#5a3508" : "#b07a1a");
+  g.fillStyle = body; g.fill();
+  const sorted = sc.coins.slice().sort((a, b) => a.d - b.d);            /* deeper coins first: the near ones on top */
+  for (const k of sorted) {
+    const x = k.x * w, top = h - heapTop(k.x, h), y = top + k.d * (h - top) * 0.95, r = R * k.r;
+    const lit = 0.55 + 0.45 * (1 - k.d);
+    g.save(); g.translate(x, y); g.rotate(k.t);
+    g.beginPath(); g.ellipse(0, 0, r, r * 0.42, 0, 0, 6.2832);
+    g.fillStyle = "rgb(" + Math.round(150 + 105 * lit) + "," + Math.round(100 + 105 * lit) + "," + Math.round(20 + 40 * lit) + ")"; g.fill();
+    g.strokeStyle = "rgba(90,55,5,.55)"; g.lineWidth = 0.8; g.stroke();
+    g.beginPath(); g.ellipse(-r * 0.15, -r * 0.08, r * 0.55, r * 0.18, 0, 0, 6.2832);
+    g.fillStyle = "rgba(255,240,170," + (0.25 + 0.3 * k.s) + ")"; g.fill();
+    g.restore();
+  }
+  for (const m of sc.gems) {                                             /* a few gems in the gold */
+    const x = m.x * w, top = h - heapTop(m.x, h), y = top + m.d * (h - top) * 0.6, s = R * 0.9;
+    g.beginPath(); g.moveTo(x, y - s); g.lineTo(x + s * 0.8, y - s * 0.2); g.lineTo(x, y + s * 0.8); g.lineTo(x - s * 0.8, y - s * 0.2); g.closePath();
+    g.fillStyle = GEMS[m.c]; g.fill();
+    g.beginPath(); g.moveTo(x, y - s); g.lineTo(x + s * 0.3, y - s * 0.2); g.lineTo(x - s * 0.3, y - s * 0.2); g.closePath();
+    g.fillStyle = "rgba(255,255,255,.55)"; g.fill();
+  }
+  return c;
+}
+function drawHoard(ctx, w, h, t, sc, night) {
+  const bg = ctx.createLinearGradient(0, 0, 0, h);                      /* the cave, warmer toward the gold */
+  if (night) { bg.addColorStop(0, "#0d0705"); bg.addColorStop(0.6, "#1d0f07"); bg.addColorStop(1, "#3a1f08"); }
+  else { bg.addColorStop(0, "#fff8e6"); bg.addColorStop(0.6, "#fbeac2"); bg.addColorStop(1, "#f2d38a"); }
+  ctx.fillStyle = bg; ctx.fillRect(0, 0, w, h);
+  const glow = ctx.createRadialGradient(w * 0.55, h, 0, w * 0.55, h, Math.max(w, h) * 0.6);
+  glow.addColorStop(0, night ? "rgba(255,170,40,.28)" : "rgba(255,210,90,.35)"); glow.addColorStop(1, "rgba(255,170,40,0)");
+  ctx.fillStyle = glow; ctx.fillRect(0, 0, w, h);
+
+  if (night && t > sc.eyeAt) {                                           /* an eye opens in the dark, looks, and closes */
+    const age = t - sc.eyeAt, life = 4.2;
+    if (age > life) sc.eyeAt = t + 35 + Math.random() * 40;
+    else {
+      const open = Math.min(1, age / 0.6, (life - age) / 0.5), blink = age > 1.9 && age < 2.1 ? 0.1 : 1, o = open * blink;
+      const ex = w * 0.14, ey = h * 0.22, ew = Math.max(26, w * 0.035), eh = ew * 0.55 * o;
+      const halo = ctx.createRadialGradient(ex, ey, 0, ex, ey, ew * 2.4);
+      halo.addColorStop(0, "rgba(255,170,30," + 0.22 * open + ")"); halo.addColorStop(1, "rgba(255,170,30,0)");
+      ctx.fillStyle = halo; ctx.fillRect(ex - ew * 2.4, ey - ew * 2.4, ew * 4.8, ew * 4.8);
+      if (eh > 0.5) {
+        ctx.beginPath(); ctx.moveTo(ex - ew, ey); ctx.quadraticCurveTo(ex, ey - eh * 2, ex + ew, ey); ctx.quadraticCurveTo(ex, ey + eh * 2, ex - ew, ey); ctx.closePath();
+        const iris = ctx.createRadialGradient(ex, ey, 0, ex, ey, ew);
+        iris.addColorStop(0, "#fff1a0"); iris.addColorStop(0.5, "#ffb627"); iris.addColorStop(1, "#c05a08");
+        ctx.fillStyle = iris; ctx.fill();
+        const look = Math.sin(age * 1.3) * ew * 0.25;
+        ctx.beginPath(); ctx.ellipse(ex + look, ey, ew * 0.1, Math.min(eh, ew * 0.5) * 0.95, 0, 0, 6.2832);
+        ctx.fillStyle = "#1a0a02"; ctx.fill();
+      }
+    }
+  }
+
+  const key = w + "x" + h + (night ? "n" : "d");
+  if (sc.key !== key) { sc.heaps = drawHeaps(w, h, sc, night); sc.key = key; }
+  ctx.drawImage(sc.heaps, 0, 0, w, h);
+
+  for (const s of sc.glints) {                                           /* glints on the gold */
+    const tw = Math.pow(Math.max(0, Math.sin(t * s.s + s.p)), 14);
+    if (tw < 0.03) continue;
+    const x = s.x * w, top = h - heapTop(s.x, h), y = top + s.d * (h - top) * 0.5, r = 3 + 7 * tw;
+    ctx.globalAlpha = tw;
+    ctx.fillStyle = "#fffbe0";
+    ctx.beginPath(); ctx.moveTo(x, y - r); ctx.lineTo(x + r * 0.18, y - r * 0.18); ctx.lineTo(x + r, y); ctx.lineTo(x + r * 0.18, y + r * 0.18);
+    ctx.lineTo(x, y + r); ctx.lineTo(x - r * 0.18, y + r * 0.18); ctx.lineTo(x - r, y); ctx.lineTo(x - r * 0.18, y - r * 0.18); ctx.closePath(); ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+
+  for (const e of sc.embers) {                                           /* embers rise (dark); dust drifts (light) */
+    const u = (t * e.v + e.p) % 1, x = e.x * w + Math.sin(t * 0.8 + e.a) * 14, y = h * (1 - u) - (night ? 0 : h * 0.1);
+    const a = Math.sin(u * Math.PI) * (night ? 0.5 + 0.5 * Math.sin(t * 6 + e.a) : 0.45);
+    if (a <= 0.02) continue;
+    ctx.globalAlpha = a;
+    ctx.fillStyle = night ? (e.s > 1.8 ? "#ffd36b" : "#ff8a2a") : "#fff6d8";
+    ctx.beginPath(); ctx.arc(x, y, night ? e.s : e.s * 0.9, 0, 6.2832); ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+}
+
 const THEMES = {
   spring:    { scene: springScene,    draw: withVisitors(drawSpring, "spring") },
   summer:    { scene: summerScene,    draw: withVisitors(drawSummer, "summer") },
@@ -1080,5 +1241,7 @@ const THEMES = {
   hairline:  { scene: hairlineScene,  draw: drawHairline },
   blueprint: { scene: blueprintScene, draw: drawBlueprint },
   synthwave: { scene: synthScene,     draw: drawSynth },
+  dither:    { scene: ditherScene,    draw: drawDither },
+  hoard:     { scene: hoardScene,     draw: drawHoard },
   ...MONSTER_THEMES                                                       /* monster week (draft) */
 };

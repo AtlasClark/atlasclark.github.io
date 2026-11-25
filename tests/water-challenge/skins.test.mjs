@@ -14,9 +14,19 @@ const shop = await import(pathToFileURL(path.join(JS, "shop.js")));
 const P = await import(pathToFileURL(path.join(JS, "petdefs.js")));
 void web;
 
-test("themes: Atlas, Hairline, Blueprint and Synthwave sell for 50 shells in their own tab", () => {
+test("themes: Atlas, Hairline, Blueprint, Synthwave and Dither sell for 50 shells in their own tab; the dragon's is not sold", () => {
   assert.ok(cos.SLOTS.some(s => s.key === "theme"));
-  assert.deepEqual(cos.itemsIn("theme").map(i => [i.key, i.price]), [["atlas", 50], ["hairline", 50], ["blueprint", 50], ["synthwave", 50]]);
+  assert.deepEqual(cos.itemsIn("theme").map(i => [i.key, i.price]), [["atlas", 50], ["hairline", 50], ["blueprint", 50], ["synthwave", 50], ["dither", 50], ["hoard", 0]]);
+  assert.ok(cos.COSMETICS["theme:hoard"].dragon && !cos.itemsIn("theme").some(i => i.dragon && i.key !== "hoard"));
+});
+
+test("the Dragon's hoard theme is worn only while a dragon stays", () => {
+  const p = { name: "Hoard Test", spends: [], pets: { 26: 0 }, look: { theme: "hoard" } };
+  assert.equal(shop.lookOf(p).theme, "hoard");
+  assert.equal(shop.cosmeticBlock(p, "theme:hoard"), "Owned.");
+  delete p.pets[26];
+  assert.equal(shop.lookOf(p).theme, undefined, "gone with the dragon");
+  assert.equal(shop.cosmeticBlock(p, "theme:hoard"), "Only while a dragon stays with you.");
 });
 
 test("themes: worn only once bought", () => {

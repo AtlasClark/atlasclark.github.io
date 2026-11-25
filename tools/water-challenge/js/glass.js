@@ -5,6 +5,7 @@
    around the drawing, never inside the pet shapes, so they survive new graphics. */
 
 import * as C from "./config.js";
+import { waterDither, ditherWater } from "./dither.js";
 import { rnd } from "./util.js";
 import { drawCritter, drawHeadstone } from "./art.js";
 import { defs as petDefs, fxSpot, anchorY, zoneOf, bodyBox, restY as restAt, lineArt, syncLineArt } from "./petdefs.js";
@@ -423,11 +424,14 @@ function drawGlass(st) {
   ctx.closePath();
   ctx.fillStyle = st.color;
   ctx.fill();
-  const g = ctx.createLinearGradient(0, top, 0, H + B);
-  g.addColorStop(0, "rgba(255,255,255,0.10)");
-  g.addColorStop(1, "rgba(0,20,40,0.16)");
-  ctx.fillStyle = g;
-  ctx.fill();
+  if (waterDither.on) { ctx.save(); ctx.clip(); ditherWater(ctx, -B, W + B, top - C.SURFACE_BAND, H + B); ctx.restore(); }   /* the Dither theme */
+  else {
+    const g = ctx.createLinearGradient(0, top, 0, H + B);
+    g.addColorStop(0, "rgba(255,255,255,0.10)");
+    g.addColorStop(1, "rgba(0,20,40,0.16)");
+    ctx.fillStyle = g;
+    ctx.fill();
+  }
 
   ctx.save();
   ctx.clip();

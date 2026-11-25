@@ -8,6 +8,7 @@
 
 import * as C from "./config.js";
 import { spendsBy } from "./util.js";
+import { dragonArrival, dragonStart } from "./dragon.js";
 
 const R = C.RACE, N_STATS = C.RACE_STATS.length;
 export const START = 0, SPEED = 1, STAMINA = 2, BURST = 3, FOCUS = 4;
@@ -71,9 +72,13 @@ export const canRace = k => !C.PEN_REWARDS.some(r => r && r.kind === k);
    ids left out (a race still running on this page). */
 export function statsOf(p, k, skip) {
   const base = baseStats(k), d = base.map(() => 0);
-  let xp = 0, races = 0, wins = 0;
+  let xp = 0, races = 0, wins = 0, since = "";
+  if (k === C.MYSTERY_KIND) {                                     /* the dragon (rev 1.53.0): this visit's start and races only */
+    since = dragonArrival(p);
+    if (since) { const st = dragonStart(p.name, since); xp = st.xp; st.d.forEach((v, i) => { d[i] += v; }); }
+  }
   for (const s of spendsBy(p, C.RACE_KIND)) {
-    if (Number(s.pet) !== k || (skip && skip.has(s.id))) continue;
+    if (Number(s.pet) !== k || (skip && skip.has(s.id)) || (since && String(s.at).slice(0, 10) < since)) continue;
     races++;
     xp += Number(s.xp) || 0;
     if (Number(s.place) === 1) wins++;

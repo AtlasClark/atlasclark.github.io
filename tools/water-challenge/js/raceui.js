@@ -6,7 +6,7 @@
 import * as C from "./config.js";
 import { findParticipant, S } from "./model.js";
 import * as store from "./store.js";
-import { $, esc, has, prettyTime, spendsBy } from "./util.js";
+import { $, esc, has, prettyTime, spendsBy, todayKey } from "./util.js";
 import { raceSetup, raceBlock, racePlay, racePayFor, racesLeft, asksBy, asksFor, duelAskBlock, duelAsk, duelDrop, duelPass, duelTake, duelField, duelsNow, duelRecord } from "./shop.js";
 import { statsOf, runRace, rating, FRAME_SECS, canRace } from "./race.js";
 import { raceDone, racesHeld, shownBalance, shownShells } from "./reveal.js";
@@ -161,14 +161,15 @@ function renderRace(p) {
   setHtml("raceResult", shown ? resultHtml(shown.out) : "");
   $("raceResult").hidden = !shown;
 
-  const past = spendsBy(p, C.RACE_KIND).slice(-10).filter(s => !held.has(s.id)).slice(-8).reverse();
+  const day = todayKey();                                       /* today's only (rev 1.53.0): the list shows times, not dates */
+  const past = spendsBy(p, C.RACE_KIND).slice(-10).filter(s => !held.has(s.id) && String(s.at).slice(0, 10) === day).slice(-8).reverse();
   setHtml("raceFeed", past.length ? past.map(s => '<li><span class="t">' + esc(prettyTime(s.at)) + '</span><strong>' +
       (s.house ? 'House race' : esc(petLabel(Number(s.pet)))) + '</strong> ' +
       (s.house ? '' : ORD[Number(s.place) - 1]) + ' <span class="dim">&middot; ' + money(Number(s.bet), s.cur) + ' on ' +
       (Number(s.on) === Number(s.pet) ? 'it' : 'the ' + esc(petLabel(Number(s.on))) + (s.house ? ' (' + ORD[Number(s.place) - 1] + ')' : '')) +
       (s.type === "top3" ? ' top 3' : ' to win') + '</span> ' +
       (Number(s.won) ? '<span class="pill good">+' + money(Number(s.won), s.cur) + '</span>' : '<span class="dim">lost</span>') + '</li>').join("")
-    : '<li class="dim">No races yet.</li>');
+    : '<li class="dim">No races today.</li>');
   paint();
 }
 

@@ -103,7 +103,8 @@ export const web = {
   model: await import(pathToFileURL(JS + "model.js")),
   store: await import(pathToFileURL(JS + "store.js")),
   pets: await import(pathToFileURL(JS + "pets.js")),
-  util: await import(pathToFileURL(JS + "util.js"))
+  util: await import(pathToFileURL(JS + "util.js")),
+  dragon: await import(pathToFileURL(JS + "dragon.js"))
 };
 
 export async function loadWeb(files) {

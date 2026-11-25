@@ -7,6 +7,7 @@ import { findParticipant } from "./model.js";
 import * as store from "./store.js";
 import { SLOTS, COSMETICS, itemsIn, drawDecor, drawEffect, decorBehind, decorDry } from "./cosmetics.js";
 import { CUP_H } from "./styleart.js";
+import { waterDither, ditherWater } from "./dither.js";
 import { defs, fxSpot, anchorY, zoneOf, lineArt } from "./petdefs.js";
 import { ownsCosmetic, cosmeticBlock, buyCosmetic, wearCosmetic, lookOf, paintBlock, paintPet, shellRun, shellAward, shellsEarned, pouredOn } from "./shop.js";
 import { hueOf, petLabel } from "./pets.js";
@@ -102,7 +103,7 @@ export function renderStyle() {
     const owned = ownsCosmetic(p, it.id), worn = look[it.slot] === it.key, sel = ui.styleTry === it.id;
     return '<button type="button" class="style-item' + (sel ? ' on' : '') + (owned ? ' owned' : '') + (worn ? ' worn' : '') + '" data-item="' + it.id + '" title="' + esc(it.blurb) + '">' +
            '<span class="sn">' + esc(it.name) + '</span><span class="sp">' +
-           (worn ? 'wearing' : owned ? 'owned' : SHELL + it.price) + '</span></button>';
+           (worn ? 'wearing' : owned ? (it.dragon ? 'dragon&rsquo;s' : 'owned') : it.dragon ? 'needs a dragon' : SHELL + it.price) + '</span></button>';
   }).join(""));
   const it = COSMETICS[ui.styleTry];
   if (!it || it.slot !== tab.key) {
@@ -114,6 +115,7 @@ export function renderStyle() {
     setHtml("styleAct", '<p class="style-name"><b>' + esc(it.name) + '</b> <span class="dim">' + esc(it.blurb) + '</span></p>' +
       (worn ? '<button type="button" class="btn muted" data-do="off" data-item="' + it.id + '">Take it off</button>'
        : owned ? '<button type="button" class="btn primary" data-do="wear" data-item="' + it.id + '">Wear it</button>'
+       : it.dragon ? '<p class="hint">' + esc(why) + ' Try it on here any time.</p>'
        : '<button type="button" class="btn primary" data-do="buy" data-item="' + it.id + '"' + (why ? ' disabled' : '') + '>Buy &middot; ' + SHELL + it.price + '</button>' +
          (why ? '<p class="hint">' + esc(why) + '</p>' : '<p class="hint">Yours for good; it goes on straight away.</p>')));
   }
@@ -222,9 +224,12 @@ function drawRoom() {
   } else {
     ctx.fillStyle = cs.getPropertyValue("--glass-fill").trim() || "rgba(255,255,255,0.34)"; ctx.fill();
     ctx.clip(); water(ctx); ctx.fillStyle = p.color; ctx.fill();
-    const g = ctx.createLinearGradient(0, top, 0, gy + H);
-    g.addColorStop(0, "rgba(255,255,255,0.10)"); g.addColorStop(1, "rgba(0,20,40,0.16)");
-    ctx.fillStyle = g; ctx.fill();
+    if (waterDither.on) { ctx.save(); ctx.clip(); ditherWater(ctx, gx, gx + W, top - 4, gy + H); ctx.restore(); }
+    else {
+      const g = ctx.createLinearGradient(0, top, 0, gy + H);
+      g.addColorStop(0, "rgba(255,255,255,0.10)"); g.addColorStop(1, "rgba(0,20,40,0.16)");
+      ctx.fillStyle = g; ctx.fill();
+    }
     water(ctx); ctx.strokeStyle = "rgba(255,255,255,0.55)"; ctx.lineWidth = 2.5; ctx.stroke();
   }
   ctx.restore();

@@ -13,6 +13,7 @@ import { statsOf, racesOn, makeField, raceOdds, runRace, racePay, betHit, raceGr
 import { COSMETICS, SLOTS } from "./cosmetics.js";
 import { live } from "./prices.js";
 import { draw as bjDraw, natural, closeHand } from "./blackjack.js";
+import { holdsDragon, hoardTotal } from "./dragon.js";
 import { hydrationEarned } from "./hydration.js";
 import { monsterEarned } from "./monster.js";
 
@@ -30,7 +31,7 @@ export const spentTotal = p => (p.spends || []).reduce((a, s) => a + (notTokens(
 export const chestWinnings = p => (p.spends || []).reduce((a, s) => a + (s.chest ? Number(s.chest.won) || 0 : 0), 0);
 /* Tokens won on race bets (a token stake is the spend's cost, so spentTotal has it). */
 export const raceTokensWon = p => raceWon(p, "token");
-export const earnedTotal = p => tokensEarned(p) + capBonus(p) + chestWinnings(p) + hydrationEarned(p).tokens + monsterEarned(p).tokens + raceTokensWon(p);
+export const earnedTotal = p => tokensEarned(p) + capBonus(p) + chestWinnings(p) + hydrationEarned(p).tokens + monsterEarned(p).tokens + raceTokensWon(p) + hoardTotal(p).tokens;
 
 /* The Community Chest holds every token put in by a centre landing, less every win.
    It lives in the spend records, so it merges like everything else. Two wins at the
@@ -88,6 +89,7 @@ const newHue = k => k === C.JOKE_KIND ? 28 : Math.floor(Math.random() * 360);
 /* "" when allowed, otherwise why not. */
 export function rerollBlock(p) {
   const key = todayKey();
+  if (holdsDragon(p)) return "The dragon guards the pen. No rerolls while it stays.";
   if (p.petRollDay !== key || !(Number(p.rollKind) >= 0)) return "Reach today's goal first.";
   if (p.rerollDay === key) return "Already rerolled today.";
   /* A new pen species today plus that pen's full-pen reward means today's roll completed
@@ -558,12 +560,14 @@ export function spendsOn(p, key) { return (p.spends || []).filter(s => String(s.
 /* Owned items are "cosmetic" spends, so they merge like every other spend and can
    never be bought twice by two windows at once without both being counted. What is
    worn is p.look ({ slot: key }), kept only while the item is owned. */
-export const ownsCosmetic = (p, id) => spendsBy(p, "cosmetic").some(s => s.item === id);
+export const ownsCosmetic = (p, id) => COSMETICS[id] && COSMETICS[id].dragon ? holdsDragon(p)    /* the dragon's own theme: while it stays */
+  : spendsBy(p, "cosmetic").some(s => s.item === id);
 
 export function cosmeticBlock(p, id) {
   const it = COSMETICS[id];
   if (!it) return "Not for sale.";
   if (ownsCosmetic(p, id)) return "Owned.";
+  if (it.dragon) return "Only while a dragon stays with you.";
   if (shellBalance(p) < it.price) return "Needs " + it.price + " shells.";
   return "";
 }
@@ -628,7 +632,7 @@ function runs(p) {
   return out;
 }
 export const shellAward = run => Math.min(C.SHELL_MAX, Math.max(1, run));
-export function shellsEarned(p) { return Object.values(runs(p)).reduce((a, r) => a + shellAward(r), 0) + hydrationEarned(p).shells + monsterEarned(p).shells + winShells(p) + splinkoWon(p) + tossWon(p) + bjWon(p) + raceWon(p, "shell"); }
+export function shellsEarned(p) { return Object.values(runs(p)).reduce((a, r) => a + shellAward(r), 0) + hydrationEarned(p).shells + monsterEarned(p).shells + winShells(p) + splinkoWon(p) + tossWon(p) + bjWon(p) + raceWon(p, "shell") + hoardTotal(p).shells; }
 /* Shells won back on shell Plinko (the stakes are in shellsSpent). */
 export const splinkoWon = p => spendsBy(p, C.SPLINKO_KIND).reduce((a, s) => a + (Number(s.won) || 0), 0);
 /* Day wins pay WIN_SHELLS, split between that day's winners (model.dayWinners). */

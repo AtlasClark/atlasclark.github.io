@@ -7,6 +7,7 @@ import * as C from "./config.js";
 import { S, metGoal, personalGoal, findParticipant, totalOn, pastCap, isActive } from "./model.js";
 import { saveParticipant, petKindFor } from "./store.js";
 import { todayKey, has, bus, spendsBy } from "./util.js";
+import { holdsDragon, dragonArrival, dragonLeaveDay, dragonSafeUntil, dragonStart, hoardOf } from "./dragon.js";
 
 export { petKindFor };
 
@@ -255,8 +256,10 @@ export function announce(p, res, how) {
   if (k === C.PET_NO_PET) {
     bus.msg(p.name + " has buried every pet there is. There is nothing left to find.", false);
   } else if (res.mystery) {
+    const h = hoardOf(p.name, todayKey()), lv = dragonStart(p.name, todayKey()).level;
     bus.unlock({ name: p.name, kind: C.MYSTERY_KIND, hue: 0, fresh: true, equipped: true,
-                 msg: p.name + verb + " found something that doesn't live in the pen. Keep it on; it won't wait around." });
+                 msg: "A dragon chose " + p.name + verb + ". It brought its hoard: +" + h.tokens + " token" + (h.tokens === 1 ? "" : "s") +
+                      " and +" + h.shells + " shells. Level " + lv + ". It stays a while, then leaves when it likes." });
   } else if (res.reward != null) {
     bus.unlock({ name: p.name, kind: res.reward, hue: C.PEN_REWARDS[rewardPen(res.reward)].hue, fresh: true, rolled: k,
                  equipped: petKindFor(p) === res.reward, msg: rewardMsg(p.name, res.reward) });
@@ -270,35 +273,26 @@ export function announce(p, res, how) {
 async function maybeRollPet(p) {
   const key = todayKey();
   if (p.petRollDay === key) return false;
+  if (holdsDragon(p)) {                       /* the dragon guards the pen: no roll; the goal's token still counts */
+    p.petRollDay = key; p.rollKind = C.PET_NO_PET; p.rollWasNew = false;
+    if (await saveParticipant(p, null)) bus.msg("The dragon guards " + p.name + "'s pen. No new pet while it stays.", true);
+    return true;
+  }
   const res = applyRoll(p, dayRng(p.name, rollSeed(p, key)), key);
   if (await saveParticipant(p, null)) announce(p, res);
   return true;
 }
 
-function releaseMystery(p) {
-  if (has(p.pets, C.MYSTERY_KIND)) { delete p.pets[String(C.MYSTERY_KIND)]; return [String(C.MYSTERY_KIND)]; }
-  return null;
-}
-
-/* One drowning a day: any drowning today blocks the next (graveDay, not deadKind, so
-   a drowned dragon counts too). The full-pen reward is not drowned itself: the water
+/* One drowning a day: any drowning today blocks the next (graveDay). The full-pen reward is not drowned itself: the water
    takes a pen pet, which breaks the set instead. */
 async function killPet(p) {
   if (p.graveDay === todayKey()) return null;
-  /* Wearing the dragon still risks it; otherwise the water picks (pickVictim). */
-  let k = petKindFor(p), byLot = false;
-  if (k !== C.MYSTERY_KIND || !has(p.pets, k)) { k = pickVictim(p); byLot = true; }
+  /* The water picks (pickVictim); the dragon can't drown (rev 1.53.0), worn or not. */
+  const k = pickVictim(p), byLot = true;
   if (k < 0 || !has(p.pets, k)) return null;
   const hue = Number(p.pets[String(k)]);
   delete p.pets[String(k)];
   logDay(p, "graveLog", todayKey(), k);
-  if (k === C.MYSTERY_KIND) {
-    p.graveDay = todayKey();
-    p.deadKind = C.PET_NO_PET;
-    if (!(await saveParticipant(p, null, [String(k)]))) return null;
-    bus.msg(p.name + " lost what they had found. It was never really theirs.", false);
-    return { kind: k, hue };
-  }
   if (!p.graves) p.graves = {};
   p.graves[String(k)] = hue;
   p.graveDay = todayKey();
@@ -378,6 +372,7 @@ export async function reconcilePets() {
   for (const p of S.participants) if (await syncRewards(p)) bus.petReset(p.name);
   for (const p of S.participants) await openPen2(p);
   for (const p of S.participants) await openPen3(p);
+  for (const p of S.participants) if (await settleDragon(p)) bus.petReset(p.name);
   for (const p of S.participants) {
     if (!isActive(p)) continue;
     const total = totalOn(p, key), goal = personalGoal(p, key);
@@ -408,16 +403,45 @@ export async function equipPet(name, kind) {
   if (penOf(kind) === 3 && !pen3Open(p)) { bus.msg(PEN3_CLOSED, false); return; }
   if (petKindFor(p) === kind) {
     p.equippedPet = C.PET_NO_PET;
-    const drop = kind === C.MYSTERY_KIND ? releaseMystery(p) : null;
-    if (!(await saveParticipant(p, null, drop))) { bus.msg("Could not save the change.", false); return; }
+    if (!(await saveParticipant(p, null))) { bus.msg("Could not save the change.", false); return; }
     bus.msg(p.name + " put the " + label + " away.", true);
     return;
   }
-  const drop = petKindFor(p) === C.MYSTERY_KIND ? releaseMystery(p) : null;   /* swapping away loses it */
-  p.equippedPet = kind;
-  if (!(await saveParticipant(p, null, drop))) { bus.msg("Could not save the change.", false); return; }
+  p.equippedPet = kind;                                   /* the dragon stays in the pen when another is worn */
+  if (!(await saveParticipant(p, null))) { bus.msg("Could not save the change.", false); return; }
   bus.msg(buried ? p.name + " is carrying the " + label + "'s headstone around. Grim."
                  : p.name + " equipped the " + label + ".", true);
+}
+
+/* ---- the dragon (rev 1.53.0, dragon.js) ------------------------------------------- */
+/* Off it goes: out of the pen, and off the glass with the pet worn before it (if alive). */
+function letGo(p) {
+  delete p.pets[String(C.MYSTERY_KIND)];
+  if (petKindFor(p) === C.MYSTERY_KIND) {
+    const back = Number(p.lastRoll);
+    p.equippedPet = back >= 0 && has(p.pets, back) ? back : C.PET_NO_PET;
+  }
+  return [String(C.MYSTERY_KIND)];
+}
+/* On its leave day it goes by itself; the same day on every PC. Returns true when it left. */
+async function settleDragon(p) {
+  if (!holdsDragon(p) || todayKey() < dragonLeaveDay(p.name, dragonArrival(p))) return false;
+  if (!(await saveParticipant(p, null, letGo(p)))) return false;
+  bus.msg("The dragon left " + p.name + ". The hoard stays.", true);
+  return true;
+}
+/* Its owner sends it away (own glass only). */
+export async function dismissDragon(name) {
+  const p = findParticipant(name);
+  if (!p || !holdsDragon(p) || name !== S.mine) return false;
+  if (!(await saveParticipant(p, null, letGo(p)))) { bus.msg("Could not save the change.", false); return false; }
+  bus.msg(p.name + " sent the dragon away. The hoard stays.", true);
+  return true;
+}
+/* For the Pets tab: level, the day it came and its last guaranteed day. */
+export function dragonInfo(p) {
+  const since = dragonArrival(p);
+  return since ? { since, safe: dragonSafeUntil(since) } : null;
 }
 
 /* Rarity text for the activity feed. The reward and the one outside the pen have

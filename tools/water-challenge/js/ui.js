@@ -12,7 +12,7 @@ import { S, personalGoal, capFor, totalOn, metGoal, pastCap, atCap, dayScoreFor,
 import { petKindFor, isGrave, gravesOf,
          graveLine, petLabel, petName, petRarityOf, petBinIndex, petGridOrder, penFound,
          penOf, penKinds, pensOf, penAlive, penBuried, pen3Earned, pen3Open, PEN3_CLOSED,
-         hashHue, hueOf, rarityLabel, undoEffect, rollOdds, isReward, rewardPen } from "./pets.js";
+         hashHue, hueOf, rarityLabel, undoEffect, rollOdds, isReward, rewardPen, dragonInfo } from "./pets.js";
 import { crownSvg, jesterSvg, hatSvg, drawPortrait, drawCritter, drawHeadstone, drawGoldPile, drawCoin, hatKeyFor, drawMedal, holidayOn, glassHatSvg, EVENTS, eventRange, eventDefault, setEventRanges } from "./art.js";
 import * as G from "./glass.js";
 import { diag, dir, cloud, sourceName } from "./store.js";
@@ -24,6 +24,7 @@ import { applyPrices, priceList, cleanPrices } from "./prices.js";
 import { isHydrationDay, teamSplash } from "./hydration.js";
 import { setHydrationDay } from "./hydfx.js";
 import { setHolidayTheme, seasonsOn, seasonOf } from "./themefx.js";
+import { setWaterDither } from "./dither.js";
 import { MONSTERS, devBoss, setMonsterHp } from "./monsterfx.js";
 import { monsterNow } from "./monster.js";
 import { msgOf, isNew, openMsgs, whenText } from "./msg.js";
@@ -476,6 +477,7 @@ function renderEventBanner() {
      Style shop), else (unless this browser turned seasons off) the season's */
   const worn = wornTheme(), name = on ? "" : hol && hol.theme ? hol.theme : worn || (seasonsOn() ? seasonOf(todayKey()) : "");
   setHolidayTheme(name);
+  setWaterDither(name === "dither");
   const la = name === "hairline" || name === "blueprint" ? name : "";
   if ((lineArt.on ? lineArt.style : "") !== la) { setLineArt(la); resetIcons(); }   /* pet icons redraw as lines, or back */
   if (!on) { el.hidden = true; evHtml = ""; clearInterval(evTimer); evTimer = 0; return; }
@@ -654,9 +656,10 @@ function renderPets() {
     h.push('<div class="pet-card' + (folded ? ' folded' : '') + '" data-name="' + n + '">');
     h.push('<button type="button" class="pet-head" data-act="petfold" aria-expanded="' + !folded + '" title="' + (folded ? 'Show' : 'Hide') + ' ' + n + '&rsquo;s pets">' +
            '<i class="fold-chev" aria-hidden="true"></i><i class="dot" style="background:' + p.color + '"></i>' + esc(p.name) +
-           '<span class="pet-count">' + alive + ' / ' + C.PET_COUNT +
+           '<span class="pet-count"><span class="pen-no">Pen ' + pen + '</span>' + alive + ' / ' + C.PET_COUNT +
            (buried ? '<b class="graven"> &middot; ' + buried + ' buried</b>' : '') + '</span></button>');
     if (folded) { h.push('</div>'); continue; }
+    if (has(p.pets, C.MYSTERY_KIND) && !held.has(C.MYSTERY_KIND) && !(Number(p.rollKind) === C.MYSTERY_KIND && rollHoldLeft(p))) h.push(dragonRow(p, mine));
     if (open) {
       h.push('<div class="pen-tabs" role="tablist">' + pens.map(x =>
         '<button type="button" role="tab" class="pen-tab' + (x === pen ? ' on' : '') + (x === 3 && !pen3Open(p) ? ' closed' : '') +
@@ -692,6 +695,17 @@ function renderPets() {
   }
   h.push('</div>');
   setHtml("pets", h.join(""));
+}
+
+/* The dragon on its owner's pet card (rev 1.53.0): wear it from here, the day it came, and
+   "Send it away" on its owner's page only. */
+function dragonRow(p, mine) {
+  const info = dragonInfo(p), worn = mine === C.MYSTERY_KIND;
+  return '<div class="dragon-row">' +
+    '<div class="pc dragon' + (worn ? ' equipped' : '') + '" data-act="equip" data-kind="' + C.MYSTERY_KIND + '" role="button" tabindex="0" title="' +
+      esc(C.PET_NAMES[C.MYSTERY_KIND]) + ' &middot; click to ' + (worn ? 'take it off' : 'wear it') + '"><i class="pi pi-' + C.MYSTERY_KIND + '"></i></div>' +
+    '<div class="dr-text">' + (info ? '<b>Came ' + esc(prettyDate(info.since)) + '</b><br>' : '') + 'No new pets while it stays.</div>' +
+    (p.name === S.mine ? '<button type="button" class="btn small muted" data-act="dismiss">Send it away</button>' : '') + '</div>';
 }
 
 /* ---- history tab -------------------------------------------------------- */
@@ -1359,7 +1373,7 @@ function playUnlock(info) {
     const box = $("unlock"), card = $("ulCard"), chip = $("ulRarity");
     const reduce = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     const tier = tierOf(info.kind), label = petLabel(info.kind);
-    $("ulWho").textContent = info.title ? info.title : info.kind === C.MYSTERY_KIND ? info.name + " found something" : info.name + " reached the goal";
+    $("ulWho").textContent = info.title ? info.title : info.kind === C.MYSTERY_KIND ? "A dragon chose " + info.name : info.name + " reached the goal";
     $("ulName").innerHTML = "";
     $("ulBurst").innerHTML = "";
     $("ulQ").hidden = false;
@@ -1396,7 +1410,7 @@ function playUnlock(info) {
         ? 'All ' + C.PET_COUNT + (rewardPen(info.kind) > 1 ? ' of the second pen' : '') + ' found. The pen ' +
           C.PEN_REWARDS[rewardPen(info.kind)].verb + ' the <b>' + esc(label) + '</b>'
         : info.kind === C.MYSTERY_KIND
-          ? '<b>' + esc(label) + '</b><small>It is not from the pen. Keep it on.</small>'
+          ? '<b>' + esc(label) + '</b><small>It chose you, and brought its hoard.</small>'
           : info.fresh ? '<span class="ul-new">New</span> <b>' + esc(label) + '</b>'
                        : 'Another <b>' + esc(label) + '</b>';
       card.className = "ul-card revealed " + tier + (info.fresh ? " fresh" : "");

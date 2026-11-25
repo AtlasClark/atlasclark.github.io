@@ -18,7 +18,7 @@ test("the list covers reroll, shards, recolour and every Style and Hat shop item
   const keys = PR.priceList().map(p => p.key);
   for (const k of ["reroll", "shard1", "shard2", "shard3", "paint", "hat:wizard", "finish:gold", "decor:sub", "theme:atlas"]) assert.ok(keys.includes(k), k);
   assert.equal(keys.length, new Set(keys).size);
-  assert.equal(keys.length, 5 + Object.keys(COS.COSMETICS).length);
+  assert.equal(keys.length, 5 + Object.values(COS.COSMETICS).filter(i => !i.dragon).length, "every item sold (the dragon's theme is not)");
 });
 
 test("cleanPrices keeps whole numbers 1-999 for known keys that differ from the usual price", () => {

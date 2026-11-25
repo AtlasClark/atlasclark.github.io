@@ -587,7 +587,7 @@ test("cosmetics: every item has a slot, a price and draws without error", async 
   const { FlatRec } = await import("./lib/canvas-rec.mjs");
   for (const it of Object.values(cos.COSMETICS)) {
     assert.ok(cos.SLOTS.some(s => s.key === it.slot), it.id);
-    assert.ok(it.price > 0 && Number.isInteger(it.price), it.id);
+    assert.ok((it.dragon ? it.price === 0 : it.price > 0) && Number.isInteger(it.price), it.id);
     const c = new FlatRec();
     c.createRadialGradient = () => ({ addColorStop() {} });
     c.roundRect = c.roundRect || (() => {});

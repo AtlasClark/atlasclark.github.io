@@ -80,48 +80,53 @@ test("goal, cap and undo: roll, drown, revive and take back, for every active pe
     const p = M.findParticipant(name), others = () => S.participants.filter(x => x.name !== name).map(petState);
     const before = others(), start = petState(p);
     const total = () => M.totalOn(p, day);
+    const dragon = web.dragon.holdsDragon(p);                          /* it guards the pen: no roll (rev 1.53.0), so take it out here */
+    if (dragon) {
+      delete p.pets[String(web.C.MYSTERY_KIND)];
+      if (Number(p.equippedPet) === web.C.MYSTERY_KIND) p.equippedPet = -1;
+      await web.store.saveParticipant(p, null, [String(web.C.MYSTERY_KIND)]);
+      Object.assign(start, petState(p));
+    }
     await pour(p, entry(day, 1, Math.max(0.5, Math.ceil(M.personalGoal(p, day) - total()) + 0.5)));
     assert.equal(p.petRollDay, day, name + ": the goal rolls a pet");
     const hadPet = Object.keys(p.pets).some(k => Number(k) !== web.C.HOMUNCULUS_KIND);
     await pour(p, entry(day, 2, Math.ceil(M.capFor(p, day) - total()) + 5));
     if (hadPet) assert.equal(p.graveDay, day, name + ": past the cap a pet drowns");
-    const lostDragon = p.graveDay === day && Number(p.deadKind) < 0;   /* a drowned dragon is gone for good */
+    const lostDragon = false;                                          /* a dragon never drowns (rev 1.53.0) */
     await unpour(p, "t:" + day + ":2");
-    if (lostDragon) assert.equal(p.graveDay, day, name + ": the dragon does not come back");
-    else assert.notEqual(p.graveDay, day, name + ": back under the cap it comes back");
+    assert.notEqual(p.graveDay, day, name + ": back under the cap it comes back");
     await unpour(p, "t:" + day + ":1");
     assert.notEqual(p.petRollDay, day, name + ": back under the goal the roll is taken back");
     const end = petState(p);
-    if (lostDragon) delete start.pets[String(web.C.MYSTERY_KIND)];
     assert.deepEqual(end.pets, start.pets, name + ": pets as they were");
     assert.deepEqual(end.graves, start.graves, name + ": graves as they were");
     assert.deepEqual(others(), before, name + ": nobody else touched");
   }
 });
 
-test("the dragon is lost once it is put away", { skip: skipReason }, async () => {
-  const files = readDataFiles(), day = backupDay(files);
+test("the dragon (rev 1.53.0): stays when put away, never drowns, guards the pen, and only its owner sends it away", { skip: skipReason }, async () => {
+  const files = readDataFiles(), day = dayKeys(backupDay(files), "2099-01-01")[1];
   setToday(day);
-  const { S } = await loadWeb(files);
-  const p = S.participants.find(x => web.model.isActive(x));
+  const { S } = await loadWeb(files), M = web.model;
+  const p = S.participants.find(x => M.isActive(x) && Object.keys(x.pets).some(k => k !== "26") && M.totalOn(x, day) === 0);
   p.pets["26"] = 0; p.equippedPet = 26;
+  p.rollLog = Object.assign({}, p.rollLog, { [day]: { k: 26, n: 1 } });   /* it came today: safe for 2 weekdays */
   await web.store.saveParticipant(p, null);
   await web.pets.equipPet(p.name, 26);                                /* take it off */
   assert.equal(p.equippedPet, -1);
-  assert.ok(!own(p, 26), "gone, not kept");
-});
-
-test("after a dragon drowns, no second pet drowns the same day", { skip: skipReason }, async () => {
-  const files = readDataFiles(), day = backupDay(files);
-  setToday(day);
-  const { S } = await loadWeb(files), M = web.model;
-  const p = S.participants.find(x => M.isActive(x) && Object.keys(x.pets).some(k => k !== "26"));
-  p.pets["26"] = 0; p.equippedPet = 26;
-  await web.store.saveParticipant(p, null);
-  await pour(p, entry(day, 3, Math.ceil(M.capFor(p, day) - M.totalOn(p, day)) + 5));
-  assert.equal(p.graveDay, day);
-  assert.ok(!own(p, 26), "the dragon went under");
-  const graves = Object.keys(p.graves).length;
-  await web.pets.reconcilePets();                                     /* another window, same day */
-  assert.equal(Object.keys(p.graves).length, graves, "nothing more drowns");
+  assert.ok(own(p, 26), "still in the pen");
+  await web.pets.equipPet(p.name, 26);                                /* and back on */
+  assert.equal(p.equippedPet, 26);
+  p.petRollDay = "";
+  await pour(p, entry(day, 1, Math.ceil(M.personalGoal(p, day) - M.totalOn(p, day)) + 0.5));
+  assert.equal(p.petRollDay, day, "the goal is marked");
+  assert.ok(!(Number(p.rollKind) >= 0), "but no pet is rolled while it guards the pen");
+  await pour(p, entry(day, 2, Math.ceil(M.capFor(p, day) - M.totalOn(p, day)) + 5));
+  assert.equal(p.graveDay, day, "a pen pet drowns");
+  assert.ok(own(p, 26), "the dragon does not");
+  S.mine = "Somebody Else";
+  assert.equal(await web.pets.dismissDragon(p.name), false, "another glass can't send it away");
+  S.mine = p.name;
+  assert.equal(await web.pets.dismissDragon(p.name), true);
+  assert.ok(!own(p, 26), "gone");
 });
