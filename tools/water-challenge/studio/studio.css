@@ -60,7 +60,7 @@ button, input, select { font: inherit; color: inherit; }
 .btn:disabled { opacity: .45; cursor: default; border-color: var(--line-2); }
 
 /* ---- layout ---- */
-.studio { display: grid; grid-template-columns: 210px 1fr 300px; min-height: 0; }
+.studio { display: grid; grid-template-columns: 210px 1fr 330px; min-height: 0; }
 .pets, .side { background: var(--panel); min-height: 0; display: flex; flex-direction: column; }
 .pets { border-right: 1px solid var(--line); }
 .side { border-left: 1px solid var(--line); }
@@ -198,3 +198,29 @@ button, input, select { font: inherit; color: inherit; }
 .layer.member { margin-left: 16px; border-left: 2px solid var(--line-2); border-radius: 0 8px 8px 0; }
 .btns.pf .btn { min-width: 0; }
 
+
+/* studio 1.22.0: only what applies, less text, moving parts */
+.toggles label[hidden], .seg[hidden] { display: none; }
+.tab-body h5 { margin: 14px 0 6px; font-size: 11px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.tab-body h5 .dim { text-transform: none; letter-spacing: 0; font-weight: 500; }
+.tab-body h5:first-child { margin-top: 0; }
+.mv { display: inline-block; margin-left: 4px; padding: 0 6px; border-radius: 999px; background: var(--accent-soft); color: var(--accent-ink);
+  font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: .04em; }
+.parts { list-style: none; margin: 0; padding: 0; }
+.parts li { padding: 3px 0; }
+.parts li.gone { color: var(--warn); }
+.spots { display: grid; grid-template-columns: 58px repeat(4, minmax(0, 1fr)); gap: 4px; align-items: center; }
+.spots > span { font-size: 12px; color: var(--muted); line-height: 1.15; }
+.spots > span em, .spots .link { display: block; font-style: normal; font-size: 10px; color: var(--faint); }
+.link { border: 0; background: none; padding: 0; color: var(--accent) !important; cursor: pointer; text-decoration: underline; font: inherit; }
+.tab-body input[type=number] { -moz-appearance: textfield; appearance: textfield; }
+.tab-body input[type=number]::-webkit-outer-spin-button, .tab-body input[type=number]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.spots input { width: 100%; min-width: 0; padding: 3px 4px; border: 1px solid var(--line-2); border-radius: 6px; background: var(--panel); font-size: 12px; }
+.spots small { text-align: center; color: var(--faint); font-size: 10px; }
+.spots .btn.small { padding: 2px 6px; }
+.spots .dim { font-size: 11px; text-align: center; }
+.btns .dim { align-self: center; font-size: 12px; margin-right: 4px; }
+.keys { margin-top: 8px; font-size: 12px; }
+.keys summary { cursor: pointer; color: var(--muted); font-weight: 600; }
+.keys dl { display: grid; grid-template-columns: auto 1fr; gap: 3px 10px; margin: 8px 0 0; }
+.keys dt { margin: 0; } .keys dd { margin: 0; color: var(--ink-2); }

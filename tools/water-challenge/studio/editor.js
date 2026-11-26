@@ -12,13 +12,13 @@ const css = name => getComputedStyle(document.documentElement).getPropertyValue(
 const RANGE_HANDLE_Y = -1.75;              /* where the swim-range handles sit, in r */
 
 export const TOOL_HINTS = {
-  select: "Click to select (a whole group; Ctrl-click for one shape in it), Shift-click to add, drag to move. Shift on a circle's handle keeps it round. Double-click a path to add a point or bend a corner; Alt-click a point to delete it.",
-  ellipse: "Drag to draw. Shift for a circle, Alt to draw from the centre.",
-  poly: "Click to add points. Click the first point or press Enter to close. Backspace removes the last point.",
-  pen: "Click for a corner, drag for a curve. Click the first point to close and fill; Enter keeps it an open line.",
-  free: "Drag to draw a stroke. Finish near the start to make a filled shape.",
-  line: "Drag to draw a line. Shift snaps to 15 degrees.",
-  eye: "Click to place an eye: a dot alive, an X when drowned."
+  select: "Click: select (Ctrl: one shape of a group) · Shift: add · drag: move · double-click a path: add a point · Alt-click: delete a point",
+  ellipse: "Drag · Shift: circle · Alt: from the centre",
+  poly: "Click points · first point or Enter: close · Backspace: back a point",
+  pen: "Click: corner · drag: curve · first point: close · Enter: open line",
+  free: "Drag · end near the start for a filled shape",
+  line: "Drag · Shift: 15° steps",
+  eye: "Click: an eye (an X when drowned)"
 };
 
 function path2d(s, z) {
@@ -543,15 +543,15 @@ export class Editor {
       const hy = oy - TALLEST_PET_R * z;
       ctx.setLineDash([6, 5]); ctx.strokeStyle = css("--headroom"); ctx.lineWidth = 1;
       ctx.beginPath(); ctx.moveTo(0, hy); ctx.lineTo(W, hy); ctx.stroke(); ctx.setLineDash([]);
-      ctx.fillStyle = css("--headroom"); ctx.fillText("headroom: keep the pet below this line", 8, hy - 5);
+      ctx.fillStyle = css("--headroom"); ctx.fillText("headroom", 8, hy - 5);
       /* the floor of a full glass: a drawing placed below the waterline keeps its share of
          the way down to here at any fill (anchorY in petdefs.js) */
       const fy = Math.round(oy + narrowCup().floor * z) + 0.5;
       ctx.save(); ctx.lineWidth = 2; ctx.strokeStyle = css("--headroom"); ctx.globalAlpha = 0.8;
       ctx.beginPath(); ctx.moveTo(0, fy); ctx.lineTo(W, fy); ctx.stroke(); ctx.restore();
       ctx.fillStyle = css("--headroom");
-      if (fy < H) ctx.fillText("glass floor (full glass)", 8, fy - 5);
-      else ctx.fillText("glass floor ↓ (Fit, or zoom out, to see it)", 8, H - 30);
+      if (fy < H) ctx.fillText("glass floor", 8, fy - 5);
+      else ctx.fillText("glass floor ↓", 8, H - 30);
     }
     if (swimPose) this.cupWalls(shapes || []);
     if (!app.isProp) this.forwardArrow(hat ? oy + 0.5 * z : swimPose ? oy + 0.22 * z : oy + 0.9 * z, hat);
@@ -664,22 +664,22 @@ export class Editor {
     ctx.font = "11px Segoe UI, system-ui, sans-serif"; ctx.textAlign = "left";
     ctx.fillStyle = css("--headroom"); ctx.fillText("cup wall", ox + half * z + 5, oy - TALLEST_PET_R * z + 16);
     ctx.fillStyle = css("--accent");
-    ctx.fillText((range < 1 ? "swim range " + Math.round(range * 100) + "%" : "full swim") + " \u2194 drag", ox + full * z + 9, oy + RANGE_HANDLE_Y * z + 4);
+    ctx.fillText((range < 1 ? "range " + Math.round(range * 100) + "%" : "range") + " \u2194", ox + full * z + 9, oy + RANGE_HANDLE_Y * z + 4);
 
     const vis = shapes.filter(s => s.show !== "dead");
     const b = G.bounds(vis);
     if (b) {
       const reach = Math.max(-b.x0, b.x1);
       const auto = Math.max(0, Math.min(1, (half - reach - WALL_GAP_R) / cup.swim)), share = Math.min(auto, range);
-      const text = reach > fit ? "Reach " + reach.toFixed(2) + " r: wider than the narrowest glass, so it stays in the middle there"
-                 : "Reach " + reach.toFixed(2) + " r: swims " + Math.round(share * 100) + "% of the normal range" +
-                   (range < 1 && range <= auto ? " (set by the swim range)" : auto < 1 ? " (limited by its size)" : "");
+      const text = reach > fit ? "Reach " + reach.toFixed(2) + " r: too wide, stays in the middle"
+                 : "Reach " + reach.toFixed(2) + " r · swims " + Math.round(share * 100) + "%" +
+                   (range < 1 && range <= auto ? " (range)" : auto < 1 ? " (size)" : "");
       ctx.fillStyle = reach > fit ? css("--danger") : share < 1 ? css("--headroom") : css("--accent");
       ctx.font = "700 11.5px Segoe UI, system-ui, sans-serif";
       ctx.fillText(text, 10, H - 12);
       if (-b.y0 > TALLEST_PET_R) {
         ctx.fillStyle = css("--danger");
-        ctx.fillText("Taller than the headroom line: the top is cut off in the glass", 10, H - 28);
+        ctx.fillText("Too tall: the top is cut off", 10, H - 28);
       }
     }
     ctx.restore();
@@ -696,7 +696,7 @@ export class Editor {
     ctx.beginPath(); ctx.moveTo(x0, y); ctx.lineTo(x1 + hh, y); ctx.stroke();
     ctx.beginPath(); ctx.moveTo(x1, y); ctx.lineTo(x1 + hh * 1.8, y - hh); ctx.lineTo(x1 + hh * 1.8, y + hh); ctx.closePath(); ctx.fill();
     ctx.font = "700 11px Segoe UI, system-ui, sans-serif"; ctx.textAlign = "left";
-    ctx.fillText(hat ? "the pet faces this way" : "forward: the pet swims this way (mirrored when it turns)", x1, y + 16);
+    ctx.fillText("front", x1, y + 16);
     ctx.restore();
   }
 

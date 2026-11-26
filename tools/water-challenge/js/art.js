@@ -5,7 +5,7 @@ import * as C from "./config.js";
 import { defs, hats, drawShapes, drawHat, hatSvgFrom, hatAspect, medalSpot, bodyBox } from "./petdefs.js";
 import { todayKey, parseKey, monthDayOk } from "./util.js";
 import { finishFn, finishWrap } from "./cosmetics.js";
-import { HAT_MOTION } from "./propart.js";
+import { HAT_MOTION, SHOP_HAT_ART } from "./propart.js";
 
 /* The events whose days are set in Settings > Events: the HOLIDAY_HATS entries with a theme. */
 export const EVENTS = C.HOLIDAY_HATS.filter(h => h.theme);
@@ -97,27 +97,49 @@ function critterCrown(ctx, cx, cy, r, jester) {
 }
 
 /* Moving hats (rev 1.50.0): runs of shapes in a group named in HAT_MOTION[key] are drawn
-   moved by the clock; the rest as drawn. hatClock.t fixes the time (tests). */
-export const hatClock = { t: null };
+   moved by the clock; the rest as drawn. hatClock.t fixes the time (tests); hatClock.live
+   measures every frame (the Pet Studio, where parts are dragged while they move). */
+export const hatClock = { t: null, live: false };
+
+/* The middle of the shapes in group g (the box they cover), or null. */
+export function groupMid(shapes, g) {
+  const part = (shapes || []).filter(s => s.g === g);
+  if (!part.length) return null;
+  const b = bodyBox({ swim: part }, false, true);
+  return [(b.x0 + b.x1) / 2, (b.top + b.bottom) / 2];
+}
+/* How far a moving part sits from where the built-in drawing has it (rev 1.54.0): its pivot moves
+   with it, so a part dragged to a new place in the studio still turns about itself. */
+const shiftMemo = new WeakMap();
+const refMids = {};
+export function partShift(key, shapes, g, ref) {
+  let m = !hatClock.live && shiftMemo.get(shapes);
+  if (!m || m.n !== shapes.length) { m = { n: shapes.length, by: {} }; shiftMemo.set(shapes, m); }
+  if (m.by[g]) return m.by[g];
+  const rk = key + "|" + g;
+  if (!(rk in refMids)) refMids[rk] = groupMid(ref, g);
+  const now = groupMid(shapes, g), was = refMids[rk];
+  return (m.by[g] = now && was ? [now[0] - was[0], now[1] - was[1]] : [0, 0]);
+}
 function drawWornHat(ctx, key, hat, cx, cy, r) {
   const mo = HAT_MOTION[key];
   if (!mo) { drawHat(ctx, hat, cx, cy, r); return; }
-  const t = hatClock.t ?? performance.now() / 1000, sh = hat.shapes;
+  const t = hatClock.t ?? performance.now() / 1000, sh = hat.shapes, ref = SHOP_HAT_ART[key] && SHOP_HAT_ART[key].shapes;
   ctx.save();
   ctx.translate(cx, cy);
   for (let i = 0; i < sh.length;) {
     let j = i + 1;
     while (j < sh.length && sh[j].g === sh[i].g) j++;
     const m = sh[i].g && mo[sh[i].g];
-    if (m) { ctx.save(); moveHatPart(ctx, m, r, t); drawShapes(ctx, sh.slice(i, j), r, 0, hat.pal, false); ctx.restore(); }
+    if (m) { ctx.save(); moveHatPart(ctx, m, r, t, partShift(key, sh, sh[i].g, ref)); drawShapes(ctx, sh.slice(i, j), r, 0, hat.pal, false); ctx.restore(); }
     else drawShapes(ctx, sh.slice(i, j), r, 0, hat.pal, false);
     i = j;
   }
   ctx.restore();
 }
-function moveHatPart(ctx, m, r, t) {
+function moveHatPart(ctx, m, r, t, shift = [0, 0]) {
   const w = 6.2832 * (m.hz || 1) * t + (m.ph || 0), s = Math.sin(w), a = m.amp ?? 1;
-  const px = (m.at ? m.at[0] : 0) * r, py = (m.at ? m.at[1] : 0) * r, f = ((m.hz || 1) * t + (m.ph || 0) / 6.2832) % 1;
+  const px = ((m.at ? m.at[0] : 0) + shift[0]) * r, py = ((m.at ? m.at[1] : 0) + shift[1]) * r, f = ((m.hz || 1) * t + (m.ph || 0) / 6.2832) % 1;
   ctx.translate(px, py);
   if (m.type === "flip") ctx.scale(Math.cos(w), 1);
   else if (m.type === "sway") ctx.rotate(a * s);

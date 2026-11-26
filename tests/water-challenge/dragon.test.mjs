@@ -82,3 +82,18 @@ test("while it stays, no reroll; the theme is its own", () => {
   const p = { name: "Fay", pets: { 26: 0, 3: 10 }, spends: [], petRollDay: "2026-12-02", rollKind: 26 };
   assert.match(shop.rerollBlock(p), /dragon/);
 });
+
+test("the dragon's aura: +5 on every stat of the owner's racing pets, odds included, nothing kept (rev 1.54.0)", async () => {
+  const { S } = await loadWeb([]);
+  const p = { name: "Gus", color: "#60a5fa", created: "2026-11-01", away: [], pets: { 3: 120 }, graves: {}, spends: [], entries: [] };
+  S.participants = [p]; model.dataChanged();
+  const plain = shop.raceSetup(p, 3), mine = plain.field[plain.mine];
+  assert.ok(!mine.aura);
+  p.pets[26] = 0; model.dataChanged();
+  const lit = shop.raceSetup(p, 3), f = lit.field[lit.mine];
+  assert.ok(f.aura, "my lane glows");
+  assert.deepEqual(f.st, mine.st.map(v => Math.min(C.RACE.statMax, v + D.aura)), "+aura on every stat");
+  assert.deepEqual(lit.field.filter(x => !x.me).map(x => x.st), plain.field.filter(x => !x.me).map(x => x.st), "the rivals are the same");
+  assert.ok(lit.odds.win[lit.mine] > plain.odds.win[plain.mine], "better odds, so the payout is fair");
+  assert.deepEqual(race.statsOf(p, 3).st, plain.me.st, "nothing is kept on the pet");
+});

@@ -6,9 +6,10 @@
 import * as C from "../js/config.js";
 import { defs, hats, HAT_KEYS, HOLIDAY_KEYS, PERSONAL_KEYS, SHOP_HAT_KEYS, CUP_KEYS, FX_KEYS, colourOf, PET_DEFS_FORMAT, fxSpot, medalSpot, drawShapes, ZONES, zoneOf,
          bodySpan, depthShare, opacityOf, ZONE_LABELS } from "../js/petdefs.js";
-import { COSMETICS } from "../js/cosmetics.js";
+import { COSMETICS, decorLive } from "../js/cosmetics.js";
 import { CUP_PLACE, CUP_H } from "../js/styleart.js";
-import { drawPortrait, critterCrown, drawHeadstone, drawCoin, drawMedal } from "../js/art.js";
+import { drawPortrait, critterCrown, drawHeadstone, drawCoin, drawMedal, hatClock } from "../js/art.js";
+import { HAT_MOTION } from "../js/propart.js";
 import { importAll, importHat, basePalette } from "./importer.js";
 import { Editor, TOOL_HINTS } from "./editor.js";
 import { Preview } from "./preview.js";
@@ -16,7 +17,9 @@ import * as G from "./geom.js";
 import { CloudDir, hello } from "../js/cloud.js";
 import { kvGet } from "../js/store.js";
 
-const REV = "studio 1.21.0";
+const REV = "studio 1.22.0";
+/* parts are dragged while they move: measure their pivots every frame (art.js, cosmetics.js) */
+hatClock.live = true; decorLive.on = true;
 const PETS_URL = "../pets/pets.json";
 const $ = id => document.getElementById(id);
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -57,6 +60,15 @@ for (const k of SHOP_HAT_KEYS) HAT_NAMES[k] = COSMETICS[k].name;
 for (const k of CUP_KEYS) HAT_NAMES[k] = COSMETICS[k].name;
 for (const k of FX_KEYS) HAT_NAMES[k] = { "effect:sparkles": "Sparkle", "effect:hearts": "Heart", "effect:notes": "Music note",
                                           "effect:stars": "Orbiting star", "effect:rain": "Rain cloud" }[k];
+/* Moving parts (studio 1.22.0): the groups the page moves, by item. The page finds them by group name,
+   so the studio keeps those names when shapes are grouped again, and warns before one is lost. */
+const MOTION = k => HAT_MOTION[k] || (k === "decor:sub" ? { tilt: { type: "tilt" } } : null);
+const PART_NAMES = { prop: "Propeller", fish: "Fish", bub: "Bubble", flame: "Flame", bopL: "Left bopper", bopR: "Right bopper",
+                     f1: "Flower 1", f2: "Flower 2", f3: "Flower 3", tw1: "Star 1", tw2: "Star 2", tw3: "Star 3", duck: "Duck",
+                     tassel: "Tassel", tilt: "Submarine" };
+const VERBS = { flip: "spins", sway: "sways", bob: "bobs", flicker: "flickers", swim: "swims", rise: "rises", twinkle: "twinkles", tilt: "rocks" };
+const moving = (k, g) => { const m = MOTION(k); return !!(g && m && m[g]); };
+const partLabel = (k, g) => (PART_NAMES[g] || g) + ' <span class="mv">' + (VERBS[MOTION(k)[g].type] || "moves") + '</span>';
 const CUP_AT = { bottom: "the middle of the glass bottom", rim: "the middle of the rim", surface: "the water surface" };
 /* The inside of the glass around a cup item's origin, in widths (surface items: water at 60%). */
 function cupFrame(k) {
@@ -77,6 +89,8 @@ function rarityOf(k) {
   if (HOLIDAY_OF[k]) return { name: HOLIDAY_OF[k].h.name + ", " + (HOLIDAY_OF[k].role === "crown" ? "goal met" : "under goal"), i: 0 };
   if (isCup(k)) return { name: "Style shop, cup", i: 0 };
   if (isFx(k)) return { name: "Style shop, effect", i: 0 };
+  if (SHOP_HAT_KEYS.includes(k)) return { name: "Hat shop", i: 0 };
+  if (PERSONAL_KEYS.includes(k)) return { name: "Personal hat", i: 0 };
   if (isHat(k)) return { name: { crown: "leader, goal met", jester: "leader, under goal", grave: "a drowned pet", coin: "tokens", medal: "yesterday's winner" }[k], i: 0 };
   if (k === C.HOMUNCULUS_KIND) return { name: "Full-pen reward", i: 5 };
   if (k === C.AUTOMATON_KIND) return { name: "Full-pen reward · second pen", i: 5 };
@@ -230,8 +244,10 @@ function regroup(shapes, list) {
 function groupSel() {
   const list = app.shapes, idx = selIdx();
   if (!list || idx.length < 2) { toast("Select two or more shapes to group."); return; }
+  const names = [...new Set(idx.map(i => list[i].g).filter(g => moving(W.kind, g)))];
+  if (names.length > 1) { toast("Two moving parts can't share a group."); return; }
   change(() => {
-    const id = newGroupId(list.filter((_, i) => !W.sel.has(i))), picked = idx.map(i => list[i]);
+    const id = names[0] || newGroupId(list.filter((_, i) => !W.sel.has(i))), picked = idx.map(i => list[i]);   /* a moving part keeps its name */
     const rest = list.filter((_, i) => !W.sel.has(i));
     rest.splice(idx[idx.length - 1] + 1 - idx.length, 0, ...picked);       /* together, where the top one was */
     list.length = 0; list.push(...rest);
@@ -241,6 +257,8 @@ function groupSel() {
 }
 function ungroupSel() {
   if (!selIdx().some(i => app.shapes[i].g)) { toast("Nothing grouped is selected."); return; }
+  const lost = [...new Set(selIdx().map(i => app.shapes[i].g).filter(g => moving(W.kind, g)))];
+  if (lost.length && !confirm("Ungroup " + lost.map(g => PART_NAMES[g] || g).join(" and ") + "? It stops moving on the page.")) return;
   editSel(sh => { delete sh.g; return sh; });
 }
 function mirrorSel() {
@@ -815,7 +833,16 @@ function drawThumb(k) {
   } catch { }
 }
 
+/* The toolbar shows only what applies to the item (studio 1.22.0): pets get the pose, water,
+   drowned and the crown / effect / medal spots; cup items get water; the rest just snap. */
+function renderToolbarFor() {
+  const pet = !isHat(W.kind), cup = isCup(W.kind);
+  const show = (id, on) => { $(id).closest("label").hidden = !on; };
+  show("tWater", pet || cup); show("tDead", pet); show("tCrown", pet); show("tFx", pet); show("tMedal", pet);
+  $("poseSeg").hidden = !pet;
+}
 function renderPanels() {
+  renderToolbarFor();
   for (const b of $("sideTabs").children) b.classList.toggle("on", b.dataset.tab === W.tab);
   for (const b of $("toolbar").querySelectorAll("[data-tool]")) b.classList.toggle("on", b.dataset.tool === W.tool);
   for (const b of $("poseSeg").children) b.classList.toggle("on", b.dataset.pose === W.pose);
@@ -835,6 +862,10 @@ function palOptions(cur, none) {
     Object.keys(pal).map(k => '<option value="' + esc(k) + '"' + (k === cur ? " selected" : "") + '>' + esc(k) + (pal[k].hue ? "" : " (fixed)") + '</option>').join("") +
     (cur === "mixed" ? '<option value="mixed" selected>(mixed)</option>' : "");
 }
+const KEYS = '<details class="keys"><summary>Shortcuts</summary><dl>' + [
+  ["Del", "delete"], ["Ctrl D", "duplicate"], ["Ctrl E", "unite"], ["Ctrl G", "group"], ["Ctrl Shift G", "ungroup"],
+  ["Ctrl C / V", "copy, paste (any item)"], ["M", "mirror"], ["Shift M", "mirrored copy"], ["[ ]", "back, forward"],
+  ["Arrows", "nudge"], ["Wheel", "zoom"], ["Space drag", "pan"], ["0", "fit"]].map(([k, v]) => '<dt><kbd>' + k + '</kbd></dt><dd>' + v + '</dd>').join("") + '</dl></details>';
 const deg = v => Math.round((v || 0) * 180 / Math.PI * 10) / 10;
 const num = (f, v, step, extra) => '<input type="number" data-f="' + f + '" data-focus="' + f + '" step="' + (step || 0.01) + '" value="' + (Math.round(v * 1e4) / 1e4) + '"' + (extra || "") + '>';
 /* Where the drawing sits, in words, measured now. */
@@ -847,18 +878,16 @@ const degIn = (f, v) => '<input type="number" data-f="' + f + '" data-focus="' +
 
 function shapeTab() {
   const list = app.shapes;
-  if (!list) return '<p class="note">This pet has no portrait drawing. The Pets tab uses its swim drawing.</p>';
+  if (!list) return '<p class="note">No portrait: the Pets tab uses the swim drawing.</p>';
   const sel = selIdx().map(i => list[i]);
   if (!sel.length) {
-    return '<h4>Nothing selected</h4><p class="note">Pick a tool above and draw, or click a shape. Every shape takes a colour from the Colours tab; ' +
-      'pet colours follow each pet&rsquo;s own hue in the game.</p>' +
-      '<p class="note"><kbd>Del</kbd> delete &middot; <kbd>Ctrl D</kbd> duplicate &middot; <kbd>Ctrl E</kbd> unite into one solid shape &middot; <kbd>Ctrl G</kbd> group, <kbd>Ctrl Shift G</kbd> ungroup &middot; <kbd>Ctrl C/V</kbd> copy between pets &middot; <kbd>M</kbd> mirror &middot; ' +
-      '<kbd>Shift M</kbd> mirrored copy across the centre line &middot; <kbd>[ ]</kbd> order &middot; arrows nudge &middot; wheel zoom &middot; Space or right-drag pan &middot; <kbd>0</kbd> fit</p>';
+    return '<p class="note">Draw with a tool, or click a shape.</p>' + KEYS;
   }
   const all = (f) => { const v = sel.map(s => s[f] ?? ""); return v.every(x => x === v[0]) ? v[0] : "mixed"; };
   const eyesOnly = sel.every(s => s.t === "eye"), h = [];
   const gs = new Set(sel.map(s => s.g || "")), oneGroup = gs.size === 1 && sel[0].g && groupOf(selIdx()[0]).length === sel.length;
-  if (oneGroup) h.push('<h4>Group of ' + sel.length + '</h4>');
+  if (oneGroup && moving(W.kind, sel[0].g)) h.push('<h4>' + partLabel(W.kind, sel[0].g) + '</h4>');
+  else if (oneGroup) h.push('<h4>Group of ' + sel.length + '</h4>');
   else if (sel.length > 1) h.push('<h4>' + sel.length + ' shapes</h4>');
   else h.push('<h4>' + ({ ell: "Ellipse", path: G.isClosed(sel[0]) ? "Shape" : "Line", eye: "Eye" })[sel[0].t] + '</h4>');
   if (!eyesOnly) {
@@ -889,7 +918,7 @@ function shapeTab() {
              '<div class="row"><label>RX</label>' + num("rx", s.rx) + '</div><div class="row"><label>RY</label>' + num("ry", s.ry) + '</div></div>');
       h.push('<div class="row"><label>Turn&deg;</label>' + num("rotd", deg(s.rot), 1) + '</div>');
       h.push('<div class="grid2"><div class="row"><label>From</label>' + num("a0d", deg(s.a0 ?? 0), 1) + '</div><div class="row"><label>To</label>' + num("a1d", deg(s.a1 ?? G.TAU), 1) + '</div></div>');
-      h.push('<div class="row"><label></label><label style="width:auto"><input type="checkbox" data-f="chord"' + (s.chord ? " checked" : "") + '> close a part arc with a straight edge (dome)</label></div>');
+      h.push('<div class="row"><label></label><label style="width:auto" title="Close a part arc with a straight edge"><input type="checkbox" data-f="chord"' + (s.chord ? " checked" : "") + '> dome</label></div>');
     } else if (s.t === "eye") {
       h.push('<div class="grid2"><div class="row"><label>X</label>' + num("x", s.x) + '</div><div class="row"><label>Y</label>' + num("y", s.y) + '</div></div>');
       h.push('<div class="row"><label>Size</label>' + num("s", s.s || 1, 0.05) + '</div>');
@@ -899,7 +928,7 @@ function shapeTab() {
       h.push('<div class="btns"><button type="button" class="btn small" data-act="smooth" title="Curve through every point">Smooth</button>' +
              '<button type="button" class="btn small" data-act="straight" title="Straight lines between points">Straighten</button>' +
              '<button type="button" class="btn small" data-act="simplify" title="Remove points from straight-edged outlines, a step at a time">Simplify</button></div>' +
-             (G.anchorCount(s) > 90 ? '<p class="note">Too many points to show handles. Simplify to edit points.</p>' : ''));
+             (G.anchorCount(s) > 90 ? '<p class="note">Too many points for handles: Simplify first.</p>' : ''));
     }
   }
   h.push('<div class="btns">' +
@@ -915,8 +944,7 @@ function shapeTab() {
     const many = sel.filter(s => s.t !== "eye").length > 1;
     h.push('<div class="sep"></div><h4>Pathfinder</h4><div class="btns pf">' +
       Object.entries(PF).filter(([k]) => many || k === "unite").map(([k, [name, tip]]) =>
-        '<button type="button" class="btn small" data-pf-op="' + k + '" title="' + esc(tip) + '">' + name + '</button>').join("") + '</div>' +
-      (many ? '' : '<p class="note">Select two or more shapes for the others.</p>'));
+        '<button type="button" class="btn small" data-pf-op="' + k + '" title="' + esc(tip) + '">' + name + '</button>').join("") + '</div>');
   }
   return h.join("");
 }
@@ -962,9 +990,9 @@ function setShapeField(f, v, el) {
 function coloursTab() {
   const pal = app.def.pal, use = {};
   for (const list of [app.def.swim, app.def.portrait || []]) for (const s of list) for (const k of [s.fill, s.stroke]) if (k) use[k] = (use[k] || 0) + 1;
-  const h = !hued(W.kind) ? ['<p class="note">' + (wears(W.kind) ? "A hat keeps its colours on every pet." : "The coin keeps its colours everywhere.") + '</p>'] : ['<div class="row"><label>Test hue</label><input type="range" data-f="hue" min="0" max="359" value="' + W.hue + '"><span class="val">' + W.hue + '</span>' +
+  const h = !hued(W.kind) ? ['<p class="note">Fixed colours, the same everywhere.</p>'] : ['<div class="row"><label>Test hue</label><input type="range" data-f="hue" min="0" max="359" value="' + W.hue + '"><span class="val">' + W.hue + '</span>' +
              '<button type="button" class="btn small" data-act="hue-rand" title="Random hue">&#127922;</button></div><div class="hue-bar"></div>' +
-             '<p class="note"><b>Pet colour</b> follows the hue each catch gets in the game, shifted by the amount set. <b>Fixed</b> never changes (beaks, eyes, teeth).</p>'];
+             '<p class="note"><b>Pet colour</b> follows each pet&rsquo;s hue; <b>Fixed</b> never changes.</p>'];
   for (const [k, c] of Object.entries(pal)) {
     const sw = colourOf(pal, k, W.hue);
     h.push('<div class="pal-item" data-pk="' + esc(k) + '"><div class="pal-top"><span class="sw" style="background:' + sw + '"></span>' +
@@ -1037,81 +1065,69 @@ function hslHex(h, s, l) {
 }
 
 function hatTab() {
-  const k = W.kind, p = W.pets[k];
+  const k = W.kind, p = W.pets[k], ho = HOLIDAY_OF[k];
   const about = {
-    crown: "Worn by the day&rsquo;s leader who met their goal. The origin is each pet&rsquo;s crown spot, so draw the hat sitting on it. The same drawing makes the small icons over the glasses and on the leaderboard.",
-    jester: "Worn by the day&rsquo;s leader who is still under goal. The origin is each pet&rsquo;s crown spot, so draw the hat sitting on it. The same drawing makes the small icons over the glasses and on the leaderboard.",
-    grave: "Stands in a drained glass where a pet drowned, and marks buried pets on the Pets tab. The origin is the ground under it, in units of the pet&rsquo;s size. Pet colours take a tint of the drowned pet&rsquo;s hue.",
-    coin: "One token, face on: 1 unit across, origin at its centre. The bank&rsquo;s gold pile lays it flat in a heap; the shop and history use it as the small coin icon.",
-    medal: "Worn for a day by yesterday&rsquo;s winner. The origin is each pet&rsquo;s medal spot (the middle of the disc), in units of the pet&rsquo;s size. The same drawing makes the small medal icon in the activity list and recap."
-  }[k] || (HOLIDAY_OF[k] ? "Worn in place of the " + (HOLIDAY_OF[k].role === "crown" ? "crown (leader who met their goal)" : "jester hat (leader still under goal)") +
-    " from the day before " + esc(HOLIDAY_OF[k].h.name) + " to the day after. The origin is each pet&rsquo;s crown spot; the same drawing makes the small hat icons."
-    : SHOP_HAT_KEYS.includes(k) ? "Sold in the Hat shop for " + COSMETICS[k].price + " shells; worn whenever the pet has no crown, jester, holiday or personal hat on. The origin is each pet&rsquo;s crown spot; pets face left, so the back of the hat is on the right. Shapes grouped and named in the page&rsquo;s HAT_MOTION move on the page (here they stand still)."
-    : PERSONAL_KEYS.includes(k) ? "A personal hat, given to one person in the page&rsquo;s Settings. Their pet wears it whenever it has no crown, jester or holiday hat on. The origin is each pet&rsquo;s crown spot; pets face left, so the back of the hat is on the right."
-    : isCup(k) ? "Style shop cup item. Units are the glass&rsquo;s inside width; the origin is " + CUP_AT[(CUP_PLACE[k.slice(6)] || {}).at || "bottom"] +
-      ", and the dashed box is the inside of the glass. On the page it may reach just past the card. Fixed colours."
-    : isFx(k) ? "One particle of the " + esc(COSMETICS[k].name) + " effect, in units of the pet&rsquo;s size, centred on the origin. The effect moves and fades it; " +
-      "pet colours follow the colour the effect gives each particle." : "");
-  return '<h4>' + esc(HAT_NAMES[k]) + '</h4><p class="note">' + about + '</p>' +
-    (isCup(k) ? '<div class="row"><label>Glass outline</label><select data-f="behind">' +
-      '<option value="0"' + (p.def.behind ? '' : ' selected') + '>Behind the item</option>' +
-      '<option value="1"' + (p.def.behind ? ' selected' : '') + '>In front of the item</option></select></div>' +
-      '<p class="note">In front: the item looks inside the glass. Behind: it sits over the glass.</p>' : '') +
+    crown: "Worn by the day&rsquo;s leader at goal. Origin: the crown spot.",
+    jester: "Worn by the day&rsquo;s leader under goal. Origin: the crown spot.",
+    grave: "Stands where a pet drowned. Origin: the ground. Pet colours take the pet&rsquo;s hue.",
+    coin: "One token, 1 unit across, centred.",
+    medal: "Worn by yesterday&rsquo;s winner. Origin: the medal spot."
+  }[k] || (ho ? esc(ho.h.name) + " " + (ho.role === "crown" ? "crown" : "jester hat") + ". Origin: the crown spot."
+    : SHOP_HAT_KEYS.includes(k) ? "Hat shop, " + COSMETICS[k].price + " shells. Origin: the crown spot; the back is on the right."
+    : PERSONAL_KEYS.includes(k) ? "Personal hat, given in Settings. Origin: the crown spot."
+    : isCup(k) ? "Cup item. 1 unit = the glass&rsquo;s inside width; origin: " + CUP_AT[(CUP_PLACE[k.slice(6)] || {}).at || "bottom"] + ". Dashed box = inside the glass."
+    : isFx(k) ? "One " + esc(COSMETICS[k].name) + " particle, in units of the pet&rsquo;s size, centred." : "");
+  const mo = MOTION(k), shapes = p.def.swim || [];
+  const parts = mo ? Object.keys(mo).map(g => {
+    const n = shapes.filter(s => s.g === g).length;
+    return '<li' + (n ? '' : ' class="gone"') + '>' + partLabel(k, g) + (n ? ' <span class="dim">' + n + ' shape' + (n === 1 ? '' : 's') + '</span>' : ' <span class="dim">not in the drawing</span>') + '</li>';
+  }).join("") : "";
+  return '<p class="note">' + about + '</p>' +
+    (isCup(k) ? '<div class="row"><label>Glass edge</label><select data-f="behind">' +
+      '<option value="0"' + (p.def.behind ? '' : ' selected') + '>Under the item</option>' +
+      '<option value="1"' + (p.def.behind ? ' selected' : '') + '>Over the item</option></select></div>' : '') +
     (wears(k) || k === "medal" ? '<div class="row"><label>Try on</label><select data-f="tryon">' + [...Array(C.PET_MAX).keys()].map(i =>
       '<option value="' + i + '"' + (i === W.tryOn ? " selected" : "") + '>' + esc(C.PET_NAMES[i]) + '</option>').join("") + '</select></div>' : '') +
-    '<div class="sep"></div><h4>Start over</h4><div class="btns">' +
-    '<button type="button" class="btn small" data-act="clear">Clear drawing</button>' +
+    (mo ? '<h5>Moving parts</h5><ul class="parts">' + parts + '</ul><p class="note">They move in the preview below. Keep each part in its group.</p>' : '') +
+    '<h5>Start over</h5><div class="btns">' +
+    '<button type="button" class="btn small" data-act="clear">Clear</button>' +
     '<button type="button" class="btn small danger" data-act="reset"' + (p.edited ? '' : ' disabled') + '>Back to built-in</button></div>';
 }
 
 function petTab() {
   if (isHat(W.kind)) return hatTab();
-  const k = W.kind, d = app.def, p = W.pets[k], r = rarityOf(k);
-  return '<h4>' + esc(baseName(k)) + ' <span class="dim">#' + k + ' &middot; ' + esc(r.name) + '</span></h4>' +
-    '<div class="row"><label>Name</label><input type="text" data-f="name" data-focus="name" maxlength="24" placeholder="' + esc(baseName(k)) + '" value="' + esc(d.name || "") + '"></div>' +
-    '<p class="note">Leave blank to keep &ldquo;' + esc(baseName(k)) + '&rdquo;. A new name shows on the site.</p>' +
-    '<div class="grid2"><div class="row"><label>Crown</label>' + num("cx", d.crown[0]) + '</div><div class="row"><label>&nbsp;</label>' + num("cy", d.crown[1]) + '</div></div>' +
-    '<div class="row"><label>Crown size</label>' + pctIn("crs", d.crownScale) + '<span class="val">%</span></div>' +
-    '<div class="row"><label>Crown tilt</label>' + degIn("crr", d.crownRot) + '<span class="val">&deg;</span></div>' +
-    '<p class="note">Turn on <b>Crown</b> above to see it; drag the gold diamond to move it.</p>' +
-    '<div class="grid2"><div class="row"><label>Effect spot</label>' + num("fxx", fxSpot(d)[0]) + '</div><div class="row"><label>&nbsp;</label>' + num("fxy", fxSpot(d)[1]) + '</div></div>' +
-    '<p class="note">Where shop effects (sparkles, hearts, aura...) centre. ' + (d.fx ? 'Set by hand. <button type="button" class="btn small" data-act="fx-auto">Back to auto</button>'
-      : 'Auto: the middle of the part above the water.') + ' Turn on <b>Effect</b> above to see it; drag the pink ring to move it.</p>' +
-    '<div class="grid2"><div class="row"><label>Medal spot</label>' + num("mdx", medalSpot(d)[0]) + '</div><div class="row"><label>&nbsp;</label>' + num("mdy", medalSpot(d)[1]) + '</div></div>' +
-    '<div class="row"><label>Medal size</label>' + pctIn("mds", d.medalScale) + '<span class="val">%</span></div>' +
-    '<div class="row"><label>Medal tilt</label>' + degIn("mdr", d.medalRot) + '<span class="val">&deg;</span></div>' +
-    '<p class="note">Where the day-win medal hangs. ' + (d.medal ? 'Set by hand. <button type="button" class="btn small" data-act="medal-auto">Back to auto</button>'
-      : 'Auto: just in front of the effect spot.') + ' Turn on <b>Medal</b> above to see it; drag the gold dot to move it.</p>' +
-    '<div class="row"><label>Swim range</label><input type="number" data-f="range" data-focus="range" min="0" max="100" step="5" value="' +
-      Math.round((d.range !== undefined ? d.range : 1) * 100) + '"><span class="val">%</span></div>' +
-    '<p class="note">How far it wanders, as a share of the normal range. Lower it so a big creature moves less; ' +
-    'drag the dashed lines on the canvas to set it. A pet that reaches past them swims less anyway.</p>' +
-    '<div class="row"><label>Moves like</label><select data-f="zone" data-focus="zone">' + ZONES.map(z => '<option value="' + z + '"' +
-      (zoneOf(d) === z ? ' selected' : '') + '>' + ZONE_LABELS[z] + '</option>').join("") + '</select></div>' +
-    '<p class="note">Surface floats, hops and dives. Middle bobs and leaps out now and then. Bottom walks the floor. ' +
-    'Flying hovers and skims the water now and then: draw it above the waterline, as high as it should hover.</p>' +
-    '<p class="note"><b>' + sitsAt(d) + '</b> Where it sits comes from the drawing: across the waterline it floats there; ' +
-    'lower, it keeps its share of the way down to the floor line at any fill, and stands on the floor when the water runs low. ' +
-    'The preview shows low, half and full water.</p>' +
-    '<div class="sep"></div><h4>Portrait</h4><p class="note">' + (d.portrait ? 'This pet has its own full-body portrait.' : 'None: the Pets tab and unlock cards use the swim drawing.') + '</p>' +
-    '<div class="btns">' + (d.portrait ? '<button type="button" class="btn small danger" data-act="port-del">Remove portrait</button>'
-                                       : '<button type="button" class="btn small" data-act="port-copy">Copy swim to portrait</button><button type="button" class="btn small" data-act="port-blank">Blank portrait</button>') + '</div>' +
-    '<div class="sep"></div><h4>Start over</h4><div class="btns">' +
-    '<button type="button" class="btn small" data-act="clear">Clear ' + (W.pose === "portrait" ? "portrait" : "swim") + ' drawing</button>' +
-    '<button type="button" class="btn small danger" data-act="reset"' + (p.edited ? '' : ' disabled') + ' title="Back to the built-in drawing">Back to built-in</button></div>' +
-    (p.edited && !d.swim.length ? '<p class="note" style="color:var(--warn)">The swim drawing is empty, so this pet is not saved and keeps its built-in look.</p>' : '');
+  const k = W.kind, d = app.def, p = W.pets[k];
+  const lbl = (name, on, act) => '<span>' + name + (act ? (on ? ' <button type="button" class="link" data-act="' + act + '" title="Back to the automatic spot">auto</button>' : ' <em>auto</em>') : '') + '</span>';
+  return '<div class="row"><label>Name</label><input type="text" data-f="name" data-focus="name" maxlength="24" placeholder="' + esc(baseName(k)) + '" value="' + esc(d.name || "") + '" title="Blank keeps the usual name"></div>' +
+    '<div class="row"><label>Moves</label><select data-f="zone" data-focus="zone" title="Surface floats and dives · Middle bobs and leaps · Bottom walks the floor · Flying hovers: draw it above the waterline">' +
+      ZONES.map(z => '<option value="' + z + '"' + (zoneOf(d) === z ? ' selected' : '') + '>' + ZONE_LABELS[z] + '</option>').join("") + '</select></div>' +
+    '<div class="row"><label>Range</label><input type="number" data-f="range" data-focus="range" min="0" max="100" step="5" value="' +
+      Math.round((d.range !== undefined ? d.range : 1) * 100) + '" title="How far it wanders; or drag the dashed lines"><span class="val">%</span></div>' +
+    '<p class="note">' + sitsAt(d) + '</p>' +
+    '<h5>Spots <span class="dim">drag them on the canvas</span></h5><div class="spots">' +
+      '<b></b><small>x</small><small>y</small><small>size %</small><small>tilt &deg;</small>' +
+      lbl("Crown") + num("cx", d.crown[0]) + num("cy", d.crown[1]) + pctIn("crs", d.crownScale) + degIn("crr", d.crownRot) +
+      lbl("Effect", d.fx, "fx-auto") + num("fxx", fxSpot(d)[0]) + num("fxy", fxSpot(d)[1]) + '<i></i><i></i>' +
+      lbl("Medal", d.medal, "medal-auto") + num("mdx", medalSpot(d)[0]) + num("mdy", medalSpot(d)[1]) + pctIn("mds", d.medalScale) + degIn("mdr", d.medalRot) +
+      '</div>' +
+    '<h5>Portrait</h5><div class="btns">' + (d.portrait ? '<button type="button" class="btn small danger" data-act="port-del">Remove portrait</button>'
+      : '<span class="dim">Uses the swim drawing.</span><button type="button" class="btn small" data-act="port-copy">Copy swim</button><button type="button" class="btn small" data-act="port-blank">Blank</button>') + '</div>' +
+    '<h5>Start over</h5><div class="btns">' +
+    '<button type="button" class="btn small" data-act="clear">Clear ' + (W.pose === "portrait" ? "portrait" : "swim") + '</button>' +
+    '<button type="button" class="btn small danger" data-act="reset"' + (p.edited ? '' : ' disabled') + '>Back to built-in</button></div>' +
+    (p.edited && !d.swim.length ? '<p class="note" style="color:var(--warn)">Empty swim drawing: not saved, the built-in stays.</p>' : '');
 }
 
 function refTab() {
   const ref = app.ref;
-  const h = ['<h4>Reference image</h4><p class="note">A picture to trace over, for this pet&rsquo;s ' + W.pose + ' drawing. It stays in this browser and is never exported.</p>',
+  const h = ['<p class="note">A picture to trace. Stays in this browser.</p>',
              '<div class="btns"><button type="button" class="btn small" data-act="ref-load">Load image&hellip;</button>' +
              (ref ? '<button type="button" class="btn small danger" data-act="ref-del">Remove</button>' : '') + '</div>'];
   if (ref) {
     h.push('<div class="row"><label>Opacity</label><input type="range" data-rf="op" min="0.05" max="1" step="0.05" value="' + ref.op + '"><span class="val">' + ref.op + '</span></div>');
     h.push('<div class="row"><label>Width</label><input type="range" data-rf="w" min="0.2" max="6" step="0.05" value="' + ref.w + '"><span class="val">' + ref.w + ' r</span></div>');
     h.push('<div class="grid2"><div class="row"><label>X</label><input type="number" data-rf="x" step="0.01" value="' + ref.x + '"></div><div class="row"><label>Y</label><input type="number" data-rf="y" step="0.01" value="' + ref.y + '"></div></div>');
-    h.push('<div class="row"><label></label><label style="width:auto"><input type="checkbox" data-act="ref-drag"' + (W.refDrag ? " checked" : "") + '> drag the image with the Select tool</label></div>');
+    h.push('<div class="row"><label></label><label style="width:auto"><input type="checkbox" data-act="ref-drag"' + (W.refDrag ? " checked" : "") + '> drag it with Select</label></div>');
   }
   h.push('<input type="file" id="refFile" accept="image/*" hidden>');
   return h.join("");
@@ -1146,7 +1162,7 @@ function renderLayers() {
     const open = W.openGroups.has(g) || (picked.some(Boolean) && !all);
     h.push('<div class="layer group' + (all ? " on" : "") + (open ? " open" : "") + '" data-g="' + esc(g) + '" data-top="' + i + '" data-lo="' + lo + '" draggable="true">' +
       '<button type="button" class="tw" data-fold title="' + (open ? "Fold" : "Unfold") + '" aria-expanded="' + open + '">' + (open ? "&#9662;" : "&#9656;") + '</button>' +
-      swatch(list[i]) + '<span class="ln">Group <span class="dim">' + n + ' shapes</span></span></div>');
+      swatch(list[i]) + '<span class="ln">' + (moving(W.kind, g) ? partLabel(W.kind, g) : 'Group <span class="dim">' + n + ' shapes</span>') + '</span></div>');
     if (open) for (let k = i; k >= lo; k--) h.push(row(k, true));
     i = lo;
   }
@@ -1157,7 +1173,7 @@ function renderPoseNote() {
   const n = $("poseNote");
   if (W.pose === "portrait" && !app.def.portrait) {
     n.hidden = false;
-    n.innerHTML = 'No portrait: the Pets tab uses the swim drawing (shown faint). ' +
+    n.innerHTML = 'No portrait yet. ' +
       '<button type="button" class="btn small" data-act="port-copy">Copy swim</button><button type="button" class="btn small" data-act="port-blank">Start blank</button>';
   } else n.hidden = true;
 }

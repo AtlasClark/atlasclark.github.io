@@ -66,3 +66,14 @@ test("a hat is bought with shells and worn at once; taking it off keeps it", asy
   p.look = { hat: "duck" };
   assert.equal(shop.lookOf(p).hat, undefined, "a hat not bought is not worn");
 });
+
+test("a moving part dragged elsewhere turns about its new place (rev 1.54.0)", () => {
+  const key = "hat:beanie", ref = ART.SHOP_HAT_ART[key].shapes;
+  assert.deepEqual(A.partShift(key, ref, "prop", ref), [0, 0], "the built-in drawing: no shift");
+  const moved = ref.map(s => s.g !== "prop" ? s : Object.assign({}, s, s.t === "ell" ? { x: s.x + 0.3, y: s.y - 0.1 }
+    : { d: s.d.map(c => c.length > 1 ? [c[0], ...c.slice(1).map((v, i) => v + (i % 2 ? -0.1 : 0.3))] : c) }));
+  const d = A.partShift(key, moved, "prop", ref);
+  assert.ok(Math.abs(d[0] - 0.3) < 1e-6 && Math.abs(d[1] + 0.1) < 1e-6, "the pivot follows the part: " + d);
+  const sub = COS.decorLive;
+  assert.equal(typeof sub.on, "boolean");
+});

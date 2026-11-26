@@ -252,17 +252,24 @@ export async function bjFinish(p, hand, how, rnd = Math.random) {
 export const bjWon = p => spendsBy(p, C.BJ.kind).reduce((a, s) => a + (Number(s.won) || 0), 0);
 export const tossWon = p => spendsBy(p, C.TOSS.kind).reduce((a, s) => a + (Number(s.won) || 0), 0);
 
+/* A dragon's aura on a pet's race stats: +DRAGON.aura each, up to the stat ceiling. */
+export const withAura = st => st.map(v => Math.min(C.RACE.statMax, v + C.DRAGON.aura));
+
 /* ---- pet races (rules in race.js) -------------------------------------------------- */
 /* The race p's pet k would run now: the field (five others, drawn for this pet, day and
    race number, so a reload shows the same one), every lane's odds, and the pet's stats. */
 const setups = new Map();
 export function raceSetup(p, k, day = todayKey()) {
   const house = k === C.RACE_HOUSE, me = house ? null : statsOf(p, k), n = racesOn(p, k, day), hue = house ? 0 : hueOf(p, k);
-  const key = [p.name, k, day, n, house ? "" : me.st.join(".")].join("|");
+  const aura = !house && holdsDragon(p);
+  const key = [p.name, k, day, n, house ? "" : me.st.join("."), aura ? "aura" : ""].join("|");
   let s = setups.get(key);
   if (s && s.mine >= 0) s.field[s.mine].hue = hue;                  /* a recolour changes the picture, not the race */
   if (!s) {
     const field = makeField(house ? null : { kind: k, hue, st: me.st }, "race|" + p.name + "|" + k + "|" + day + "|" + n);
+    /* the dragon's aura (rev 1.54.0) goes on after the field is drawn, which is scaled to the pet's own stats,
+       and before the odds, so the payouts stay fair: the edge is in placing more often */
+    if (aura) { const f = field.find(x => x.me); f.st = withAura(f.st); f.aura = true; }
     s = { key, field, odds: raceOdds(field, "odds|" + key), me, n, mine: field.findIndex(f => f.me) };
     if (setups.size > 60) setups.clear();
     setups.set(key, s);
@@ -346,7 +353,8 @@ export const duelPass = (p, ask, from) => duelNote(p, { role: "pass", ask: ask.i
    pets as they are now, so every page replays the same race. Returns the record or null. */
 export async function duelTake(p, from, ask, k, seed = Math.floor(Math.random() * 4294967296)) {
   if (!has(p.pets, k) || !canRace(k) || !asksFor(p.name).some(x => x.ask.id === ask.id)) return null;
-  const st = statsOf(p, k).st, vst = statsOf(from, Number(ask.pet)).st, hue = hueOf(p, k), vhue = hueOf(from, Number(ask.pet));
+  const auraOf = (q, s) => holdsDragon(q) ? withAura(s) : s;                     /* each side's dragon, if it has one */
+  const st = auraOf(p, statsOf(p, k).st), vst = auraOf(from, statsOf(from, Number(ask.pet)).st), hue = hueOf(p, k), vhue = hueOf(from, Number(ask.pet));
   const res = runRace([{ st: vst }, { st }], seed);
   return duelNote(p, { role: "take", ask: ask.id, from: from.name, pet: k, vs: Number(ask.pet), st, vst, hue, vhue, seed,
                        win: res.place[1] === 1, secs: Math.round(res.secs * 10) / 10, t: Date.now() });

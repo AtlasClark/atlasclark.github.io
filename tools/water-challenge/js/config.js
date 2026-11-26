@@ -1,8 +1,8 @@
 /* Water Challenge (web) - constants: rules, tunables and the on-disk contract
    (FORMAT_REV, UTF-16 LE + BOM JSON, unknown fields kept). */
 
-export const REV         = "rev 1.53.1";
-export const APP_VERSION = "web 1.53.1";   /* stamped as writerVersion */
+export const REV         = "rev 1.54.0";
+export const APP_VERSION = "web 1.54.0";   /* stamped as writerVersion */
 /* Every file is written at FORMAT_REV. A file stamped higher came from a newer
    build, and the page asks for a reload. */
 export const FORMAT_REV    = 22;
@@ -277,7 +277,8 @@ export const MYSTERY_CHANCE   = 0.006;
    weekday (chance `leave`); can't drown; no new pets are rolled while it stays (goal tokens still count);
    its owner may send it away. Comes at a level from `lv` with `perLevel` stat points per level above 1, and
    brings a hoard of `tokens` and `shells` (whole numbers in each range). Rolls before `since` bring no hoard. */
-export const DRAGON = { since: "2026-11-24", stay: 2, leave: 1 / 3, lv: [3, 8], perLevel: 3, tokens: [1, 10], shells: [10, 100] };
+export const DRAGON = { since: "2026-11-24", stay: 2, leave: 1 / 3, lv: [3, 8], perLevel: 3, tokens: [1, 10], shells: [10, 100],
+                         aura: 5 };    /* rev 1.54.0: while it stays, every one of the owner's pets races with +aura on each stat */
 export const AUTOMATON_KIND   = PEN3_FIRST + 25;   /* 77, the second pen's reward */
 export const PET_MAX          = AUTOMATON_KIND + 1; /* every kind: three pens, both rewards, the dragon */
 /* Full-pen rewards (index = pen): all 25 of that pen alive at once brings it; lose one

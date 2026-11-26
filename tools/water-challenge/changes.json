@@ -1,4 +1,9 @@
 [
+  { "rev": "1.54.0", "notes": [
+    "A dragon's aura lifts all your pets in the races while it stays.",
+    "You'll see a warm glow round your racer when it's working.",
+    "Redrawn hats keep their moving bits moving properly."
+  ] },
   { "rev": "1.53.1", "notes": [
     "Dragons get two full days with you before they think about leaving.",
     "A tidier dragon note on the Pets tab.",

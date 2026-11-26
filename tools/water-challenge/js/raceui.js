@@ -3,6 +3,7 @@
    is saved when the race starts (shop.js racePlay); the track replays it from its seed
    and reveal.js keeps the winnings and the stat changes out of sight until the finish. */
 
+import { holdsDragon } from "./dragon.js";
 import * as C from "./config.js";
 import { findParticipant, S } from "./model.js";
 import * as store from "./store.js";
@@ -123,7 +124,8 @@ function renderRace(p) {
     '<div class="xp" title="' + (me.need ? me.into + ' / ' + me.need + ' xp to level ' + (me.level + 1) : 'top level') + '"><i style="width:' +
     (me.need ? Math.round(me.into / me.need * 100) : 100) + '%"></i></div>' +
     '<span class="dim">' + me.races + ' race' + (me.races === 1 ? '' : 's') + ' &middot; ' + me.wins + ' won' +
-    (rec.won + rec.lost ? ' &middot; 1v1: ' + rec.won + ' won, ' + rec.lost + ' lost' : '') + '</span></div></div>' +
+    (rec.won + rec.lost ? ' &middot; 1v1: ' + rec.won + ' won, ' + rec.lost + ' lost' : '') + '</span>' +
+    (holdsDragon(p) ? '<span class="rc-aura">Dragon aura: +' + C.DRAGON.aura + ' to every stat</span>' : '') + '</div></div>' +
     '<div class="rc-stats">' + C.RACE_STATS.map((n, i) => {
       const d = me.st[i] - me.base[i];
       return '<div class="rs"><span>' + n + '</span><div class="bar"><i style="width:' + me.st[i] + '%"></i><em style="left:' + me.base[i] + '%"></em></div><b>' + me.st[i] + '</b>' +
@@ -389,6 +391,11 @@ function drawTrack(r, x, f, sp, rt, clock, word, target) {
     ctx.beginPath(); ctx.ellipse(px, base + 1, pr * 0.95, 2.8, 0, 0, 6.2832); ctx.fill();
     ctx.strokeStyle = "rgba(255,255,255,.55)"; ctx.lineWidth = 1.2;
     ctx.beginPath(); ctx.ellipse(px, base + 1, pr * (1.05 + (moving ? frac(clock * 1.8 + i * 0.3) * 0.35 : 0)), 3.4, 0, 0, 6.2832); ctx.stroke();
+    if (field[i].aura) {                                                            /* the dragon's aura: a warm glow that breathes */
+      const gl = ctx.createRadialGradient(px, cy, pr * 0.2, px, cy, pr * 1.5), a = 0.42 + 0.14 * Math.sin(clock * 3 + i);
+      gl.addColorStop(0, "rgba(255,206,84," + a.toFixed(3) + ")"); gl.addColorStop(1, "rgba(255,150,30,0)");
+      ctx.fillStyle = gl; ctx.beginPath(); ctx.arc(px, cy, pr * 1.5, 0, 6.2832); ctx.fill();
+    }
     ctx.save();
     ctx.translate(px, base);                                                        /* a cut-out rocks about its foot */
     ctx.rotate(flag === 2 ? Math.sin(clock * 22) * 0.2 : flag === 1 ? 0.09 : moving ? Math.sin(clock * 11 + i * 1.7) * 0.035 : 0);
